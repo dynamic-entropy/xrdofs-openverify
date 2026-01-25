@@ -9,6 +9,29 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     m_log.Emsg(" INFO", "FileWrapper::open");
 
     int rc = m_wrapped->open(fileName, openMode, createMode, client, opaque);
+
+    switch (rc) {
+        case SFS_REDIRECT: {
+            int port;
+            const char* host = m_wrapped->error.getErrText(port);
+            if (port < 0) {
+                m_log.Emsg(" INFO", "redirecting to", host);
+            } else {
+                std::string hostPort = std::string(host) + ":" + std::to_string(port);
+                m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
+            }
+        } break;
+        default:
+            break;
+            // case SFS_STALL         1 // Return value -> Seconds to stall client
+            // case SFS_OK            0 // ErrInfo code -> All is well
+            // case SFS_ERROR        -1 // ErrInfo code -> Error occurred
+            // case SFS_REDIRECT   -256 // ErrInfo code -> Port number to redirect to
+            // case SFS_STARTED    -512 // ErrInfo code -> Estimated seconds to completion
+            // case SFS_DATA      -1024 // ErrInfo code -> Length of data
+            // case SFS_DATAVEC   -2048 // ErrInfo code -> Num iovec elements in msgbuff
+    }
+
     open_verify();
 
     return rc;
