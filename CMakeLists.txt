@@ -8,6 +8,7 @@ find_package(XRootD CONFIG REQUIRED)
 add_library(XrdOfsOpenVerify SHARED
     src/XrdOfsOpenVerifyFile.cc
     src/XrdOfsOpenVerifyFileSystem.cc
+    src/OpenVerifyCache.cpp
 )
 
 target_include_directories(XrdOfsOpenVerify
@@ -29,3 +30,17 @@ set_target_properties(XrdOfsOpenVerify PROPERTIES
 install(TARGETS XrdOfsOpenVerify
     LIBRARY DESTINATION lib64
 )
+
+enable_testing()
+
+add_executable(openverify_cache_tests
+    tests/OpenVerifyCacheTests.cc
+    src/OpenVerifyCache.cpp
+)
+
+target_include_directories(openverify_cache_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_test(NAME openverify_cache_tests COMMAND openverify_cache_tests)

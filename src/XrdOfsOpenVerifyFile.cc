@@ -1,5 +1,9 @@
+#include <chrono>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
+#include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
@@ -14,11 +18,44 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         case SFS_REDIRECT: {
             int port;
             const char* host = m_wrapped->error.getErrText(port);
+            std::string hostPort;
             if (port < 0) {
-                m_log.Emsg(" INFO", "redirecting to", host);
+                hostPort = std::string(host);
             } else {
-                std::string hostPort = std::string(host) + ":" + std::to_string(port);
-                m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
+                hostPort = std::string(host) + ":" + std::to_string(port);
+            }
+
+            m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
+
+            // seconds the cache should be a path segmented trie
+            const std::string hostStr = host ? host : "";
+            const int portVal = (port >= 0) ? port : -1;
+
+            const std::string pathStr = fileName ? fileName : "";
+            const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+            const auto cached = m_cache.Get(key);
+            switch (cached) {
+                case OpenVerifyCache::Status::Miss:
+                    m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
+                    // call open verify and cache the result for a postive or negative entry
+                    // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
+                    // seconds if works populate the cache as a positve entry for path -> server with a relatively
+                    // larger ttl - 120
+                    if (open_verify(key)) {
+                        m_cache.PutPositive(key, std::chrono::seconds(120));
+                        m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
+                    } else {
+                        m_cache.PutNegative(key, std::chrono::seconds(15));
+                        m_log.Emsg(" WARN", "openverify failed for", key.c_str());
+                    }
+                    break;
+                case OpenVerifyCache::Status::Positive:
+                    m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
+                    // continue and return normal
+                    break;
+                case OpenVerifyCache::Status::Negative:
+                    m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
+                    break;
             }
         } break;
         default:
@@ -32,14 +69,30 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             // case SFS_DATAVEC   -2048 // ErrInfo code -> Num iovec elements in msgbuff
     }
 
-    open_verify();
-
     return rc;
 }
 
-bool OpenVerifyFile::open_verify() {
-    // use xrdcl client to read?
-    return true;  // on success
+bool OpenVerifyFile::open_verify(const std::string& key) {
+    // Temporary deterministic open_verify:
+    // - Remembers a decision per key for the lifetime of the process.
+    // - On first encounter, decides based on a stable hash of the key.
+    static std::mutex mu;
+    static std::unordered_map<std::string, bool> remembered;
+
+    {
+        const std::lock_guard<std::mutex> lk(mu);
+        const auto it = remembered.find(key);
+        if (it != remembered.end()) {
+            return it->second;
+        }
+    }
+
+    const bool ok = (std::hash<std::string>{}(key) % 2) == 0;
+    {
+        const std::lock_guard<std::mutex> lk(mu);
+        remembered.emplace(key, ok);
+    }
+    return ok;
 }
 
 int OpenVerifyFile::close() {

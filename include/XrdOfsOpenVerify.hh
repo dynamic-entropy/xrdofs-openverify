@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "OpenVerifyCache.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 #include "XrdVersion.hh"
 
@@ -70,12 +71,14 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
         : m_next_sfs(nativeFS), m_log(0, "ofs_plugin"), m_config(configFn), m_env(envP) {
         m_log.logger(Logger);
         m_log.Emsg("ERR:: ", "*** XrdOfsOpenVerify Initialised ****");
+        m_cache.StartExpiryThread();
     }
 
     XrdSfsFileSystem* m_next_sfs;
     XrdSysError m_log;
     const char* m_config;
     XrdOucEnv* m_env;
+    OpenVerifyCache m_cache;
 };
 
 class OpenVerifyFile : public XrdSfsFile {
@@ -125,14 +128,16 @@ class OpenVerifyFile : public XrdSfsFile {
 
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
-    OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log) : XrdSfsFile(wrapF->error), m_wrapped(wrapF), m_log(log) {}
+    OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache)
+        : XrdSfsFile(wrapF->error), m_wrapped(wrapF), m_log(log), m_cache(cache) {}
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
     XrdSysError& m_log;
+    OpenVerifyCache& m_cache;
 
    private:
-    bool open_verify();
+    bool open_verify(const std::string& key);
 };
 
 #endif
