@@ -8,21 +8,20 @@
 // provides a consistent external key format.
 //
 // Format:
-//   <host>[:<port>]/<path>
+//   <host>[:<port>]//<path>
 //
 // - If port < 0, we omit ":<port>".
-// - We ensure there's exactly one '/' between hostpart and path.
+// - We ensure there's exactly two '/' between hostpart and the path.
 inline std::string MakeOpenVerifyCacheKey(const std::string& path, const std::string& host, int port) {
     std::string hostpart = host;
     if (port >= 0) {
         hostpart += ":" + std::to_string(port);
     }
 
-    std::string key;
-    key += hostpart;
-    if (path.empty() || path[0] != '/') {
-        key.push_back('/');
+    std::string p = path;
+    while (!p.empty() && p.front() == '/') {
+        p.erase(p.begin());
     }
-    key += path;
-    return key;
+
+    return hostpart + "//" + p;
 }

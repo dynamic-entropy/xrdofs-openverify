@@ -9,6 +9,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/XrdOfsOpenVerifyFile.cc
     src/XrdOfsOpenVerifyFileSystem.cc
     src/OpenVerifyCache.cpp
+    src/XrdOfsOpenVerifyImpl.cc
 )
 
 target_include_directories(XrdOfsOpenVerify
@@ -20,6 +21,7 @@ target_link_libraries(XrdOfsOpenVerify
     PRIVATE
         XRootD::XrdServer
         XRootD::XrdUtils
+        XRootD::XrdCl
 )
 
 set_target_properties(XrdOfsOpenVerify PROPERTIES

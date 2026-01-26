@@ -137,7 +137,7 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyCache& m_cache;
 
    private:
-    bool open_verify(const std::string& key);
+    bool open_verify(const std::string& key, const char* opaque);
 };
 
 #endif

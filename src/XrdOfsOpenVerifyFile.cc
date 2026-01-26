@@ -41,7 +41,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
                     // seconds if works populate the cache as a positve entry for path -> server with a relatively
                     // larger ttl - 120
-                    if (open_verify(key)) {
+                    if (open_verify(key, opaque)) {
                         m_cache.PutPositive(key, std::chrono::seconds(120));
                         m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                     } else {
@@ -70,29 +70,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     return rc;
-}
-
-bool OpenVerifyFile::open_verify(const std::string& key) {
-    // Temporary deterministic open_verify:
-    // - Remembers a decision per key for the lifetime of the process.
-    // - On first encounter, decides based on a stable hash of the key.
-    static std::mutex mu;
-    static std::unordered_map<std::string, bool> remembered;
-
-    {
-        const std::lock_guard<std::mutex> lk(mu);
-        const auto it = remembered.find(key);
-        if (it != remembered.end()) {
-            return it->second;
-        }
-    }
-
-    const bool ok = (std::hash<std::string>{}(key) % 2) == 0;
-    {
-        const std::lock_guard<std::mutex> lk(mu);
-        remembered.emplace(key, ok);
-    }
-    return ok;
 }
 
 int OpenVerifyFile::close() {
