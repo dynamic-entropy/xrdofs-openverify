@@ -4,6 +4,7 @@
 #include <string>
 
 #include "OpenVerifyCache.hh"
+#include "XrdSec/XrdSecEntity.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 #include "XrdVersion.hh"
 
@@ -137,7 +138,7 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyCache& m_cache;
 
    private:
-    bool open_verify(const std::string& key, const char* opaque);
+    bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client);
 };
 
 #endif

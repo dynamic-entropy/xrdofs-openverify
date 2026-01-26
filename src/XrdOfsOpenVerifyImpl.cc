@@ -1,5 +1,9 @@
 #include <array>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <optional>
 #include <string>
 
 #include "XrdCl/XrdClFile.hh"
@@ -8,7 +12,7 @@
 
 namespace {
 std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque) {
-    // `key` format: <host>[:<port>]/<path>
+    // `key` format: <host>[:<port>]//<path>
     std::string url = "root://";
     url += key;
 
@@ -23,9 +27,63 @@ std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opa
 
     return url;
 }
+
+class ScopedBearerTokenEnv {
+   public:
+    ScopedBearerTokenEnv(const ScopedBearerTokenEnv&) = delete;
+    ScopedBearerTokenEnv& operator=(const ScopedBearerTokenEnv&) = delete;
+
+    explicit ScopedBearerTokenEnv(const std::string& token) {
+        if (token.empty()) return;
+
+        static std::mutex mtx;
+        m_lock = std::unique_lock<std::mutex>(mtx);
+
+        if (const char* old = std::getenv("BEARER_TOKEN")) {
+            m_old = old;
+        }
+
+        setenv("BEARER_TOKEN", token.c_str(), 1);
+        m_active = true;
+    }
+
+    ~ScopedBearerTokenEnv() {
+        if (!m_active) return;
+
+        if (m_old) {
+            setenv("BEARER_TOKEN", m_old->c_str(), 1);
+        } else {
+            unsetenv("BEARER_TOKEN");
+        }
+    }
+
+   private:
+    bool m_active{false};
+    std::optional<std::string> m_old;
+    std::unique_lock<std::mutex> m_lock;
+};
+
+bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) {
+    outToken.clear();
+    if (!client || !client->creds || client->credslen <= 0) return false;
+
+    outToken.assign(client->creds, static_cast<size_t>(client->credslen));
+    if (!outToken.empty() && outToken.back() == '\0') outToken.pop_back();
+
+    if (outToken.find('\0') != std::string::npos) {
+        outToken.clear();
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
-bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque) {
+bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client) {
+    std::string token;
+    const bool haveToken = GetTokenFromClientCreds(client, token);
+    ScopedBearerTokenEnv bearerEnv(haveToken ? token : std::string());
+
     // Use XrdCl to open the file and read the first and last byte
     // If the read fails, return false
     // If the read succeeds, return true

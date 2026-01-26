@@ -41,7 +41,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
                     // seconds if works populate the cache as a positve entry for path -> server with a relatively
                     // larger ttl - 120
-                    if (open_verify(key, opaque)) {
+                    if (open_verify(key, opaque, client)) {
                         m_cache.PutPositive(key, std::chrono::seconds(120));
                         m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                     } else {
