@@ -1,7 +1,5 @@
 #include <chrono>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 
 #include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
@@ -11,66 +9,93 @@ OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapp
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
                          const XrdSecEntity* client, const char* opaque) {
     m_log.Emsg(" INFO", "FileWrapper::open");
+    int rc = 0;
+    std::string tried_hosts;
+    int retry_count{0}, max_retries{3};
+    bool retry = true;
 
-    int rc = m_wrapped->open(fileName, openMode, createMode, client, opaque);
+    while (retry && retry_count < max_retries) {
+        // if max_retries exhausts and open_verify fail on all of them
+        // currently we return the last redirect, thus only performing a best effort verify
+        // another approach is we change this and return SFS_ERROR instead
 
-    switch (rc) {
-        case SFS_REDIRECT: {
-            int port;
-            const char* host = m_wrapped->error.getErrText(port);
-            std::string hostPort;
-            if (port < 0) {
-                hostPort = std::string(host);
+        std::string opaque_str = opaque ? opaque : "";
+        if (!tried_hosts.empty()) {
+            if (opaque_str.empty()) {
+                opaque_str = "tried=" + tried_hosts;
             } else {
-                hostPort = std::string(host) + ":" + std::to_string(port);
-            }
-
-            m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
-
-            // seconds the cache should be a path segmented trie
-            const std::string hostStr = host ? host : "";
-            const int portVal = (port >= 0) ? port : -1;
-
-            const std::string pathStr = fileName ? fileName : "";
-            const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
-            const auto cached = m_cache.Get(key);
-            switch (cached) {
-                case OpenVerifyCache::Status::Miss:
-                    m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
-                    // call open verify and cache the result for a postive or negative entry
-                    // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
-                    // seconds if works populate the cache as a positve entry for path -> server with a relatively
-                    // larger ttl - 120
-                    if (open_verify(key, opaque, client)) {
-                        m_cache.PutPositive(key, std::chrono::seconds(120));
-                        m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
+                size_t tried_pos = opaque_str.find("tried=");
+                if (tried_pos != std::string::npos) {
+                    size_t end_pos = opaque_str.find('&', tried_pos);
+                    if (end_pos == std::string::npos) {
+                        opaque_str += "," + tried_hosts;
                     } else {
-                        m_cache.PutNegative(key, std::chrono::seconds(15));
-                        m_log.Emsg(" WARN", "openverify failed for", key.c_str());
+                        opaque_str.insert(end_pos, "," + tried_hosts);
                     }
-                    break;
-                case OpenVerifyCache::Status::Positive:
-                    m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
-                    // continue and return normal
-                    break;
-                case OpenVerifyCache::Status::Negative:
-                    m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
-                    break;
+                } else {
+                    opaque_str += "&tried=" + tried_hosts;
+                }
             }
-        } break;
-        default:
-            break;
-            // case SFS_STALL         1 // Return value -> Seconds to stall client
-            // case SFS_OK            0 // ErrInfo code -> All is well
-            // case SFS_ERROR        -1 // ErrInfo code -> Error occurred
-            // case SFS_REDIRECT   -256 // ErrInfo code -> Port number to redirect to
-            // case SFS_STARTED    -512 // ErrInfo code -> Estimated seconds to completion
-            // case SFS_DATA      -1024 // ErrInfo code -> Length of data
-            // case SFS_DATAVEC   -2048 // ErrInfo code -> Num iovec elements in msgbuff
+        }
+
+        rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
+        retry_count++;
+
+        if (rc != SFS_REDIRECT) break;
+
+        int port;
+        const char* host = m_wrapped->error.getErrText(port);
+        const std::string hostStr = host ? host : "";
+        const int portVal = (port >= 0) ? port : -1;
+
+        const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
+        m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
+
+        const std::string pathStr = fileName ? fileName : "";
+        const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+        const auto cached = m_cache.Get(key);
+
+        switch (cached) {
+            case OpenVerifyCache::Status::Miss: {
+                m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
+                // call open verify and cache the result for a postive or negative entry
+                // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
+                // seconds if works populate the cache as a positve entry for path -> server with a relatively
+                // larger ttl - 120
+                if (open_verify(key, opaque_str.c_str(), client)) {
+                    m_cache.PutPositive(key, std::chrono::seconds(120));
+                    retry = false;
+                    m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
+                } else {
+                    m_cache.PutNegative(key, std::chrono::seconds(15));
+                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                    m_log.Emsg(" WARN", "openverify failed for", key.c_str());
+                }
+                break;
+            }
+            case OpenVerifyCache::Status::Positive:
+                m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
+                retry = false;
+                break;
+            case OpenVerifyCache::Status::Negative:
+                tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
+                break;
+        }
     }
 
     return rc;
 }
+
+// Need to think how to handle these other return states
+// #define SFS_STALL         1 // Return value -> Seconds to stall client
+// #define SFS_OK            0 // ErrInfo code -> All is well
+// #define SFS_ERROR        -1 // ErrInfo code -> Error occurred
+// #define SFS_REDIRECT   -256 // ErrInfo code -> Port number to redirect to
+// #define SFS_STARTED    -512 // ErrInfo code -> Estimated seconds to completion
+// #define SFS_DATA      -1024 // ErrInfo code -> Length of data
+// #define SFS_DATAVEC   -2048 // ErrInfo code -> Num iovec elements in msgbuff
+
 
 int OpenVerifyFile::close() {
     m_log.Emsg(" INFO", "FileWrapper::close");
