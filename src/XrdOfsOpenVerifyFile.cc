@@ -38,7 +38,17 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             }
         }
 
+        m_log.Emsg("INFO", "Retrying with opaque = ", opaque_str.c_str());
+
         rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
+        m_log.Emsg("INFO", "returned from open with rc =", std::to_string(rc).c_str(), "\n");
+
+        if (rc > 0){
+            // sleep for rc seconds and try again
+            sleep(rc);
+            m_log.Emsg("INFO", "slept for rc seconds; retrying \n");
+            continue;
+        }
         retry_count++;
 
         if (rc != SFS_REDIRECT) break;
