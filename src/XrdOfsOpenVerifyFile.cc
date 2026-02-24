@@ -4,11 +4,28 @@
 #include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
 
+namespace {
+bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
+    constexpr int kAccessModeMask = 0x3;
+    const int accessMode = (openMode & kAccessModeMask);
+    const bool writeAccess = (accessMode == SFS_O_WRONLY || accessMode == SFS_O_RDWR);
+    const bool createOrTruncate = (openMode & SFS_O_CREAT) || (openMode & SFS_O_CREATAT) || (openMode & SFS_O_TRUNC);
+    return writeAccess || createOrTruncate;
+}
+}  // namespace
+
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
 
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
                          const XrdSecEntity* client, const char* opaque) {
     m_log.Emsg(" INFO", "FileWrapper::open");
+
+    // PUT/CREATE-style requests should not go through open-verify.
+    if (ShouldBypassOpenVerify(openMode)) {
+        m_log.Emsg(" INFO", "Skipping open-verify for write/create open mode");
+        return m_wrapped->open(fileName, openMode, createMode, client, opaque);
+    }
+
     int rc = 0;
     std::string tried_hosts;
     int retry_count{0}, max_retries{3};
