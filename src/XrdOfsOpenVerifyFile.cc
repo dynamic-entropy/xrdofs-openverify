@@ -3,6 +3,7 @@
 
 #include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
+#include "XrdSfs/XrdSfsInterface.hh"
 
 namespace {
 bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {

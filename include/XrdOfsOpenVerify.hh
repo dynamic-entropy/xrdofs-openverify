@@ -4,6 +4,7 @@
 #include <string>
 
 #include "OpenVerifyCache.hh"
+#include "XrdOuc/XrdOucErrInfo.hh"
 #include "XrdSec/XrdSecEntity.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 #include "XrdVersion.hh"
