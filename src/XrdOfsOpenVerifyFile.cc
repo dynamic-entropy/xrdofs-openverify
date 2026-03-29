@@ -6,6 +6,16 @@
 #include "XrdSfs/XrdSfsInterface.hh"
 
 namespace {
+
+// Redirect targets may use IPv6 loopback ("[::1]"); XrdCl rejects root://[::1]:port/... ("Invalid address").
+// Later will fix in upstream xrootd later 
+std::string NormalizeHostForXrdCl(const std::string& host) {
+    if (host == "[::1]" || host == "::1") {
+        return "127.0.0.1";
+    }
+    return host;
+}
+
 bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
     constexpr int kAccessModeMask = 0x3;
     const int accessMode = (openMode & kAccessModeMask);
@@ -73,7 +83,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         int port;
         const char* host = m_wrapped->error.getErrText(port);
-        const std::string hostStr = host ? host : "";
+        std::string hostStr = host ? host : "";
+        hostStr = NormalizeHostForXrdCl(hostStr);
         const int portVal = (port >= 0) ? port : -1;
 
         const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
@@ -85,16 +96,19 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         switch (cached) {
             case OpenVerifyCache::Status::Miss: {
+                m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
                 // call open verify and cache the result for a postive or negative entry
                 // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
                 // seconds if works populate the cache as a positve entry for path -> server with a relatively
                 // larger ttl - 120
                 if (open_verify(key, opaque_str.c_str(), client)) {
+                    m_metrics.RecordVerifySuccess();
                     m_cache.PutPositive(key, std::chrono::seconds(120));
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {
+                    m_metrics.RecordVerifyFailure();
                     m_cache.PutNegative(key, std::chrono::seconds(15));
                     tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());
@@ -102,10 +116,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 break;
             }
             case OpenVerifyCache::Status::Positive:
+                m_metrics.RecordCacheHitPositive();
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
+                m_metrics.RecordCacheHitNegative();
                 tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;

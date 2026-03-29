@@ -11,6 +11,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/XrdOfsOpenVerifyFile.cc
     src/XrdOfsOpenVerifyFileSystem.cc
     src/OpenVerifyCache.cpp
+    src/OpenVerifyMetrics.cc
     src/XrdOfsOpenVerifyImpl.cc
 )
 
