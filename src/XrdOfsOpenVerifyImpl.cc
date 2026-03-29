@@ -3,22 +3,25 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
-#include <optional>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "XrdCl/XrdClFile.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOfsOpenVerify.hh"
 
 namespace {
-std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque) {
+std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque,
+                                         const char* ztnFilePath) {
     // `key` format: <host>[:<port>]//<path>
     std::string url = "root://";
     url += key;
 
+    bool haveQuery = false;
     if (opaque && *opaque) {
         url.push_back('?');
+        haveQuery = true;
         if (*opaque == '?') {
             url.append(opaque + 1);
         } else {
@@ -26,42 +29,64 @@ std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opa
         }
     }
 
+    // Per-request token file path for XrdSecztn (see xrd.ztn / findToken in XrdSecProtocolztn).
+    // Use the raw path: XrdCl::URL::SetParams does not percent-decode values, so encoding
+    // (e.g. %2F) would make readToken stat the wrong path. mkstemp paths under /tmp are safe.
+    if (ztnFilePath && *ztnFilePath) {
+        url.push_back(haveQuery ? '&' : '?');
+        url.append("xrd.ztn=");
+        url.append(ztnFilePath);
+    }
+
     return url;
 }
 
-class ScopedBearerTokenEnv {
+// Writes the bearer token to a private temp file; XrdCl ztn reads it via ?xrd.ztn=... on the URL.
+class ScopedTokenTempFile {
    public:
-    ScopedBearerTokenEnv(const ScopedBearerTokenEnv&) = delete;
-    ScopedBearerTokenEnv& operator=(const ScopedBearerTokenEnv&) = delete;
+    ScopedTokenTempFile(const ScopedTokenTempFile&) = delete;
+    ScopedTokenTempFile& operator=(const ScopedTokenTempFile&) = delete;
 
-    explicit ScopedBearerTokenEnv(const std::string& token) {
+    explicit ScopedTokenTempFile(const std::string& token) {
         if (token.empty()) return;
 
-        static std::mutex mtx;
-        m_lock = std::unique_lock<std::mutex>(mtx);
+        char tmpl[] = "/tmp/xrdovXXXXXX";
+        const int fd = mkstemp(tmpl);
+        if (fd < 0) return;
 
-        if (const char* old = std::getenv("BEARER_TOKEN")) {
-            m_old = old;
+        if (fchmod(fd, 0600) != 0) {
+            close(fd);
+            unlink(tmpl);
+            return;
         }
 
-        setenv("BEARER_TOKEN", token.c_str(), 1);
-        m_active = true;
+        const char* p = token.data();
+        size_t left = token.size();
+        while (left > 0) {
+            const ssize_t n = write(fd, p, left);
+            if (n <= 0) {
+                close(fd);
+                unlink(tmpl);
+                return;
+            }
+            p += static_cast<size_t>(n);
+            left -= static_cast<size_t>(n);
+        }
+        close(fd);
+        m_path = tmpl;
     }
 
-    ~ScopedBearerTokenEnv() {
-        if (!m_active) return;
-
-        if (m_old) {
-            setenv("BEARER_TOKEN", m_old->c_str(), 1);
-        } else {
-            unsetenv("BEARER_TOKEN");
+    ~ScopedTokenTempFile() {
+        if (!m_path.empty()) {
+            unlink(m_path.c_str());
         }
     }
+
+    bool ok() const { return !m_path.empty(); }
+    const std::string& path() const { return m_path; }
 
    private:
-    bool m_active{false};
-    std::optional<std::string> m_old;
-    std::unique_lock<std::mutex> m_lock;
+    std::string m_path;
 };
 
 bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) {
@@ -186,8 +211,6 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
         haveToken = TryExtractTokenFromOpaque(opaque, token);
     }
 
-    ScopedBearerTokenEnv bearerEnv(haveToken ? token : std::string());
-
     // Use XrdCl to open the file and read the first and last byte
     // If the read fails, return false
     // If the read succeeds, return true
@@ -198,7 +221,17 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
         return false;
     }
 
-    const std::string url = MakeXrdClUrlFromKeyAndOpaque(key, opaque);
+    ScopedTokenTempFile tokenFile(haveToken ? token : std::string());
+    const char* ztnPath = nullptr;
+    if (haveToken) {
+        if (!tokenFile.ok()) {
+            m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
+            return false;
+        }
+        ztnPath = tokenFile.path().c_str();
+    }
+
+    const std::string url = MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath);
 
     XrdCl::File f;
     auto st = f.Open(url, XrdCl::OpenFlags::Read);
