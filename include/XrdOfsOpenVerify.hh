@@ -143,7 +143,8 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyMetrics& m_metrics;
 
    private:
-    bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client);
+    bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
+                     std::string& failure_reason);
 };
 
 #endif

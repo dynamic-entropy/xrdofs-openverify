@@ -1,8 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 // In-memory counters for OpenVerify cache / verify runs; optional text file mirror (Prometheus text format).
 //
@@ -15,6 +17,10 @@
 // daemons write into one collector dir). If unset, defaults to the basename of getcwd(); if set
 // but empty, the label is omitted.
 //
+// xrootd_openverify_verify_failures_total counts failed verify runs (after a cache miss) with
+// labels host, port (or "none"), and reason. Until the first failure, exposition uses a zero
+// placeholder with host/port/reason "_" so Prometheus registers the metric (omit "_" in sums).
+//
 class OpenVerifyMetrics {
    public:
     OpenVerifyMetrics();
@@ -25,11 +31,20 @@ class OpenVerifyMetrics {
     void RecordCacheHitPositive();
     void RecordCacheHitNegative();
     void RecordVerifySuccess();
-    void RecordVerifyFailure();
+    // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
+    void RecordVerifyFailure(const std::string& host, int port, const std::string& reason);
 
     bool FileExportEnabled() const { return !m_path.empty(); }
 
    private:
+    struct PerFailureMetrics {
+        std::string host_esc;
+        std::string port_lbl;
+        std::string reason_esc;
+        std::atomic<uint64_t> count{0};
+    };
+
+    PerFailureMetrics& EnsureFailure(const std::string& host, int port, const std::string& reason);
     std::string BuildExpositionBody() const;
     void Flush();
 
@@ -42,4 +57,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cache_hit_negative{0};
     std::atomic<uint64_t> m_verify_success{0};
     std::atomic<uint64_t> m_verify_failure{0};
+
+    mutable std::mutex m_failure_mtx;
+    mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;
 };

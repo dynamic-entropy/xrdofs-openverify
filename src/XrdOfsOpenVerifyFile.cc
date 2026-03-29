@@ -102,13 +102,14 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
                 // seconds if works populate the cache as a positve entry for path -> server with a relatively
                 // larger ttl - 120
-                if (open_verify(key, opaque_str.c_str(), client)) {
+                std::string verify_fail_reason;
+                if (open_verify(key, opaque_str.c_str(), client, verify_fail_reason)) {
                     m_metrics.RecordVerifySuccess();
                     m_cache.PutPositive(key, std::chrono::seconds(120));
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {
-                    m_metrics.RecordVerifyFailure();
+                    m_metrics.RecordVerifyFailure(hostStr, portVal, verify_fail_reason);
                     m_cache.PutNegative(key, std::chrono::seconds(15));
                     tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());

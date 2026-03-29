@@ -1,13 +1,16 @@
 #include <array>
 #include <cctype>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "XrdCl/XrdClFile.hh"
+#include "XrdCl/XrdClStatus.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOfsOpenVerify.hh"
 
@@ -202,9 +205,80 @@ bool TryExtractTokenFromOpaque(const char* opaque, std::string& outToken) {
     return false;
 }
 
+// Maps XrdCl::Status.code (XrdClStatus.hh) -> stable Prometheus `reason` label.
+// errOSError is excluded: refined by errno below.
+const std::unordered_map<uint16_t, const char*>& XrdClCodeToReason() {
+    static const std::unordered_map<uint16_t, const char*> kMap = {
+        {XrdCl::errNone, "err_none"},
+        {XrdCl::errRetry, "retry"},
+        {XrdCl::errUnknown, "unknown"},
+        {XrdCl::errInvalidOp, "invalid_op"},
+        {XrdCl::errFcntl, "fcntl"},
+        {XrdCl::errPoll, "poll"},
+        {XrdCl::errConfig, "config"},
+        {XrdCl::errInternal, "internal"},
+        {XrdCl::errUnknownCommand, "unknown_command"},
+        {XrdCl::errInvalidArgs, "invalid_args"},
+        {XrdCl::errInProgress, "in_progress"},
+        {XrdCl::errUninitialized, "uninitialized"},
+        {XrdCl::errNotSupported, "not_supported"},
+        {XrdCl::errDataError, "data_error"},
+        {XrdCl::errNotImplemented, "not_implemented"},
+        {XrdCl::errNoMoreReplicas, "no_more_replicas"},
+        {XrdCl::errPipelineFailed, "pipeline_failed"},
+        {XrdCl::errInvalidAddr, "invalid_address"},
+        {XrdCl::errSocketError, "socket_error"},
+        {XrdCl::errSocketTimeout, "socket_timeout"},
+        {XrdCl::errSocketDisconnected, "socket_disconnected"},
+        {XrdCl::errPollerError, "poller_error"},
+        {XrdCl::errSocketOptError, "socket_opt_error"},
+        {XrdCl::errStreamDisconnect, "stream_disconnect"},
+        {XrdCl::errConnectionError, "connection_error"},
+        {XrdCl::errInvalidSession, "invalid_session"},
+        {XrdCl::errTlsError, "tls_error"},
+        {XrdCl::errInvalidMessage, "invalid_message"},
+        {XrdCl::errHandShakeFailed, "handshake_failed"},
+        {XrdCl::errLoginFailed, "login_failed"},
+        {XrdCl::errAuthFailed, "auth_failed"},
+        {XrdCl::errQueryNotSupported, "query_not_supported"},
+        {XrdCl::errOperationExpired, "operation_expired"},
+        {XrdCl::errOperationInterrupted, "operation_interrupted"},
+        {XrdCl::errThresholdExceeded, "threshold_exceeded"},
+        {XrdCl::errNoMoreFreeSIDs, "no_more_free_sids"},
+        {XrdCl::errInvalidRedirectURL, "invalid_redirect_url"},
+        {XrdCl::errInvalidResponse, "invalid_response"},
+        {XrdCl::errNotFound, "not_found"},
+        {XrdCl::errCheckSumError, "checksum_error"},
+        {XrdCl::errRedirectLimit, "redirect_limit"},
+        {XrdCl::errCorruptedHeader, "corrupted_header"},
+        {XrdCl::errErrorResponse, "error_response"},
+        {XrdCl::errRedirect, "redirect"},
+        {XrdCl::errLocalError, "local_error"},
+        {XrdCl::errResponseNegative, "response_negative"},
+    };
+    return kMap;
+}
+
+// Stable Prometheus `reason` label for XrdCl errors (low cardinality).
+std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
+    if (st.IsOK()) return "ok";
+    if (st.code == XrdCl::errOSError) {
+        if (st.errNo == EACCES || st.errNo == EPERM) return "permission_denied";
+        if (st.errNo == ENOENT) return "not_found";
+        return "os_error";
+    }
+    const auto& m = XrdClCodeToReason();
+    const auto it = m.find(st.code);
+    if (it != m.end()) return it->second;
+    return "xrdcl_error";
+}
+
 }  // namespace
 
-bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client) {
+bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
+                                 std::string& failure_reason) {
+    failure_reason.clear();
+
     std::string token;
     bool haveToken = GetTokenFromClientCreds(client, token);
     if (!haveToken) {
@@ -217,6 +291,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
 
     const auto slashPos = key.find('/');
     if (slashPos == std::string::npos || slashPos == 0) {
+        failure_reason = "invalid_key";
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
         return false;
     }
@@ -225,6 +300,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     const char* ztnPath = nullptr;
     if (haveToken) {
         if (!tokenFile.ok()) {
+            failure_reason = "token_file_error";
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
             return false;
         }
@@ -236,6 +312,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     XrdCl::File f;
     auto st = f.Open(url, XrdCl::OpenFlags::Read);
     if (!st.IsOK()) {
+        failure_reason = ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl open failed for", url.c_str(), msg.c_str());
         return false;
@@ -244,6 +321,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     XrdCl::StatInfo* statInfo = nullptr;
     st = f.Stat(false, statInfo);
     if (!st.IsOK() || !statInfo) {
+        failure_reason = st.IsOK() ? "stat_no_info" : ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl stat failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();
@@ -257,6 +335,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
 
     if (size == 0) {
         // Empty file: treat as failure
+        failure_reason = "empty_file";
         auto closeSt = f.Close();
         (void)closeSt;
         return false;
@@ -280,6 +359,7 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     }
 
     if (!st.IsOK()) {
+        failure_reason = ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl vector read failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();
