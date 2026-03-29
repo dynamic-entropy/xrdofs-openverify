@@ -70,12 +70,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     int truncate(const char* path, XrdSfsFileOffset fsize, XrdOucErrInfo& eInfo, const XrdSecEntity* client = 0,
                  const char* opaque = 0) override;
 
-    OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLogger* Logger, const char* configFn, XrdOucEnv* envP)
-        : m_next_sfs(nativeFS), m_log(0, "ofs_plugin"), m_config(configFn), m_env(envP) {
-        m_log.logger(Logger);
-        m_log.Emsg("ERR:: ", "*** XrdOfsOpenVerify Initialised ****");
-        m_cache.StartExpiryThread();
-    }
+    OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLogger* Logger, const char* configFn, XrdOucEnv* envP);
 
     XrdSfsFileSystem* m_next_sfs;
     XrdSysError m_log;
@@ -83,6 +78,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     XrdOucEnv* m_env;
     OpenVerifyMetrics m_metrics;
     OpenVerifyCache m_cache;
+    const bool m_observe;
 };
 
 class OpenVerifyFile : public XrdSfsFile {
@@ -132,15 +128,15 @@ class OpenVerifyFile : public XrdSfsFile {
 
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
-    OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache,
-                   OpenVerifyMetrics& metrics)
-        : XrdSfsFile(wrapF->error), m_wrapped(wrapF), m_log(log), m_cache(cache), m_metrics(metrics) {}
+    OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
+                   bool observe);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
     XrdSysError& m_log;
     OpenVerifyCache& m_cache;
     OpenVerifyMetrics& m_metrics;
+    const bool m_observe;
 
    private:
     bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,

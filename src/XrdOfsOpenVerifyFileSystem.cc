@@ -1,6 +1,35 @@
 #include "XrdOfsOpenVerify.hh"
 
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+
+bool OpenVerifyObserveModeEnabled() {
+    const char* p = std::getenv("XRD_OPENVERIFY_OBSERVE");
+    return p && std::strcmp(p, "1") == 0;
+}
+
+}  // namespace
+
 OpenVerifyFileSystem* ofs = nullptr;
+
+OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLogger* Logger, const char* configFn,
+                                         XrdOucEnv* envP)
+    : m_next_sfs(nativeFS),
+      m_log(0, "ofs_plugin"),
+      m_config(configFn),
+      m_env(envP),
+      m_observe(OpenVerifyObserveModeEnabled()) {
+    m_log.logger(Logger);
+    m_log.Emsg("ERR:: ", "*** XrdOfsOpenVerify Initialised ****");
+    if (m_observe) {
+        m_log.Emsg("INFO",
+                   "openverify observe mode (XRD_OPENVERIFY_OBSERVE): cache metrics + verify on miss only; "
+                   "no cache/tried changes; redirect unchanged");
+    }
+    m_cache.StartExpiryThread();
+}
 
 XrdSfsDirectory* OpenVerifyFileSystem::newDir(char* user, int monid) {
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newDir");
@@ -20,7 +49,7 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics);
+    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_observe);
     return fw;
 }
 

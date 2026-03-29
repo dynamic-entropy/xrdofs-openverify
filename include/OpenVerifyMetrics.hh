@@ -18,8 +18,12 @@
 // but empty, the label is omitted.
 //
 // xrootd_openverify_verify_failures_total counts failed verify runs (after a cache miss) with
-// labels host, port (or "none"), and reason. Until the first failure, exposition uses a zero
-// placeholder with host/port/reason "_" so Prometheus registers the metric (omit "_" in sums).
+// labels host, port (or "none"), and reason.
+//
+// XRD_OPENVERIFY_OBSERVE: if set to exactly 1, OpenVerify records cache
+// miss/hit metrics and runs open_verify only on cache miss (same as enforce), but does not
+// update the cache, inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
+// returned unchanged.
 //
 class OpenVerifyMetrics {
    public:

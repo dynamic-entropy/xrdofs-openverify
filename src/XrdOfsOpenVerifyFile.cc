@@ -25,6 +25,10 @@ bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
 }
 }  // namespace
 
+OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
+                               bool observe)
+    : XrdSfsFile(wrapF->error), m_wrapped(wrapF), m_log(log), m_cache(cache), m_metrics(metrics), m_observe(observe) {}
+
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
 
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
@@ -39,7 +43,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     int rc = 0;
     std::string tried_hosts;
-    int retry_count{0}, max_retries{3};
+    int retry_count{0};
+    const int max_retries = m_observe ? 1 : 3;
     bool retry = true;
 
     while (retry && retry_count < max_retries) {
@@ -48,7 +53,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         // another approach is we change this and return SFS_ERROR instead
 
         std::string opaque_str = opaque ? opaque : "";
-        if (!tried_hosts.empty()) {
+        // Observe mode: never append plugin tried_hosts; client opaque (including any client tried=) is unchanged.
+        if (!m_observe && !tried_hosts.empty()) {
             if (opaque_str.empty()) {
                 opaque_str = "tried=" + tried_hosts;
             } else {
@@ -94,24 +100,30 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
         const auto cached = m_cache.Get(key);
 
+        // open_verify: observe uses client opaque as-is (may include client tried=); enforce uses opaque_str
+        // (client opaque plus plugin tried_hosts on internal retries).
+        const char* verify_opaque = m_observe ? opaque : opaque_str.c_str();
+
         switch (cached) {
             case OpenVerifyCache::Status::Miss: {
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
-                // call open verify and cache the result for a postive or negative entry
-                // if fails populate the cache as a negative entry for path -> server and with a short ttl - 15
-                // seconds if works populate the cache as a positve entry for path -> server with a relatively
-                // larger ttl - 120
+                // call open verify and cache the result for a positive or negative entry
                 std::string verify_fail_reason;
-                if (open_verify(key, opaque_str.c_str(), client, verify_fail_reason)) {
+                const bool verify_ok = open_verify(key, verify_opaque, client, verify_fail_reason);
+                if (verify_ok) {
                     m_metrics.RecordVerifySuccess();
-                    m_cache.PutPositive(key, std::chrono::seconds(120));
-                    retry = false;
+                    if (!m_observe) {
+                        m_cache.PutPositive(key, std::chrono::seconds(120));
+                        retry = false;
+                    }
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {
                     m_metrics.RecordVerifyFailure(hostStr, portVal, verify_fail_reason);
-                    m_cache.PutNegative(key, std::chrono::seconds(15));
-                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                    if (!m_observe) {
+                        m_cache.PutNegative(key, std::chrono::seconds(15));
+                        tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                    }
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());
                 }
                 break;
@@ -119,11 +131,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Positive:
                 m_metrics.RecordCacheHitPositive();
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
-                retry = false;
+                if (!m_observe) retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
                 m_metrics.RecordCacheHitNegative();
-                tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                if (!m_observe) {
+                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                }
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;
         }
