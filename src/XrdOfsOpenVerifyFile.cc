@@ -26,8 +26,14 @@ bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                               bool observe)
-    : XrdSfsFile(wrapF->error), m_wrapped(wrapF), m_log(log), m_cache(cache), m_metrics(metrics), m_observe(observe) {}
+                               OpenVerifySingleFlight& single_flight, bool observe)
+    : XrdSfsFile(wrapF->error),
+      m_wrapped(wrapF),
+      m_log(log),
+      m_cache(cache),
+      m_metrics(metrics),
+      m_single_flight(single_flight),
+      m_observe(observe) {}
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
 
@@ -100,30 +106,30 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
         const auto cached = m_cache.Get(key);
 
-        // open_verify: observe uses client opaque as-is (may include client tried=); enforce uses opaque_str
-        // (client opaque plus plugin tried_hosts on internal retries).
         const char* verify_opaque = m_observe ? opaque : opaque_str.c_str();
 
         switch (cached) {
             case OpenVerifyCache::Status::Miss: {
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
-                // call open verify and cache the result for a positive or negative entry
-                std::string verify_fail_reason;
-                const bool verify_ok = open_verify(key, verify_opaque, client, verify_fail_reason);
-                if (verify_ok) {
-                    m_metrics.RecordVerifySuccess();
-                    if (!m_observe) {
+                const auto verify_result = m_single_flight.Run(key, [&]() {
+                    std::string failure_reason;
+                    const bool ok = open_verify(key, verify_opaque, client, failure_reason);
+                    if (ok) {
+                        m_metrics.RecordVerifySuccess();
                         m_cache.PutPositive(key, std::chrono::seconds(120));
-                        retry = false;
+                    } else {
+                        m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
+                        m_cache.PutNegative(key, std::chrono::seconds(15));
                     }
+                    return OpenVerifySingleFlight::Result{ok, failure_reason};
+                });
+
+                if (verify_result.ok) {
+                    retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {
-                    m_metrics.RecordVerifyFailure(hostStr, portVal, verify_fail_reason);
-                    if (!m_observe) {
-                        m_cache.PutNegative(key, std::chrono::seconds(15));
-                        tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
-                    }
+                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());
                 }
                 break;
@@ -131,13 +137,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Positive:
                 m_metrics.RecordCacheHitPositive();
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
-                if (!m_observe) retry = false;
+                retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
                 m_metrics.RecordCacheHitNegative();
-                if (!m_observe) {
-                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
-                }
+                tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;
         }

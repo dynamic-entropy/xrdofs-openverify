@@ -49,7 +49,7 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_observe);
+    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_observe);
     return fw;
 }
 

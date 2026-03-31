@@ -5,6 +5,7 @@
 
 #include "OpenVerifyCache.hh"
 #include "OpenVerifyMetrics.hh"
+#include "OpenVerifySingleFlight.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
 #include "XrdSec/XrdSecEntity.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
@@ -78,6 +79,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     XrdOucEnv* m_env;
     OpenVerifyMetrics m_metrics;
     OpenVerifyCache m_cache;
+    OpenVerifySingleFlight m_single_flight;
     const bool m_observe;
 };
 
@@ -129,13 +131,14 @@ class OpenVerifyFile : public XrdSfsFile {
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
     OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                   bool observe);
+                   OpenVerifySingleFlight& single_flight, bool observe);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
     XrdSysError& m_log;
     OpenVerifyCache& m_cache;
     OpenVerifyMetrics& m_metrics;
+    OpenVerifySingleFlight& m_single_flight;
     const bool m_observe;
 
    private:
