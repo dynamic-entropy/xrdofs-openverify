@@ -99,6 +99,12 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_cache_hit_positive.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_cache_lookups_total{result=\"hit_negative\""
          << lbl << "} " << m_cache_hit_negative.load(std::memory_order_relaxed) << "\n"
+            "# HELP open_verify_calls_total Total number of open_verify() executions.\n"
+            "# TYPE open_verify_calls_total counter\n"
+            "open_verify_calls_total"
+         << (m_instance_label.empty() ? std::string() : std::string("{xrootd_instance=\"") + m_instance_label + "\"")
+         << (m_instance_label.empty() ? "" : "}")
+         << " " << m_open_verify_calls.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_verify_runs_total OpenVerify executions after a cache miss.\n"
             "# TYPE xrootd_openverify_verify_runs_total counter\n"
             "xrootd_openverify_verify_runs_total{result=\"success\""
@@ -134,6 +140,11 @@ void OpenVerifyMetrics::RecordCacheHitPositive() {
 
 void OpenVerifyMetrics::RecordCacheHitNegative() {
     m_cache_hit_negative.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordOpenVerifyCall() {
+    m_open_verify_calls.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

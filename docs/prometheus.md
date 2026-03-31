@@ -11,6 +11,7 @@ Prometheus ingests **time series**, not just `# TYPE` lines. You will always see
 samples for:
 
 - `xrootd_openverify_cache_lookups_total` (three `result` label values)
+- `open_verify_calls_total` (single total counter)
 - `xrootd_openverify_verify_runs_total` (two `result` label values)
 
 **`xrootd_openverify_verify_failures_total` appears only after at least one failed
@@ -48,6 +49,12 @@ redirect handled in that open path.
 
 - **`success`:** XrdCl open/stat/read check passed.
 - **`failure`:** Verify failed (see `verify_failures_total` for breakdown).
+
+### `open_verify_calls_total`
+
+**Labels:** none (or optional `xrootd_instance` when configured)  
+**Meaning:** Total number of actual `open_verify()` executions. In single-flight
+paths this increments only for the leader call; followers do not increment it.
 
 ### `xrootd_openverify_verify_failures_total`
 

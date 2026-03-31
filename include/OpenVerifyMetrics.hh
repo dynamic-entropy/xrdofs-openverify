@@ -22,7 +22,7 @@
 //
 // XRD_OPENVERIFY_OBSERVE: if set to exactly 1, OpenVerify records cache
 // miss/hit metrics and runs open_verify only on cache miss (same as enforce), but does not
-// update the cache, inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
+// inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
 // returned unchanged.
 //
 class OpenVerifyMetrics {
@@ -34,6 +34,8 @@ class OpenVerifyMetrics {
     void RecordCacheMiss();
     void RecordCacheHitPositive();
     void RecordCacheHitNegative();
+    // Number of actual open_verify()
+    void RecordOpenVerifyCall();
     void RecordVerifySuccess();
     // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
     void RecordVerifyFailure(const std::string& host, int port, const std::string& reason);
@@ -59,6 +61,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cache_miss{0};
     std::atomic<uint64_t> m_cache_hit_positive{0};
     std::atomic<uint64_t> m_cache_hit_negative{0};
+    std::atomic<uint64_t> m_open_verify_calls{0};
     std::atomic<uint64_t> m_verify_success{0};
     std::atomic<uint64_t> m_verify_failure{0};
 

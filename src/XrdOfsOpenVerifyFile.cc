@@ -114,6 +114,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
                 const auto verify_result = m_single_flight.Run(key, [&]() {
                     std::string failure_reason;
+                    m_metrics.RecordOpenVerifyCall();
                     const bool ok = open_verify(key, verify_opaque, client, failure_reason);
                     if (ok) {
                         m_metrics.RecordVerifySuccess();
