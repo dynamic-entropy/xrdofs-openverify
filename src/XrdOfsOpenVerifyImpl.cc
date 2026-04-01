@@ -276,7 +276,7 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
 }  // namespace
 
 bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                                 std::string& failure_reason) {
+                                 std::string& failure_reason, time_t timeout_seconds) {
     failure_reason.clear();
 
     std::string token;
@@ -310,7 +310,8 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     const std::string url = MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath);
 
     XrdCl::File f;
-    auto st = f.Open(url, XrdCl::OpenFlags::Read);
+    // should we use others - readable open flags instead?
+    auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, timeout_seconds);
     if (!st.IsOK()) {
         failure_reason = ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();

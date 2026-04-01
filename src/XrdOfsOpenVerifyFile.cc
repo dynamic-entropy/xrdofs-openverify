@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdlib>
 #include <string>
 
 #include "OpenVerifyCacheKey.hh"
@@ -22,6 +23,13 @@ bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
     const bool writeAccess = (accessMode == SFS_O_WRONLY || accessMode == SFS_O_RDWR);
     const bool createOrTruncate = (openMode & SFS_O_CREAT) || (openMode & SFS_O_CREATAT) || (openMode & SFS_O_TRUNC);
     return writeAccess || createOrTruncate;
+}
+
+time_t OpenVerifyTimeoutSeconds() {
+    const char* p = std::getenv("XRD_OPENVERIFY_VERIFY_TIMEOUT");
+    if (!p || !*p) return 5;
+    const long long v = std::strtoll(p, nullptr, 10);
+    return v > 0 ? static_cast<time_t>(v) : static_cast<time_t>(5);
 }
 }  // namespace
 
@@ -115,7 +123,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 const auto verify_result = m_single_flight.Run(key, [&]() {
                     std::string failure_reason;
                     m_metrics.RecordOpenVerifyCall();
-                    const bool ok = open_verify(key, verify_opaque, client, failure_reason);
+                    const bool ok =
+                        open_verify(key, verify_opaque, client, failure_reason, OpenVerifyTimeoutSeconds());
                     if (ok) {
                         m_metrics.RecordVerifySuccess();
                         m_cache.PutPositive(key, std::chrono::seconds(120));

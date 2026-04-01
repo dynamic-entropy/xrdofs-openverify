@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(XrdOfsOpenVerify LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -50,3 +50,9 @@ target_include_directories(openverify_cache_tests
 )
 
 add_test(NAME openverify_cache_tests COMMAND openverify_cache_tests)
+
+add_executable(openverify_singleflight_tests
+    tests/OpenVerifySingleFlightTests.cc
+    src/OpenVerifySingleFlight.cc
+    src/OpenVerifyMetrics.cc
+)

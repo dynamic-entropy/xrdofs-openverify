@@ -1,6 +1,7 @@
 #ifndef __XRDOFSOPENVERIFY_H_
 #define __XRDOFSOPENVERIFY_H_
 
+#include <ctime>
 #include <string>
 
 #include "OpenVerifyCache.hh"
@@ -143,7 +144,7 @@ class OpenVerifyFile : public XrdSfsFile {
 
    private:
     bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                     std::string& failure_reason);
+                     std::string& failure_reason, time_t timeout_seconds);
 };
 
 #endif
