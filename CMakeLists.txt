@@ -56,3 +56,9 @@ add_executable(openverify_singleflight_tests
     src/OpenVerifySingleFlight.cc
     src/OpenVerifyMetrics.cc
 )
+
+target_include_directories(openverify_singleflight_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_test(NAME openverify_singleflight_tests COMMAND openverify_singleflight_tests)
