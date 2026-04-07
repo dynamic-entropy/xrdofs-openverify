@@ -10,6 +10,7 @@
 #include "XrdOuc/XrdOucErrInfo.hh"
 #include "XrdSec/XrdSecEntity.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
+#include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdVersion.hh"
 
 class OpenVerifyFileSystem : public XrdSfsFileSystem {
@@ -143,8 +144,8 @@ class OpenVerifyFile : public XrdSfsFile {
     const bool m_observe;
 
    private:
-    bool open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                     std::string& failure_reason, time_t timeout_seconds);
+    XrdCl::XRootDStatus open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
+                                    time_t timeout_seconds);
 };
 
 #endif

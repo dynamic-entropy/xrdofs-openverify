@@ -121,21 +121,21 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
                 const auto verify_result = m_single_flight.Run(key, [&]() {
-                    std::string failure_reason;
                     m_metrics.RecordOpenVerifyCall();
-                    const bool ok =
-                        open_verify(key, verify_opaque, client, failure_reason, OpenVerifyTimeoutSeconds());
-                    if (ok) {
+                    const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds());
+                    if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
                         m_cache.PutPositive(key, std::chrono::seconds(120));
                     } else {
+                        const std::string failure_reason = st.GetErrorMessage().empty() ? "openverify_failure"
+                                                                                         : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
                         m_cache.PutNegative(key, std::chrono::seconds(15));
                     }
-                    return OpenVerifySingleFlight::Result{ok, failure_reason};
+                    return st;
                 });
 
-                if (verify_result.ok) {
+                if (verify_result.IsOK()) {
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {

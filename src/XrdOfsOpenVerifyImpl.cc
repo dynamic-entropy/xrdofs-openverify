@@ -275,10 +275,8 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
 
 }  // namespace
 
-bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                                 std::string& failure_reason, time_t timeout_seconds) {
-    failure_reason.clear();
-
+XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
+                                                time_t timeout_seconds) {
     std::string token;
     bool haveToken = GetTokenFromClientCreds(client, token);
     if (!haveToken) {
@@ -291,18 +289,17 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
 
     const auto slashPos = key.find('/');
     if (slashPos == std::string::npos || slashPos == 0) {
-        failure_reason = "invalid_key";
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
-        return false;
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidAddr, 0, "openverify_invalid_key"};
     }
 
     ScopedTokenTempFile tokenFile(haveToken ? token : std::string());
     const char* ztnPath = nullptr;
     if (haveToken) {
         if (!tokenFile.ok()) {
-            failure_reason = "token_file_error";
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
-            return false;
+            return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError, static_cast<uint32_t>(errno),
+                                       "openverify_token_file_error"};
         }
         ztnPath = tokenFile.path().c_str();
     }
@@ -313,21 +310,22 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     // should we use others - readable open flags instead?
     auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, timeout_seconds);
     if (!st.IsOK()) {
-        failure_reason = ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl open failed for", url.c_str(), msg.c_str());
-        return false;
+        return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
     XrdCl::StatInfo* statInfo = nullptr;
     st = f.Stat(false, statInfo);
     if (!st.IsOK() || !statInfo) {
-        failure_reason = st.IsOK() ? "stat_no_info" : ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl stat failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();
         (void)closeSt;
-        return false;
+        if (st.IsOK()) {
+            return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidResponse, 0, "openverify_stat_no_info"};
+        }
+        return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
     const uint64_t size = statInfo->GetSize();
@@ -336,10 +334,9 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
 
     if (size == 0) {
         // Empty file: treat as failure
-        failure_reason = "empty_file";
         auto closeSt = f.Close();
         (void)closeSt;
-        return false;
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errDataError, 0, "openverify_empty_file"};
     }
 
     XrdCl::ChunkList chunks;
@@ -360,15 +357,14 @@ bool OpenVerifyFile::open_verify(const std::string& key, const char* opaque, con
     }
 
     if (!st.IsOK()) {
-        failure_reason = ClassifyXrdClStatus(st);
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl vector read failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();
         (void)closeSt;
-        return false;
+        return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
     auto closeSt = f.Close();
     (void)closeSt;
-    return true;
+    return XrdCl::XRootDStatus{};
 }

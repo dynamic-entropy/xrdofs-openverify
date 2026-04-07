@@ -61,4 +61,9 @@ target_include_directories(openverify_singleflight_tests
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+target_link_libraries(openverify_singleflight_tests
+    PRIVATE
+        XRootD::XrdCl
+)
+
 add_test(NAME openverify_singleflight_tests COMMAND openverify_singleflight_tests)

@@ -21,7 +21,7 @@ OpenVerifySingleFlight::OpenVerifySingleFlight()
       m_main_sem(m_main_limit),
       m_wait_sem(m_wait_limit) {}
 
-OpenVerifySingleFlight::Result OpenVerifySingleFlight::Run(const std::string& key, const std::function<Result()>& fn) {
+XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const std::function<XrdCl::XRootDStatus()>& fn) {
     std::shared_ptr<InFlight> in_flight;
     bool leader = false;
     {
@@ -37,19 +37,9 @@ OpenVerifySingleFlight::Result OpenVerifySingleFlight::Run(const std::string& ke
     }
 
     if (leader) {
-        // TODO: bool is no more a sufficient return type;
-        // Move onto a model where we define something like
-        // That way we also do not need the Result type
-        // 0 - success
-        // 1 - timeout during OV
-        // 2 - timeout while waiting in sem_wait
-        // -1 * error code : to signal error category
-        // Then we do not need the string errors here
-
-
         // helper to signal followers with requests for the same key to stop waiting
         // and erase the key from map
-        auto finish_leader = [&](Result result) -> Result {
+        auto finish_leader = [&](XrdCl::XRootDStatus result) -> XrdCl::XRootDStatus {
             {
                 std::lock_guard<std::mutex> lk(in_flight->mtx);
                 in_flight->result = result;
@@ -67,7 +57,8 @@ OpenVerifySingleFlight::Result OpenVerifySingleFlight::Run(const std::string& ke
         // if queue is full / number of waiting ov requests is greater than configured wait value
         // return with queue_full
         if (!m_wait_sem.try_acquire()) {
-            return finish_leader(Result{false, "queue_full"});
+            return finish_leader(
+                XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errThresholdExceeded, 0, "openverify_queue_full"});
         }
 
         // we have been admitted to the queue now
@@ -76,7 +67,8 @@ OpenVerifySingleFlight::Result OpenVerifySingleFlight::Run(const std::string& ke
         // This is analogous to staying in a wait queue for the same time period
         // Acquiring the semaphore allows us a permit to perform the operation
         if (!m_main_sem.try_acquire_for(m_queue_timeout)) {
-            return finish_leader(Result{false, "queue_timeout"});
+            return finish_leader(
+                XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_queue_timeout"});
         }
 
         // Successful in acquiring the main semaphore
@@ -84,11 +76,11 @@ OpenVerifySingleFlight::Result OpenVerifySingleFlight::Run(const std::string& ke
         SemaphorePermit main_permit(m_main_sem);
         wait_permit.Release();
 
-        Result result;
+        XrdCl::XRootDStatus result;
         try {
-            result = fn ? fn() : Result{false, "openverify_noop"};
+            result = fn ? fn() : XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidOp, 0, "openverify_noop"};
         } catch (...) {
-            result = Result{false, "openverify_exception"};
+            result = XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInternal, 0, "openverify_exception"};
         }
 
         return finish_leader(result);

@@ -36,32 +36,32 @@ void Test_WaitSlotReleasedAfterQueueTimeout() {
     auto leader = std::async(std::launch::async, [&]() {
         return sf.Run("k1", [&]() {
             release_signal.wait();
-            return OpenVerifySingleFlight::Result{true, ""};
+            return XrdCl::XRootDStatus{};
         });
     });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     auto waiter1 = std::async(std::launch::async, [&]() {
-        return sf.Run("k2", [&]() { return OpenVerifySingleFlight::Result{true, ""}; });
+        return sf.Run("k2", [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto r1 = waiter1.get();
     // k2 should wait for in-flight capacity and eventually hit queue timeout.
-    Expect(!r1.ok && r1.failure_reason == "queue_timeout",
+    Expect(!r1.IsOK() && r1.GetErrorMessage() == "openverify_queue_timeout",
            "first waiter should timeout while waiting for in-flight slot");
 
     auto waiter2 = std::async(std::launch::async, [&]() {
-        return sf.Run("k3", [&]() { return OpenVerifySingleFlight::Result{true, ""}; });
+        return sf.Run("k3", [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto r2 = waiter2.get();
     // If waiter bookkeeping is correct, k3 can also occupy the wait slot and timeout.
-    Expect(!r2.ok && r2.failure_reason == "queue_timeout",
+    Expect(!r2.IsOK() && r2.GetErrorMessage() == "openverify_queue_timeout",
            "second waiter should also get queue_timeout (wait slot must be released)");
 
     // Unblock k1 and verify the leader path itself still succeeds.
     release_leader.set_value();
     const auto lr = leader.get();
-    Expect(lr.ok, "leader should finish successfully");
+    Expect(lr.IsOK(), "leader should finish successfully");
 }
 
 void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
@@ -78,7 +78,7 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
     auto leader = std::async(std::launch::async, [&]() {
         return sf.Run("k1", [&]() {
             leader_signal.wait();
-            return OpenVerifySingleFlight::Result{true, ""};
+            return XrdCl::XRootDStatus{};
         });
     });
 
@@ -88,7 +88,7 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
     auto second = std::async(std::launch::async, [&]() {
         return sf.Run("k2", [&]() {
             second_signal.wait();
-            return OpenVerifySingleFlight::Result{true, ""};
+            return XrdCl::XRootDStatus{};
         });
     });
 
@@ -98,18 +98,18 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
 
     // k3 arrives while k2 is in-flight; it should be able to wait (not queue_full) then timeout.
     auto third = std::async(std::launch::async, [&]() {
-        return sf.Run("k3", [&]() { return OpenVerifySingleFlight::Result{true, ""}; });
+        return sf.Run("k3", [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto t = third.get();
-    Expect(!t.ok && t.failure_reason == "queue_timeout",
+    Expect(!t.IsOK() && t.GetErrorMessage() == "openverify_queue_timeout",
            "third request should wait then timeout, not fail queue_full");
 
     // Finish k2 and ensure both successful paths complete cleanly.
     release_second.set_value();
     const auto r2 = second.get();
     const auto r1 = leader.get();
-    Expect(r1.ok, "leader should succeed");
-    Expect(r2.ok, "second should succeed after becoming in-flight");
+    Expect(r1.IsOK(), "leader should succeed");
+    Expect(r2.IsOK(), "second should succeed after becoming in-flight");
 }
 
 }  // namespace
