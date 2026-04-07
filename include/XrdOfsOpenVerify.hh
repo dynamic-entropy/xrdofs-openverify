@@ -81,7 +81,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     XrdOucEnv* m_env;
     OpenVerifyMetrics m_metrics;
     OpenVerifyCache m_cache;
-    OpenVerifySingleFlight m_single_flight;
+    OpenVerifySingleFlight m_single_flight{m_metrics};
     const bool m_observe;
 };
 

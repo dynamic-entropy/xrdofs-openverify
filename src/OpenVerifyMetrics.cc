@@ -99,18 +99,26 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_cache_hit_positive.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_cache_lookups_total{result=\"hit_negative\""
          << lbl << "} " << m_cache_hit_negative.load(std::memory_order_relaxed) << "\n"
-            "# HELP open_verify_calls_total Total number of open_verify() executions.\n"
-            "# TYPE open_verify_calls_total counter\n"
-            "open_verify_calls_total"
-         << (m_instance_label.empty() ? std::string() : std::string("{xrootd_instance=\"") + m_instance_label + "\"")
-         << (m_instance_label.empty() ? "" : "}")
-         << " " << m_open_verify_calls.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_verify_runs_total OpenVerify executions after a cache miss.\n"
-            "# TYPE xrootd_openverify_verify_runs_total counter\n"
-            "xrootd_openverify_verify_runs_total{result=\"success\""
+            "# HELP xrootd_openverify_runs_total OpenVerify executions after a cache miss.\n"
+            "# TYPE xrootd_openverify_runs_total counter\n"
+            "xrootd_openverify_runs_total{result=\"success\""
          << lbl << "} " << m_verify_success.load(std::memory_order_relaxed) << "\n"
-            "xrootd_openverify_verify_runs_total{result=\"failure\""
+            "xrootd_openverify_runs_total{result=\"failure\""
          << lbl << "} " << m_verify_failure.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_queue_admissions_total Queue admissions around OpenVerify inflight semaphore.\n"
+            "# TYPE xrootd_openverify_queue_admissions_total counter\n"
+            "xrootd_openverify_queue_admissions_total{result=\"admitted\""
+         << lbl << "} " << m_queue_admitted.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_queue_admissions_total{result=\"queue_full\""
+         << lbl << "} " << m_queue_full.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_queue_admissions_total{result=\"queue_timeout\""
+         << lbl << "} " << m_queue_timeout.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_singleflight_requests_total Single-flight requests split by role.\n"
+            "# TYPE xrootd_openverify_singleflight_requests_total counter\n"
+            "xrootd_openverify_singleflight_requests_total{role=\"leader\""
+         << lbl << "} " << m_singleflight_leader.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_singleflight_requests_total{role=\"follower\""
+         << lbl << "} " << m_singleflight_follower.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
             "# TYPE xrootd_openverify_verify_failures_total counter\n";
 
@@ -143,11 +151,6 @@ void OpenVerifyMetrics::RecordCacheHitNegative() {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordOpenVerifyCall() {
-    m_open_verify_calls.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
-}
-
 void OpenVerifyMetrics::RecordVerifySuccess() {
     m_verify_success.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
@@ -157,6 +160,31 @@ void OpenVerifyMetrics::RecordVerifyFailure(const std::string& host, int port, c
     const std::string r = reason.empty() ? std::string("unknown") : reason;
     m_verify_failure.fetch_add(1, std::memory_order_relaxed);
     EnsureFailure(host, port, r).count.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordQueueAdmissionAdmitted() {
+    m_queue_admitted.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordQueueAdmissionFull() {
+    m_queue_full.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordQueueAdmissionTimeout() {
+    m_queue_timeout.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordSingleFlightLeader() {
+    m_singleflight_leader.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordSingleFlightFollower() {
+    m_singleflight_follower.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

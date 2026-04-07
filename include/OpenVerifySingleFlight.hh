@@ -9,12 +9,13 @@
 #include <string>
 #include <unordered_map>
 
+#include "OpenVerifyMetrics.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 
 
 class OpenVerifySingleFlight {
    public:
-    OpenVerifySingleFlight();
+    explicit OpenVerifySingleFlight(OpenVerifyMetrics& metrics);
     OpenVerifySingleFlight(const OpenVerifySingleFlight&) = delete;
     OpenVerifySingleFlight& operator=(const OpenVerifySingleFlight&) = delete;
 
@@ -62,6 +63,7 @@ class OpenVerifySingleFlight {
     std::counting_semaphore<> m_main_sem;
     // counting semaphore for the wait queue
     std::counting_semaphore<> m_wait_sem;
+    OpenVerifyMetrics& m_metrics;
 
     mutable std::mutex m_map_mutex;
     std::unordered_map<std::string, std::shared_ptr<InFlight>> m_in_flight_map;

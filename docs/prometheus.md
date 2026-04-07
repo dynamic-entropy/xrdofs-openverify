@@ -11,8 +11,9 @@ Prometheus ingests **time series**, not just `# TYPE` lines. You will always see
 samples for:
 
 - `xrootd_openverify_cache_lookups_total` (three `result` label values)
-- `open_verify_calls_total` (single total counter)
-- `xrootd_openverify_verify_runs_total` (two `result` label values)
+- `xrootd_openverify_runs_total` (two `result` label values)
+- `xrootd_openverify_queue_admissions_total` (three `result` label values)
+- `xrootd_openverify_singleflight_requests_total` (two `role` label values)
 
 **`xrootd_openverify_verify_failures_total` appears only after at least one failed
 verify** (cache miss + `open_verify` returned false). Until then there are no
@@ -40,7 +41,7 @@ cache was consulted:
 
 These are **lookup outcomes**, not bytes or client counts.
 
-### `xrootd_openverify_verify_runs_total`
+### `xrootd_openverify_runs_total`
 
 **Labels:** `result` ∈ `success` | `failure`  
 **Meaning:** Runs of `open_verify` after a **cache miss** only (not on cache
@@ -50,11 +51,27 @@ redirect handled in that open path.
 - **`success`:** XrdCl open/stat/read check passed.
 - **`failure`:** Verify failed (see `verify_failures_total` for breakdown).
 
-### `open_verify_calls_total`
+This metric's `success` + `failure` total is the full number of actual
+`open_verify()` executions.
 
-**Labels:** none (or optional `xrootd_instance` when configured)  
-**Meaning:** Total number of actual `open_verify()` executions. In single-flight
-paths this increments only for the leader call; followers do not increment it.
+### `xrootd_openverify_queue_admissions_total`
+
+**Labels:** `result` ∈ `admitted` | `queue_full` | `queue_timeout`  
+**Meaning:** Queue outcomes around semaphore admission in single-flight leader
+paths:
+
+- **`admitted`**: request acquired main inflight semaphore and ran verify.
+- **`queue_full`**: request could not get wait-queue slot.
+- **`queue_timeout`**: request got wait-queue slot but timed out waiting for
+  inflight slot.
+
+### `xrootd_openverify_singleflight_requests_total`
+
+**Labels:** `role` ∈ `leader` | `follower`  
+**Meaning:** Request role in per-key single-flight:
+
+- **`leader`** runs the verify path (subject to queue admission).
+- **`follower`** waits for an in-flight leader and reuses its result.
 
 ### `xrootd_openverify_verify_failures_total`
 
@@ -62,7 +79,7 @@ paths this increments only for the leader call; followers do not increment it.
 (stable snake_case string from internal / XrdCl classification), plus optional
 `xrootd_instance`.
 
-**Meaning:** Sub-count of **`verify_runs_total{result="failure"}`**, split by
+**Meaning:** Sub-count of **`xrootd_openverify_runs_total{result="failure"}`**, split by
 redirect target and failure reason. Sum over all label combinations of this
 metric should match the failure counter (same process lifetime).
 
@@ -92,7 +109,7 @@ sum by (result, xrootd_instance) (
 
 ```promql
 sum by (result, xrootd_instance) (
-  rate(xrootd_openverify_verify_runs_total[5m])
+  rate(xrootd_openverify_runs_total[5m])
 )
 ```
 
@@ -107,7 +124,7 @@ sum(rate(xrootd_openverify_cache_lookups_total[5m]))
 ### Verify failure rate
 
 ```promql
-sum(rate(xrootd_openverify_verify_runs_total{result="failure"}[5m]))
+sum(rate(xrootd_openverify_runs_total{result="failure"}[5m]))
 ```
 
 ### Failure rate by reason (after first failures exist)
@@ -123,7 +140,15 @@ sum by (reason, host) (
 ```promql
 sum by (reason) (rate(xrootd_openverify_verify_failures_total[5m]))
 /
-sum(rate(xrootd_openverify_verify_runs_total[5m]))
+sum(rate(xrootd_openverify_runs_total[5m]))
+```
+
+### Single-flight dedup ratio (followers per leader)
+
+```promql
+sum(rate(xrootd_openverify_singleflight_requests_total{role="follower"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_singleflight_requests_total{role="leader"}[5m])), 1e-9)
 ```
 
 ### Grafana tip

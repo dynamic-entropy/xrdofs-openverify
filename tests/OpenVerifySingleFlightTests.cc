@@ -27,7 +27,8 @@ void ConfigureSmallLimits(int queue_timeout_ms = 120, int verify_timeout_ms = 10
 void Test_WaitSlotReleasedAfterQueueTimeout() {
     // Limits force contention: one in-flight operation and one waiter slot.
     ConfigureSmallLimits();
-    OpenVerifySingleFlight sf;
+    OpenVerifyMetrics metrics;
+    OpenVerifySingleFlight sf(metrics);
 
     std::promise<void> release_leader;
     std::shared_future<void> release_signal(release_leader.get_future());
@@ -67,7 +68,8 @@ void Test_WaitSlotReleasedAfterQueueTimeout() {
 void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
     // Same tight limits; this test covers waiter -> in-flight transition.
     ConfigureSmallLimits();
-    OpenVerifySingleFlight sf;
+    OpenVerifyMetrics metrics;
+    OpenVerifySingleFlight sf(metrics);
 
     std::promise<void> release_leader;
     std::promise<void> release_second;

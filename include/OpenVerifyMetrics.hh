@@ -34,11 +34,16 @@ class OpenVerifyMetrics {
     void RecordCacheMiss();
     void RecordCacheHitPositive();
     void RecordCacheHitNegative();
-    // Number of actual open_verify()
-    void RecordOpenVerifyCall();
     void RecordVerifySuccess();
     // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
     void RecordVerifyFailure(const std::string& host, int port, const std::string& reason);
+    // Queue admission outcomes around main semaphore acquisition.
+    void RecordQueueAdmissionAdmitted();
+    void RecordQueueAdmissionFull();
+    void RecordQueueAdmissionTimeout();
+    // Single-flight request role split.
+    void RecordSingleFlightLeader();
+    void RecordSingleFlightFollower();
 
     bool FileExportEnabled() const { return !m_path.empty(); }
 
@@ -61,9 +66,13 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cache_miss{0};
     std::atomic<uint64_t> m_cache_hit_positive{0};
     std::atomic<uint64_t> m_cache_hit_negative{0};
-    std::atomic<uint64_t> m_open_verify_calls{0};
     std::atomic<uint64_t> m_verify_success{0};
     std::atomic<uint64_t> m_verify_failure{0};
+    std::atomic<uint64_t> m_queue_admitted{0};
+    std::atomic<uint64_t> m_queue_full{0};
+    std::atomic<uint64_t> m_queue_timeout{0};
+    std::atomic<uint64_t> m_singleflight_leader{0};
+    std::atomic<uint64_t> m_singleflight_follower{0};
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;
