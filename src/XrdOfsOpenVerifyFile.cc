@@ -34,13 +34,15 @@ time_t OpenVerifyTimeoutSeconds() {
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                               OpenVerifySingleFlight& single_flight, bool observe)
+                               OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
+                               bool observe)
     : XrdSfsFile(wrapF->error),
       m_wrapped(wrapF),
       m_log(log),
       m_cache(cache),
       m_metrics(metrics),
       m_single_flight(single_flight),
+      m_host_reliability(host_reliability),
       m_observe(observe) {}
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
@@ -110,6 +112,14 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
         m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
 
+        // Decide if the host should be added to the tried list 
+        // based on past error patterns
+        if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
+            tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+            m_log.Emsg(" WARN", "skipping unhealthy host:", hostPort.c_str());
+            continue;
+        }
+
         const std::string pathStr = fileName ? fileName : "";
         const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
         const auto cached = m_cache.Get(key);
@@ -124,11 +134,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds());
                     if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
+                        m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                         m_cache.PutPositive(key, std::chrono::seconds(120));
                     } else {
                         const std::string failure_reason = st.GetErrorMessage().empty() ? "openverify_failure"
                                                                                          : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
+                        m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                         m_cache.PutNegative(key, std::chrono::seconds(15));
                     }
                     return st;

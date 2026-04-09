@@ -5,6 +5,7 @@
 #include <string>
 
 #include "OpenVerifyCache.hh"
+#include "OpenVerifyHostReliability.hh"
 #include "OpenVerifyMetrics.hh"
 #include "OpenVerifySingleFlight.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
@@ -82,6 +83,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     OpenVerifyMetrics m_metrics;
     OpenVerifyCache m_cache;
     OpenVerifySingleFlight m_single_flight{m_metrics};
+    OpenVerifyHostReliability m_host_reliability;
     const bool m_observe;
 };
 
@@ -133,7 +135,7 @@ class OpenVerifyFile : public XrdSfsFile {
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
     OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                   OpenVerifySingleFlight& single_flight, bool observe);
+                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability, bool observe);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
@@ -141,6 +143,7 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyCache& m_cache;
     OpenVerifyMetrics& m_metrics;
     OpenVerifySingleFlight& m_single_flight;
+    OpenVerifyHostReliability& m_host_reliability;
     const bool m_observe;
 
    private:
