@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(GNUInstallDirs)
+
 find_package(XRootD CONFIG REQUIRED)
 
 add_library(XrdOfsOpenVerify SHARED
@@ -35,7 +37,7 @@ set_target_properties(XrdOfsOpenVerify PROPERTIES
 )
 
 install(TARGETS XrdOfsOpenVerify
-    LIBRARY DESTINATION lib64
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 enable_testing()
