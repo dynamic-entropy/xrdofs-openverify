@@ -1,0 +1,21 @@
+FROM --platform=linux/amd64 almalinux:10
+
+# Enable EPEL and CRB — needed for xrootd dependencies (e.g. libmacaroons)
+# mirrors what profile::xrootd::prereq does on managed nodes
+RUN dnf install -y epel-release dnf-plugins-core \
+    && dnf config-manager --set-enabled crb \
+    && dnf clean all
+
+# Add the CERN xrootd stable repository
+RUN printf '[xrootd-stable]\nname=XRootD Stable\nbaseurl=https://xrootd.web.cern.ch/repo/stable/el10/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=https://xrootd.web.cern.ch/repo/RPM-GPG-KEY.txt\n' \
+      > /etc/yum.repos.d/xrootd.repo
+
+# Install build toolchain and xrootd development files
+RUN dnf install -y \
+      cmake \
+      gcc-c++ \
+      git \
+      make \
+      rpmdevtools \
+      xrootd-server-devel \
+    && dnf clean all

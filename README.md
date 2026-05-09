@@ -17,6 +17,22 @@ make
 sudo cmake --install build
 ```
 
+## RPM packaging
+
+Install build dependencies (Fedora/RHEL family):
+
+```bash
+sudo dnf install -y rpm-build rpmlint cmake gcc-c++ make xrootd-server-devel
+```
+
+Build RPMs from the current git checkout:
+
+```bash
+./build-rpm.sh
+```
+
+This creates source and binary RPMs under `~/rpmbuild/SRPMS` and `~/rpmbuild/RPMS`.
+
 ## XRootD configuration
 
 Add the plugin in your server config:
