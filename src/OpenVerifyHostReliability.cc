@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <random>
 
 #include "OpenVerifyHostReliability.hh"
 
@@ -24,6 +25,15 @@ double FailureWeightForCode(uint16_t code) {
     }
 }
 
+// Returns base ± 20% so probe deadlines are spread across daemon instances.
+std::chrono::seconds JitteredCooldown(std::chrono::seconds base) {
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    const int base_s = static_cast<int>(base.count());
+    const int delta = static_cast<int>(base_s * 0.2f);
+    std::uniform_int_distribution<int> dist(-delta, +delta);
+    return std::chrono::seconds(base_s + dist(rng));
+}
+
 }  // namespace
 
 OpenVerifyHostReliability::OpenVerifyHostReliability()
@@ -46,11 +56,12 @@ void OpenVerifyHostReliability::UpdateHealthState(HostStats& stats) {
     const double r = std::clamp(m_recover_threshold, 0.0, q);
     if (stats.healthy && stats.ewma_health >= q) {
         stats.healthy = false;
-        // Start cooldown from transition to unhealthy.
-        stats.last_probe_at = std::chrono::steady_clock::now();
+        // Set the first probe deadline immediately on quarantine so there is a
+        // full cooldown window before any probe is allowed.
+        stats.next_probe_at = std::chrono::steady_clock::now() + JitteredCooldown(m_probe_cooldown);
     } else if (!stats.healthy && stats.ewma_health <= r) {
         stats.healthy = true;
-        stats.last_probe_at = std::chrono::steady_clock::time_point{};
+        stats.next_probe_at = {};
     }
 }
 
@@ -61,8 +72,12 @@ bool OpenVerifyHostReliability::AvoidSite(const std::string& host, int port) {
     if (it == m_hoststat_map.end()) return false;
     HostStats& stats = it->second;
     if (stats.healthy) return false;
-    // Allow probing of unhealthy sites
-    if (stats.last_probe_at.time_since_epoch().count() == 0 || (now - stats.last_probe_at) >= m_probe_cooldown) {
+
+    if (now >= stats.next_probe_at) {
+        // Claim the probe slot by advancing the deadline before returning.
+        // Concurrent threads arriving after this point will see a future deadline
+        // and continue avoiding the site, so only one probe fires per window.
+        stats.next_probe_at = now + JitteredCooldown(m_probe_cooldown);
         return false;
     }
     return true;
@@ -83,8 +98,9 @@ void OpenVerifyHostReliability::RecordVerifyFailure(const std::string& host, int
     const double penalty = std::clamp(FailureWeightForCode(xrdcl_code), 0.0, 1.0);
     stats.ewma_health = m_ewma_alpha_fail * penalty + (1.0 - m_ewma_alpha_fail) * stats.ewma_health;
     if (!stats.healthy) {
-        // Failed attempt while unhealthy: start/refresh cooldown from this outcome.
-        stats.last_probe_at = std::chrono::steady_clock::now();
+        // Failed probe: push the deadline out again from now so the cooldown
+        // restarts from the most recent failure, not from when the slot was claimed.
+        stats.next_probe_at = std::chrono::steady_clock::now() + JitteredCooldown(m_probe_cooldown);
     }
     UpdateHealthState(stats);
 }

@@ -26,8 +26,8 @@ class OpenVerifyHostReliability {
         uint64_t failures{0};  // openveify failure counts for host
         double ewma_health{0.0};
         bool healthy{true};
-        // Timestamp of last forced canary probe while unhealthy.
-        std::chrono::steady_clock::time_point last_probe_at{};
+        // Deadline after which the next probe is allowed. 
+        std::chrono::steady_clock::time_point next_probe_at{};
     };
 
     static std::string HostPortKey(const std::string& host, int port);
