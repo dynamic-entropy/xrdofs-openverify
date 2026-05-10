@@ -105,7 +105,7 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_verify_success.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_runs_total{result=\"failure\""
          << lbl << "} " << m_verify_failure.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_queue_admissions_total Queue admissions around OpenVerify inflight semaphore.\n"
+            "# HELP xrootd_openverify_queue_admissions_total Queue admissions around OpenVerify FIFO capacity wait.\n"
             "# TYPE xrootd_openverify_queue_admissions_total counter\n"
             "xrootd_openverify_queue_admissions_total{result=\"admitted\""
          << lbl << "} " << m_queue_admitted.load(std::memory_order_relaxed) << "\n"

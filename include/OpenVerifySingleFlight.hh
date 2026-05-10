@@ -3,9 +3,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
+#include <list>
 #include <memory>
 #include <mutex>
-#include <semaphore>
 #include <string>
 #include <unordered_map>
 
@@ -30,39 +30,24 @@ class OpenVerifySingleFlight {
         XrdCl::XRootDStatus result;
     };
 
-    class SemaphorePermit {
-       public:
-        explicit SemaphorePermit(std::counting_semaphore<>& sem) : m_sem(&sem) {}
-        SemaphorePermit(const SemaphorePermit&) = delete;
-        SemaphorePermit& operator=(const SemaphorePermit&) = delete;
-        SemaphorePermit(SemaphorePermit&&) = delete;
-        SemaphorePermit& operator=(SemaphorePermit&&) = delete;
-
-        ~SemaphorePermit() { Release(); }
-
-        void Release() {
-            if (m_sem != nullptr) {
-                m_sem->release();
-                m_sem = nullptr;
-            }
-        }
-
-       private:
-        std::counting_semaphore<>* m_sem{nullptr};
+    // Each waiting leader holds one of these on its stack; the per-waiter CV allows
+    // targeted wakeup (notify_one on the head) instead of notify_all.
+    struct FifoWaitTag {
+        std::condition_variable cv;
     };
 
-    // constant set from XRD_OPENVERIFY_MAX_INFLIGHT
+    // Maximum leaders admitted to run concurrently (XRD_OPENVERIFY_MAX_INFLIGHT).
     const int m_main_limit;
-    // constant set from XRD_OPENVERIFY_MAX_WAITERS
+    // Maximum leaders allowed to wait in the FIFO backlog (XRD_OPENVERIFY_MAX_WAITERS).
     const int m_wait_limit;
 
     // XRD_OPENVERIFY_QUEUE_TIMEOUT_MS
     const std::chrono::milliseconds m_queue_timeout;
 
-    // main semaphore for the ongoing open verify operations
-    std::counting_semaphore<> m_main_sem;
-    // counting semaphore for the wait queue
-    std::counting_semaphore<> m_wait_sem;
+    std::mutex m_fifo_mutex;
+    std::list<FifoWaitTag*> m_fifo;
+    size_t m_active{0};
+
     OpenVerifyMetrics& m_metrics;
 
     mutable std::mutex m_map_mutex;

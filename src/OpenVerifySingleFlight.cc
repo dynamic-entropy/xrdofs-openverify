@@ -18,8 +18,6 @@ OpenVerifySingleFlight::OpenVerifySingleFlight(OpenVerifyMetrics& metrics)
     : m_main_limit(ReadIntEnvOrDefault("XRD_OPENVERIFY_MAX_INFLIGHT", 32)),
       m_wait_limit(ReadIntEnvOrDefault("XRD_OPENVERIFY_MAX_WAITERS", 128)),
       m_queue_timeout(std::chrono::milliseconds(ReadIntEnvOrDefault("XRD_OPENVERIFY_QUEUE_TIMEOUT_MS", 5000))),
-      m_main_sem(m_main_limit),
-      m_wait_sem(m_wait_limit),
       m_metrics(metrics) {}
 
 XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const std::function<XrdCl::XRootDStatus()>& fn) {
@@ -56,36 +54,64 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
             return result;
         };
 
-        // if queue is full / number of waiting ov requests is greater than configured wait value
-        // return with queue_full
-        if (!m_wait_sem.try_acquire()) {
+        // total number of requests allowed to run concurrently
+        const size_t cap = static_cast<size_t>(m_main_limit);
+        // total number of requets in the wait queue
+        const size_t wait_cap = static_cast<size_t>(m_wait_limit);
+
+        std::unique_lock<std::mutex> fifo_lock(m_fifo_mutex);
+        if (m_fifo.size() >= wait_cap) {
+            fifo_lock.unlock();
             m_metrics.RecordQueueAdmissionFull();
             return finish_leader(
                 XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errThresholdExceeded, 0, "openverify_queue_full"});
         }
 
-        // we have been admitted to the queue now
-        SemaphorePermit wait_permit(m_wait_sem);
-        // We wait for maximum m_queue_timeout to acquire the main-semaphore 
-        // This is analogous to staying in a wait queue for the same time period
-        // Acquiring the semaphore allows us a permit to perform the operation
-        if (!m_main_sem.try_acquire_for(m_queue_timeout)) {
+        // get a ticket to wait and push to the fifo queue
+        FifoWaitTag tag;
+        m_fifo.push_back(&tag);
+        const auto my_it = std::prev(m_fifo.end());
+        const auto deadline = std::chrono::steady_clock::now() + m_queue_timeout;
+
+        // wait_until checks the predicate before blocking
+        // so the first requets always go through without waiting
+        const bool admitted = tag.cv.wait_until(fifo_lock, deadline, [&] {
+            return m_fifo.front() == &tag && m_active < cap;
+        });
+
+        if (!admitted) {
+            // Timed out: erase self from the queue. If we were at the front, wake the
+            // new head so it can check whether a slot is now available.
+            const bool was_front = (my_it == m_fifo.begin());
+            m_fifo.erase(my_it);
+            if (was_front && !m_fifo.empty())
+                m_fifo.front()->cv.notify_one();
+            fifo_lock.unlock();
             m_metrics.RecordQueueAdmissionTimeout();
             return finish_leader(
                 XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_queue_timeout"});
         }
-        m_metrics.RecordQueueAdmissionAdmitted();
 
-        // Successful in acquiring the main semaphore
-        // Move on to the open_verify call; remember to release the wait permit
-        SemaphorePermit main_permit(m_main_sem);
-        wait_permit.Release();
+        m_fifo.pop_front();
+        ++m_active;
+        // If capacity remains, wake the new head immediately
+        if (!m_fifo.empty() && m_active < cap)
+            m_fifo.front()->cv.notify_one();
+        fifo_lock.unlock();
+        m_metrics.RecordQueueAdmissionAdmitted();
 
         XrdCl::XRootDStatus result;
         try {
             result = fn ? fn() : XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidOp, 0, "openverify_noop"};
         } catch (...) {
             result = XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInternal, 0, "openverify_exception"};
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(m_fifo_mutex);
+            --m_active;
+            if (!m_fifo.empty())
+                m_fifo.front()->cv.notify_one();
         }
 
         return finish_leader(result);
