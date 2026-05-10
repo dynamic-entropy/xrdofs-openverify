@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdlib>
+#include <random>
 #include <string>
 
 #include "OpenVerifyCacheKey.hh"
@@ -31,6 +32,15 @@ time_t OpenVerifyTimeoutSeconds() {
     const long long v = std::strtoll(p, nullptr, 10);
     return v > 0 ? static_cast<time_t>(v) : static_cast<time_t>(5);
 }
+
+// Returns base_s ± (fraction * base_s)
+std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    const int delta = static_cast<int>(base_s * fraction);
+    std::uniform_int_distribution<int> dist(-delta, +delta);
+    return std::chrono::seconds(base_s + dist(rng));
+}
+
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
@@ -141,7 +151,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                                                                          : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
                         m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
-                        m_cache.PutNegative(key, std::chrono::seconds(15));
+                        m_cache.PutNegative(key, JitteredNegativeTTL(15));
                     }
                     return st;
                 });
