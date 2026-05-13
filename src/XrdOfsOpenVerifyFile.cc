@@ -33,6 +33,13 @@ time_t OpenVerifyTimeoutSeconds() {
     return v > 0 ? static_cast<time_t>(v) : static_cast<time_t>(5);
 }
 
+int OpenVerifyStallTimeoutSeconds() {
+    const char* p = std::getenv("XRD_OPENVERIFY_STALL_TIMEOUT");
+    if (!p || !*p) return 30;
+    const long long v = std::strtoll(p, nullptr, 10);
+    return v > 0 ? static_cast<int>(v) : 30;
+}
+
 // Returns base_s ± (fraction * base_s)
 std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
     static thread_local std::mt19937 rng{std::random_device{}()};
@@ -71,6 +78,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     std::string tried_hosts;
     int retry_count{0};
     const int max_retries = m_observe ? 1 : 3;
+    int stall_budget = OpenVerifyStallTimeoutSeconds();
     bool retry = true;
 
     while (retry && retry_count < max_retries) {
@@ -103,10 +111,14 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
         m_log.Emsg("INFO", "returned from open with rc =", std::to_string(rc).c_str(), "\n");
 
-        if (rc > 0){
-            // sleep for rc seconds and try again
+        if (rc > 0) {
+            stall_budget -= rc;
+            if (stall_budget <= 0) {
+                m_log.Emsg(" WARN", "openverify stall budget exhausted waiting for cmsd lookup");
+                break;
+            }
             sleep(rc);
-            m_log.Emsg("INFO", "slept for rc seconds; retrying \n");
+            m_log.Emsg("INFO", "slept for stall; retrying");
             continue;
         }
         retry_count++;

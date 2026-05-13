@@ -267,6 +267,11 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
         if (st.errNo == ENOENT) return "not_found";
         return "os_error";
     }
+    // Server-returned protocol errors: errNo holds the kXR_* code.
+    if (st.code == XrdCl::errErrorResponse) {
+        if (st.errNo == kXR_NotFound)      return "not_found";
+        if (st.errNo == kXR_NotAuthorized) return "permission_denied";
+    }
     const auto& m = XrdClCodeToReason();
     const auto it = m.find(st.code);
     if (it != m.end()) return it->second;
