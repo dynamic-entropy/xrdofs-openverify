@@ -10,9 +10,9 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cmake
 BuildRequires:  gcc-c++
 BuildRequires:  make
-BuildRequires:  xrootd-server-devel >= 5.9.1
+BuildRequires:  xrootd-server-devel >= 6.0.0
 
-Requires:       xrootd-server%{?_isa} >= 5.9.1
+Requires:       xrootd-server%{?_isa} >= 6.0.0
 
 %description
 XrdOfsOpenVerify is an XRootD OFS plugin that wraps the native filesystem

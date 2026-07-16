@@ -5,8 +5,9 @@ WORKDIR /src
 
 # Mount the repo at /src and rpmbuild output at /root/rpmbuild when running:
 #   podman run --rm \
-#     -v ~/rpmbuild:/root/rpmbuild:Z \
-#     -v <repo>:/src:ro,Z \
+#     --security-opt label=disable \
+#     -v ~/rpmbuild:/root/rpmbuild \
+#     -v <repo>:/src:ro \
 #     openverify-builder
 
 CMD ["bash", "build-rpm.sh"]

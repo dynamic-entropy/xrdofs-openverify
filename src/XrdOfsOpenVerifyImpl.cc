@@ -1,3 +1,6 @@
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <array>
 #include <cctype>
 #include <cerrno>
@@ -6,13 +9,12 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include "XrdCl/XrdClFile.hh"
 #include "XrdCl/XrdClStatus.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOfsOpenVerify.hh"
+#include "XrdOuc/XrdOucUtils.hh"
 
 namespace {
 std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque,
@@ -39,6 +41,44 @@ std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opa
         url.push_back(haveQuery ? '&' : '?');
         url.append("xrd.ztn=");
         url.append(ztnFilePath);
+    }
+
+    return url;
+}
+
+// Returns true when the originating client connected over the HTTP(S) wire
+// protocol (see XrdHttpProtocol, which sets XrdSecEntity::prot to "http"/"https").
+bool IsHttpProtocol(const XrdSecEntity* client) {
+    if (!client) return false;
+    // prot is a fixed-size, NUL-terminated field (XrdSecPROTOIDSIZE).
+    return std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0;
+}
+
+std::string MakeHttpUrlFromKeyAndOpaque(const std::string& key, const char* opaque, const std::string& token) {
+    // `key` format: <host>[:<port>]//<path>. HTTP needs a single '/' between the
+    // authority and the path, so collapse the "//" separator used by the xroot form.
+    std::string url = "https://";
+    const size_t sep = key.find("//");
+    if (sep == std::string::npos) {
+        url += key;
+    } else {
+        url.append(key, 0, sep);
+        url.push_back('/');
+        url.append(key, sep + 2, std::string::npos);
+    }
+
+    bool haveQuery = false;
+    if (opaque && *opaque) {
+        url.push_back('?');
+        haveQuery = true;
+        url.append(*opaque == '?' ? opaque + 1 : opaque);
+    }
+
+    // The target XrdHttp server reads the bearer token from the authz CGI param.
+    if (!token.empty()) {
+        url.push_back(haveQuery ? '&' : '?');
+        url.append("authz=");
+        url.append(XrdOucUtils::UrlEncode("Bearer " + token));
     }
 
     return url;
@@ -183,7 +223,7 @@ bool TryExtractTokenFromOpaque(const char* opaque, std::string& outToken) {
             std::string value = UrlDecode(rawValue);
 
             if (key == "authorization" || key == "authz" || key == "bearer" || key == "bearer_token" ||
-                key == "token" || key == "access_token") {
+                key == "token" || key == "access_token" || key == "xrdhttpcreds") {
                 value = TrimAsciiWhitespace(value);
                 const std::string bearerPrefix = "bearer ";
                 const std::string lowerValue = ToLowerCopy(value);
@@ -278,29 +318,78 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
     return "xrdcl_error";
 }
 
+std::string HostPortFromVerifyKey(const std::string& key) {
+    const size_t sep = key.find("//");
+    if (sep == std::string::npos) return key;
+    return key.substr(0, sep);
+}
+
+std::string PathFromVerifyKey(const std::string& key) {
+    const size_t sep = key.find("//");
+    if (sep == std::string::npos) return key;
+    return key.substr(sep + 2);
+}
+
+bool ExtractClientBearerToken(const XrdSecEntity* client, const char* opaque, std::string& outToken,
+                              const char** outSource) {
+    outToken.clear();
+    if (outSource) *outSource = nullptr;
+
+    if (GetTokenFromClientCreds(client, outToken)) {
+        if (outSource) *outSource = "client->creds";
+        return true;
+    }
+
+    if (TryExtractTokenFromOpaque(opaque, outToken)) {
+        if (outSource) *outSource = "opaque";
+        return true;
+    }
+
+    return false;
+}
+
 }  // namespace
 
 XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
                                                 time_t timeout_seconds) {
     std::string token;
-    bool haveToken = GetTokenFromClientCreds(client, token);
-    if (!haveToken) {
-        haveToken = TryExtractTokenFromOpaque(opaque, token);
+    const char* tokenSource = nullptr;
+    ExtractClientBearerToken(client, opaque, token, &tokenSource);
+    const bool haveToken = !token.empty();
+
+    const std::string hostPort = HostPortFromVerifyKey(key);
+    const std::string path = PathFromVerifyKey(key);
+
+    if (haveToken) {
+        const std::string tokenMsg = std::string("openverify: client bearer token from ") +
+                                     (tokenSource ? tokenSource : "unknown") + " len=" +
+                                     std::to_string(token.size());
+        m_log.Emsg("DEBUG", tokenMsg.c_str());
+    } else {
+        m_log.Emsg("DEBUG", "openverify: no bearer token in client creds or opaque");
     }
+
+    const std::string verifyMsg = std::string("openverify: verifying ") + path + " on " + hostPort +
+                                  (haveToken ? " with token" : " without token");
+    m_log.Emsg(" INFO", verifyMsg.c_str());
 
     // Use XrdCl to open the file and read the first and last byte
     // If the read fails, return false
     // If the read succeeds, return true
-
     const auto slashPos = key.find('/');
     if (slashPos == std::string::npos || slashPos == 0) {
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidAddr, 0, "openverify_invalid_key"};
     }
 
-    ScopedTokenTempFile tokenFile(haveToken ? token : std::string());
+    // Match the client's wire protocol (http/https vs xroot) for the outbound open.
+    const bool useHttp = IsHttpProtocol(client);
+
+    // xroot carries the bearer token via a per-request ztn token file; http carries
+    // it as an authz CGI parameter, so only the xroot path needs the temp file.
+    ScopedTokenTempFile tokenFile((!useHttp && haveToken) ? token : std::string());
     const char* ztnPath = nullptr;
-    if (haveToken) {
+    if (!useHttp && haveToken) {
         if (!tokenFile.ok()) {
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
             return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError, static_cast<uint32_t>(errno),
@@ -309,7 +398,12 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         ztnPath = tokenFile.path().c_str();
     }
 
-    const std::string url = MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath);
+    const std::string url = useHttp ? MakeHttpUrlFromKeyAndOpaque(key, opaque, haveToken ? token : std::string())
+                                    : MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath);
+
+    const std::string outboundMsg = std::string("openverify: outbound ") + (useHttp ? "https" : "root") +
+                                    " open to " + hostPort + path;
+    m_log.Emsg("DEBUG", outboundMsg.c_str());
 
     XrdCl::File f;
     // should we use others - readable open flags instead?

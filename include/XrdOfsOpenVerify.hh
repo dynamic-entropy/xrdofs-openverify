@@ -8,10 +8,10 @@
 #include "OpenVerifyHostReliability.hh"
 #include "OpenVerifyMetrics.hh"
 #include "OpenVerifySingleFlight.hh"
+#include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
 #include "XrdSec/XrdSecEntity.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
-#include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdVersion.hh"
 
 class OpenVerifyFileSystem : public XrdSfsFileSystem {
