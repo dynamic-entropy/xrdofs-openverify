@@ -17,8 +17,8 @@
 #include "XrdOuc/XrdOucUtils.hh"
 
 namespace {
-std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque,
-                                         const char* ztnFilePath) {
+std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque, const char* ztnFilePath,
+                                         const char* gsiCertPath, const char* gsiKeyPath) {
     // `key` format: <host>[:<port>]//<path>
     std::string url = "root://";
     url += key;
@@ -34,14 +34,21 @@ std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opa
         }
     }
 
-    // Per-request token file path for XrdSecztn (see xrd.ztn / findToken in XrdSecProtocolztn).
-    // Use the raw path: XrdCl::URL::SetParams does not percent-decode values, so encoding
-    // (e.g. %2F) would make readToken stat the wrong path. mkstemp paths under /tmp are safe.
-    if (ztnFilePath && *ztnFilePath) {
+    auto appendCgi = [&](const char* name, const char* value) {
+        if (!value || !*value) return;
         url.push_back(haveQuery ? '&' : '?');
-        url.append("xrd.ztn=");
-        url.append(ztnFilePath);
-    }
+        haveQuery = true;
+        url.append(name);
+        url.push_back('=');
+        // Raw paths: XrdCl::URL::SetParams does not percent-decode values.
+        url.append(value);
+    };
+
+    // Per-request token file path for XrdSecztn (see xrd.ztn / findToken in XrdSecProtocolztn).
+    appendCgi("xrd.ztn", ztnFilePath);
+    // Service X.509 for verify when the client has no bearer token.
+    appendCgi("xrd.gsiusrcrt", gsiCertPath);
+    appendCgi("xrd.gsiusrkey", gsiKeyPath);
 
     return url;
 }
@@ -370,7 +377,10 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     }
 
     const std::string verifyMsg = std::string("openverify: verifying ") + path + " on " + hostPort +
-                                  (haveToken ? " with token" : " without token");
+                                  (haveToken ? " with token"
+                                             : (!m_ov_cert.empty() && !m_ov_key.empty()
+                                                    ? " with service cert"
+                                                    : " with default XrdCl credentials"));
     m_log.Emsg(" INFO", verifyMsg.c_str());
 
     // Use XrdCl to open the file and read the first and last byte
@@ -384,6 +394,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
 
     // Match the client's wire protocol (http/https vs xroot) for the outbound open.
     const bool useHttp = IsHttpProtocol(client);
+    const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
     // xroot carries the bearer token via a per-request ztn token file; http carries
     // it as an authz CGI parameter, so only the xroot path needs the temp file.
@@ -398,11 +409,21 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         ztnPath = tokenFile.path().c_str();
     }
 
-    const std::string url = useHttp ? MakeHttpUrlFromKeyAndOpaque(key, opaque, haveToken ? token : std::string())
-                                    : MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath);
+    const char* gsiCert = (!useHttp && haveServiceCert) ? m_ov_cert.c_str() : nullptr;
+    const char* gsiKey = (!useHttp && haveServiceCert) ? m_ov_key.c_str() : nullptr;
 
-    const std::string outboundMsg = std::string("openverify: outbound ") + (useHttp ? "https" : "root") +
-                                    " open to " + hostPort + path;
+    const std::string url = useHttp ? MakeHttpUrlFromKeyAndOpaque(key, opaque, haveToken ? token : std::string())
+                                    : MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath, gsiCert, gsiKey);
+
+    const char* credLabel =
+        haveToken ? "with token" : (haveServiceCert ? "with service cert" : "with default XrdCl credentials");
+    if (!haveToken && !haveServiceCert) {
+        m_log.Emsg("DEBUG",
+                   "openverify: no bearer token and XRD_OPENVERIFY_CERT/KEY unset; outbound open uses default XrdCl "
+                   "credentials (X509_USER_PROXY etc.) if any");
+    }
+    const std::string outboundMsg = std::string("openverify: outbound ") + (useHttp ? "https" : "root") + " open to " +
+                                    hostPort + path + " " + credLabel;
     m_log.Emsg("DEBUG", outboundMsg.c_str());
 
     XrdCl::File f;

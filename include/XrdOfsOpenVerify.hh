@@ -85,6 +85,12 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     OpenVerifySingleFlight m_single_flight{m_metrics};
     OpenVerifyHostReliability m_host_reliability;
     const bool m_observe;
+
+    std::string m_ov_cert;
+    std::string m_ov_key;
+
+   private:
+    void Configure();
 };
 
 class OpenVerifyFile : public XrdSfsFile {
@@ -135,7 +141,8 @@ class OpenVerifyFile : public XrdSfsFile {
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
     OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability, bool observe);
+                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability, bool observe,
+                   std::string ov_cert, std::string ov_key);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
@@ -145,6 +152,8 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifySingleFlight& m_single_flight;
     OpenVerifyHostReliability& m_host_reliability;
     const bool m_observe;
+    const std::string m_ov_cert;
+    const std::string m_ov_key;
 
    private:
     XrdCl::XRootDStatus open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,

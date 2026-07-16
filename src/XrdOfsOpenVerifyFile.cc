@@ -52,7 +52,7 @@ std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
                                OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                               bool observe)
+                               bool observe, std::string ov_cert, std::string ov_key)
     : XrdSfsFile(wrapF->error),
       m_wrapped(wrapF),
       m_log(log),
@@ -60,7 +60,9 @@ OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCa
       m_metrics(metrics),
       m_single_flight(single_flight),
       m_host_reliability(host_reliability),
-      m_observe(observe) {}
+      m_observe(observe),
+      m_ov_cert(std::move(ov_cert)),
+      m_ov_key(std::move(ov_key)) {}
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
 

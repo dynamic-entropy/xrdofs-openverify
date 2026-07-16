@@ -2,6 +2,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
+
+#include "XrdCl/XrdClDefaultEnv.hh"
 
 namespace {
 
@@ -14,8 +17,38 @@ bool OpenVerifyObserveModeEnabled() {
 
 OpenVerifyFileSystem* ofs = nullptr;
 
+void OpenVerifyFileSystem::Configure() {
+    const char* cert = std::getenv("XRD_OPENVERIFY_CERT");
+    const char* key = std::getenv("XRD_OPENVERIFY_KEY");
+    const bool haveCert = cert && *cert;
+    const bool haveKey = key && *key;
+
+    if (haveCert != haveKey) {
+        m_log.Emsg(" WARN",
+                   "openverify: XRD_OPENVERIFY_CERT and XRD_OPENVERIFY_KEY must both be set; ignoring incomplete pair");
+        return;
+    }
+    if (!haveCert) {
+        m_log.Emsg(" INFO",
+                   "openverify: XRD_OPENVERIFY_CERT/KEY not set; no-token verifies use default XrdCl credentials");
+        return;
+    }
+
+    m_ov_cert = cert;
+    m_ov_key = key;
+
+    // HTTPS outbound opens ignore xrd.gsiusr* CGI and use XrdCl DefaultEnv only.
+    if (XrdCl::Env* env = XrdCl::DefaultEnv::GetEnv()) {
+        env->PutString("HttpClientCertFile", m_ov_cert);
+        env->PutString("HttpClientKeyFile", m_ov_key);
+    }
+
+    const std::string msg = std::string("openverify: service X.509 cert=") + m_ov_cert + " key=" + m_ov_key;
+    m_log.Emsg(" INFO", msg.c_str());
+}
+
 OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLogger* Logger, const char* configFn,
-                                         XrdOucEnv* envP)
+                                           XrdOucEnv* envP)
     : m_next_sfs(nativeFS),
       m_log(0, "ofs_plugin"),
       m_config(configFn),
@@ -28,6 +61,7 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
                    "openverify observe mode (XRD_OPENVERIFY_OBSERVE): cache metrics + verify on miss only; "
                    "no cache/tried changes; redirect unchanged");
     }
+    Configure();
     m_cache.StartExpiryThread();
 }
 
@@ -49,7 +83,8 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_observe);
+    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_observe,
+                                        m_ov_cert, m_ov_key);
     return fw;
 }
 
