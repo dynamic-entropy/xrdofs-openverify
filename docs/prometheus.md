@@ -13,6 +13,7 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 |------|----------|
 | [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
 | [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS redirector ops: traffic, site×error drill-down, stalls, scores |
+| [`docs/grafana/xrdmon-cms-ops.json`](grafana/xrdmon-cms-ops.json) | AAA baseline from xrdmon-collector (r-stream, destinations, link/cmsm) |
 
 **CMS ops variables** (top of dashboard):
 

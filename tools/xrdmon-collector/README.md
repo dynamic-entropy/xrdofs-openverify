@@ -1,73 +1,36 @@
 # xrdmon-collector
 
-Minimal Go UDP collector for CMS AAA redirectors. Lives in this repo under
-`tools/xrdmon-collector`. Listens for:
+UDP collector for CMS AAA redirectors → Prometheus textfile.
 
-1. **r-stream** (`xrootd.monitor … dest redir`) — per-redirect events
-2. **`xrd.report` XML** — `link.*` (no byte counters) and `cmsm.*`
+## What it exports (baseline board)
 
-Writes Prometheus textfile:
+| Goal | Series |
+|------|--------|
+| Demand | `xrdmon_redir_total{opcode}` (locate, openr, …) |
+| Sites touched / blame | `xrdmon_redir_dest_total{host}`, `xrdmon_redir_dest_hosts` |
+| Platform (xrootd) | `xrdmon_link_num\|maxn\|tot` (**xrootd only**, not cmsd) |
+| cmsd peer health | `xrdmon_cmsm_node_active{node,…}` |
+| Collector health | `xrdmon_packets_total{result}` |
 
-`/var/lib/node_exporter/textfile_collector/xrdmon.prom`
+**Removed / not exported:** cmsd vs local `source`, cmsm sel/FRQ/refs, cmsd link sockets, bytes, `xrootd.rdr` (redundant with r-stream).
 
-## Deploy (RPM → yum Pages → Puppet)
+## Not available from xrdmon (need other sources)
 
-Preferred path (same as OpenVerify):
+| Goal | Source |
+|------|--------|
+| Unique LFNs, hops/open | probes / richer correlation |
+| Client open success, TTFB, failure taxonomy, retries | synthetic probes / job metrics |
+| Post-redirect site failures | client-side |
+| CPU / FD | node_exporter (Grafana 1860) |
+| Auth / TLS | later (`lgn.*`) or logs |
 
-```bash
-# from xrdofs-openverify checkout (builds plugin + collector RPMs)
-./scripts/publish-rpms-to-yum.sh
-```
+## Grafana
 
-That builds both packages in the amd64 builder container, copies
-`xrdofs-openverify*.rpm` and `xrdmon-collector*.rpm` into `~/dev/yum/el10/x86_64/`,
-runs `createrepo_c`, and pushes GitHub Pages.
+[`docs/grafana/xrdmon-cms-ops.json`](../../docs/grafana/xrdmon-cms-ops.json) — re-import after updates.
 
-On **cms-xrd-global-test** hiera:
+## Deploy
 
-```yaml
-xrootd_xrdmon_enable: true
-```
+Same as OpenVerify: `./scripts/publish-rpms-to-yum.sh`, then on the canary
+`dnf reinstall -y xrdmon-collector && systemctl restart xrdmon-collector`.
 
-Puppet installs `xrdmon-collector`, enables the systemd unit, and (via the fed
-cfg template) points `xrd.report` + `redir` monitor at `127.0.0.1:9930` with
-`cms.repstats all`.
-
-## Build RPM only
-
-```bash
-# inside the builder container, or on an EL10+golang host:
-./build-all-rpms.sh          # openverify + collector
-# or:
-./build-rpm.sh && ./build-xrdmon-rpm.sh
-```
-
-## Local Go build / test
-
-```bash
-cd tools/xrdmon-collector
-go test ./...
-go build -ldflags="-X main.version=dev" -o xrdmon-collector .
-./xrdmon-collector -version
-```
-
-## Flags
-
-| Flag | Default | Meaning |
-|------|---------|---------|
-| `-listen` | `:9930` | UDP bind (redir + report) |
-| `-out` | `/var/lib/node_exporter/textfile_collector/xrdmon.prom` | Textfile path |
-| `-instance` | _(empty)_ | Optional `xrootd_instance` label |
-| `-write-interval` | `15s` | Flush period |
-| `-dest-labels` | `true` | Per `host`/`port` redirect counters |
-| `-version` | | Print build version |
-
-## Metrics (v1)
-
-- `xrdmon_redir_total{opcode,source}` / `xrdmon_redir_dest_total{host,port}`
-- `xrdmon_link_*` (no byte counters), `xrdmon_xrootd_rdr_total`
-- `xrdmon_cmsm_sel_total`, `xrdmon_cmsm_frq_total`, `xrdmon_cmsm_node_*`
-- `xrdmon_packets_total{result=…}`
-
-Optional GitHub Release workflow (`.github/workflows/xrdmon-collector-release.yml`)
-still builds tarball assets; production canary install is via the yum RPM.
+Default textfile: `/var/lib/node_exporter/textfile_collector/xrdmon.prom` (mode 0644).
