@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/xrdmon-collector \
+ExecStart=/usr/bin/xrdmon-collector \
   -listen :9930 \
   -out /var/lib/node_exporter/textfile_collector/xrdmon.prom \
   -instance %H \

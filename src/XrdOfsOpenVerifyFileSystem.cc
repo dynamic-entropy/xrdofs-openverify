@@ -62,6 +62,7 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
                    "no cache/tried changes; redirect unchanged");
     }
     Configure();
+    m_metrics.SetSiteSource(&m_host_reliability);
     m_cache.StartExpiryThread();
 }
 

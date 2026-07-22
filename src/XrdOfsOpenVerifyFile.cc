@@ -114,8 +114,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         m_log.Emsg("INFO", "returned from open with rc =", std::to_string(rc).c_str(), "\n");
 
         if (rc > 0) {
+            m_metrics.RecordCmsdStall(rc);
             stall_budget -= rc;
             if (stall_budget <= 0) {
+                m_metrics.RecordCmsdStallBudgetExhausted();
                 m_log.Emsg(" WARN", "openverify stall budget exhausted waiting for cmsd lookup");
                 break;
             }
@@ -127,6 +129,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         if (rc != SFS_REDIRECT) break;
 
+        OpenVerifyMetrics::RedirectTimer hop(m_metrics);
+
         int port;
         const char* host = m_wrapped->error.getErrText(port);
         std::string hostStr = host ? host : "";
@@ -136,10 +140,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
         m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
 
-        // Decide if the host should be added to the tried list 
+        // Decide if the host should be added to the tried list
         // based on past error patterns
         if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
             tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+            hop.Avoided("quarantine");
             m_log.Emsg(" WARN", "skipping unhealthy host:", hostPort.c_str());
             continue;
         }
@@ -170,6 +175,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     return st;
                 });
 
+                hop.VerifyFinished(verify_result.IsOK());
                 if (verify_result.IsOK()) {
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
@@ -180,12 +186,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 break;
             }
             case OpenVerifyCache::Status::Positive:
-                m_metrics.RecordCacheHitPositive();
+                hop.CacheHitPositive();
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
-                m_metrics.RecordCacheHitNegative();
+                hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
                 tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;

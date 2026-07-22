@@ -86,6 +86,8 @@ bool OpenVerifyHostReliability::AvoidSite(const std::string& host, int port) {
 void OpenVerifyHostReliability::RecordVerifySuccess(const std::string& host, int port) {
     std::lock_guard<std::mutex> lock(m_mtx);
     HostStats& stats = m_hoststat_map[HostPortKey(host, port)];
+    stats.host = host;
+    stats.port = port;
     stats.successes += 1;
     stats.ewma_health = (1.0 - m_ewma_alpha_success) * stats.ewma_health;
     UpdateHealthState(stats);
@@ -94,6 +96,8 @@ void OpenVerifyHostReliability::RecordVerifySuccess(const std::string& host, int
 void OpenVerifyHostReliability::RecordVerifyFailure(const std::string& host, int port, uint16_t xrdcl_code) {
     std::lock_guard<std::mutex> lock(m_mtx);
     HostStats& stats = m_hoststat_map[HostPortKey(host, port)];
+    stats.host = host;
+    stats.port = port;
     stats.failures += 1;
     const double penalty = std::clamp(FailureWeightForCode(xrdcl_code), 0.0, 1.0);
     stats.ewma_health = m_ewma_alpha_fail * penalty + (1.0 - m_ewma_alpha_fail) * stats.ewma_health;
@@ -103,4 +107,22 @@ void OpenVerifyHostReliability::RecordVerifyFailure(const std::string& host, int
         stats.next_probe_at = std::chrono::steady_clock::now() + JitteredCooldown(m_probe_cooldown);
     }
     UpdateHealthState(stats);
+}
+
+std::vector<OpenVerifyHostReliability::SiteSnapshot> OpenVerifyHostReliability::Snapshot() const {
+    std::lock_guard<std::mutex> lock(m_mtx);
+    std::vector<SiteSnapshot> out;
+    out.reserve(m_hoststat_map.size());
+    for (const auto& kv : m_hoststat_map) {
+        const HostStats& s = kv.second;
+        SiteSnapshot snap;
+        snap.host = s.host.empty() ? kv.first : s.host;
+        snap.port = s.port;
+        snap.ewma_health = s.ewma_health;
+        snap.healthy = s.healthy;
+        snap.successes = s.successes;
+        snap.failures = s.failures;
+        out.push_back(std::move(snap));
+    }
+    return out;
 }

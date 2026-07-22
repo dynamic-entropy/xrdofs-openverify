@@ -58,6 +58,7 @@ add_executable(openverify_singleflight_tests
     tests/OpenVerifySingleFlightTests.cc
     src/OpenVerifySingleFlight.cc
     src/OpenVerifyMetrics.cc
+    src/OpenVerifyHostReliability.cc
 )
 
 target_include_directories(openverify_singleflight_tests

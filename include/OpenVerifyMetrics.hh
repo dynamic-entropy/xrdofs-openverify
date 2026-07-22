@@ -1,10 +1,15 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+class OpenVerifyHostReliability;
 
 // In-memory counters for OpenVerify cache / verify runs; optional text file mirror (Prometheus text format).
 //
@@ -17,9 +22,6 @@
 // daemons write into one collector dir). If unset, defaults to the basename of getcwd(); if set
 // but empty, the label is omitted.
 //
-// xrootd_openverify_verify_failures_total counts failed verify runs (after a cache miss) with
-// labels host, port (or "none"), and reason.
-//
 // XRD_OPENVERIFY_OBSERVE: if set to exactly 1, OpenVerify records cache
 // miss/hit metrics and runs open_verify only on cache miss (same as enforce), but does not
 // inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
@@ -27,13 +29,27 @@
 //
 class OpenVerifyMetrics {
    public:
+    // Outcome label for redirect-handling delay histogram (plugin time after OFS returns SFS_REDIRECT).
+    enum class DelayOutcome : int {
+        CacheHitPositive = 0,
+        CacheHitNegative,
+        VerifySuccess,
+        VerifyFailure,
+        Avoided,
+        Count
+    };
+
     OpenVerifyMetrics();
     OpenVerifyMetrics(const OpenVerifyMetrics&) = delete;
     OpenVerifyMetrics& operator=(const OpenVerifyMetrics&) = delete;
 
+    // Optional: export per-site EWMA gauges from HostReliability on each Flush.
+    void SetSiteSource(OpenVerifyHostReliability* sites) { m_sites = sites; }
+
     void RecordCacheMiss();
-    void RecordCacheHitPositive();
-    void RecordCacheHitNegative();
+    // delay_seconds >= 0 also updates redirect_delay_seconds histogram for this outcome.
+    void RecordCacheHitPositive(double delay_seconds = -1);
+    void RecordCacheHitNegative(double delay_seconds = -1);
     void RecordVerifySuccess();
     // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
     void RecordVerifyFailure(const std::string& host, int port, const std::string& reason);
@@ -45,6 +61,38 @@ class OpenVerifyMetrics {
     void RecordSingleFlightLeader();
     void RecordSingleFlightFollower();
 
+    // One SFS_REDIRECT observed (before avoid/cache/verify decision).
+    void RecordRedirectHandled();
+    // Bad redirect skipped: reason quarantine | negative_cache.
+    void RecordRedirectAvoided(const std::string& reason, double delay_seconds = -1);
+    // Wall time for a verify miss path after single-flight returns (counters already recorded).
+    void RecordRedirectVerifyFinished(bool success, double delay_seconds);
+
+    // cmsd returned SFS_STALL (rc > 0 seconds). No host label: stall is pre-redirect lookup delay.
+    void RecordCmsdStall(int seconds);
+    // Stall budget (XRD_OPENVERIFY_STALL_TIMEOUT) exhausted; open returned without a redirect.
+    void RecordCmsdStallBudgetExhausted();
+
+    // Starts at construction (records redirects_handled). Call exactly one terminal method.
+    class RedirectTimer {
+       public:
+        explicit RedirectTimer(OpenVerifyMetrics& metrics);
+        RedirectTimer(const RedirectTimer&) = delete;
+        RedirectTimer& operator=(const RedirectTimer&) = delete;
+
+        void CacheHitPositive();
+        void CacheHitNegative(bool count_as_avoided);
+        void Avoided(const std::string& reason);
+        void VerifyFinished(bool success);
+
+       private:
+        double ElapsedSeconds() const;
+
+        OpenVerifyMetrics& m_metrics;
+        std::chrono::steady_clock::time_point m_t0;
+        bool m_done{false};
+    };
+
     bool FileExportEnabled() const { return !m_path.empty(); }
 
    private:
@@ -55,13 +103,26 @@ class OpenVerifyMetrics {
         std::atomic<uint64_t> count{0};
     };
 
+    struct DelayHistogram {
+        // Upper bounds in seconds; final bucket is +Inf.
+        static constexpr double kBounds[] = {0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0};
+        static constexpr size_t kBoundCount = sizeof(kBounds) / sizeof(kBounds[0]);
+        static constexpr size_t kBucketCount = kBoundCount + 1;  // +Inf
+
+        std::atomic<uint64_t> buckets[kBucketCount]{};
+        std::atomic<uint64_t> count{0};
+        std::atomic<uint64_t> sum_micros{0};
+    };
+
     PerFailureMetrics& EnsureFailure(const std::string& host, int port, const std::string& reason);
+    void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     std::string BuildExpositionBody() const;
     void Flush();
 
     std::string m_path;
     std::string m_instance_label;  // optional "xrootd_instance" label value (from env)
     std::mutex m_write_mtx;
+    OpenVerifyHostReliability* m_sites{nullptr};
 
     std::atomic<uint64_t> m_cache_miss{0};
     std::atomic<uint64_t> m_cache_hit_positive{0};
@@ -73,6 +134,15 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_queue_timeout{0};
     std::atomic<uint64_t> m_singleflight_leader{0};
     std::atomic<uint64_t> m_singleflight_follower{0};
+    std::atomic<uint64_t> m_redirects_handled{0};
+    std::atomic<uint64_t> m_redirects_avoided_quarantine{0};
+    std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
+    std::atomic<uint64_t> m_cmsd_stall_events{0};
+    std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
+    std::atomic<uint64_t> m_cmsd_stall_budget_exhausted{0};
+
+    DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
+    DelayHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;

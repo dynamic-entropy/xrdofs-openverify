@@ -1,158 +1,185 @@
 # OpenVerify Prometheus metrics
 
-Metrics are **counters** written in Prometheus text exposition format (e.g. via
-`XRD_OPENVERIFY_METRICS_PATH` and the node_exporter `textfile_collector`).
+Metrics are written in Prometheus text exposition format via
+`XRD_OPENVERIFY_METRICS_PATH` (node_exporter `textfile_collector`).
 
 Environment variables are summarized in `include/OpenVerifyMetrics.hh`.
 
-## Why you might only see two metric names
+## Grafana dashboards
 
-Prometheus ingests **time series**, not just `# TYPE` lines. You will always see
-samples for:
+Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasource):
 
-- `xrootd_openverify_cache_lookups_total` (three `result` label values)
-- `xrootd_openverify_runs_total` (two `result` label values)
-- `xrootd_openverify_queue_admissions_total` (three `result` label values)
-- `xrootd_openverify_singleflight_requests_total` (two `role` label values)
+| File | Audience |
+|------|----------|
+| [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
+| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS redirector ops: traffic, site×error drill-down, stalls, scores |
 
-**`xrootd_openverify_verify_failures_total` appears only after at least one failed
-verify** (cache miss + `open_verify` returned false). Until then there are no
-samples, so many UIs will not list that metric. This is expected.
+**CMS ops variables** (top of dashboard):
 
-## Exported metrics
+| Variable | Use |
+|----------|-----|
+| `xrootd_instance` | Which redirector daemon(s) |
+| `Site` | Multi-select `host` from `verify_failures_total` |
+| `Error reason` | Multi-select `reason` (scoped to selected sites) |
 
-All are `counter` type. Use **`rate()`** or **`increase()`** in queries; they
-handle process restarts (counter resets) correctly.
+Drill-down panels:
 
-Optional label **`xrootd_instance`** is present when
-`XRD_OPENVERIFY_METRICS_INSTANCE` is set to a non-empty value.
+- **Sites → error types** — pick site(s), see stacked rates by `reason`
+- **Error types → sites** — pick reason(s), see stacked rates by `host`
+- **Verify failures: site × error** — table of counts over the time range (filterable/sortable)
 
-### `xrootd_openverify_cache_lookups_total`
+New series appear after deploying a build that includes latency / avoid / site
+export, and after at least one redirect has been handled (site gauges appear
+once a host has a verify outcome recorded).
 
-**Labels:** `result` ∈ `miss` | `hit_positive` | `hit_negative`  
-**Meaning:** How often, on an `SFS_REDIRECT` open path, the in-memory OpenVerify
-cache was consulted:
+## Always-present series
 
-| `result`        | Meaning |
-|----------------|---------|
-| `miss`         | No valid cache entry; enforcement mode will run `open_verify` (observe mode also runs it on miss). |
-| `hit_positive` | Cached successful verify for this (path, host, port). |
-| `hit_negative` | Cached failed verify (short TTL); enforcement may drive replica retry via `tried=`. |
+- `xrootd_openverify_cache_lookups_total` (`miss` | `hit_positive` | `hit_negative`)
+- `xrootd_openverify_runs_total` (`success` | `failure`)
+- `xrootd_openverify_queue_admissions_total` (`admitted` | `queue_full` | `queue_timeout`)
+- `xrootd_openverify_singleflight_requests_total` (`leader` | `follower`)
+- `xrootd_openverify_redirects_handled_total`
+- `xrootd_openverify_redirects_avoided_total` (`quarantine` | `negative_cache`)
+- `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`)
+- `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total` / `cmsd_stall_budget_exhausted_total`
+- `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
 
-These are **lookup outcomes**, not bytes or client counts.
+**Appear after first event:**
 
-### `xrootd_openverify_runs_total`
+- `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
+- `xrootd_openverify_site_*` — first per-site verify success/failure
 
-**Labels:** `result` ∈ `success` | `failure`  
-**Meaning:** Runs of `open_verify` after a **cache miss** only (not on cache
-hits). One miss can yield at most one success or one failure increment per
-redirect handled in that open path.
+Optional label **`xrootd_instance`** when `XRD_OPENVERIFY_METRICS_INSTANCE` is set.
 
-- **`success`:** XrdCl open/stat/read check passed.
-- **`failure`:** Verify failed (see `verify_failures_total` for breakdown).
+Use **`rate()`** / **`increase()`** on counters; gauges (`site_ewma_health`,
+`site_healthy`) are instantaneous.
 
-This metric's `success` + `failure` total is the full number of actual
-`open_verify()` executions.
+---
 
-### `xrootd_openverify_queue_admissions_total`
+## Metric reference
 
-**Labels:** `result` ∈ `admitted` | `queue_full` | `queue_timeout`  
-**Meaning:** Queue outcomes around semaphore admission in single-flight leader
-paths:
+### Cache / verify / queue / single-flight
 
-- **`admitted`**: request acquired main inflight semaphore and ran verify.
-- **`queue_full`**: request could not get wait-queue slot.
-- **`queue_timeout`**: request got wait-queue slot but timed out waiting for
-  inflight slot.
+Same meanings as before:
 
-### `xrootd_openverify_singleflight_requests_total`
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `cache_lookups_total` | `result` | Cache consult on redirect |
+| `runs_total` | `result` | Actual `open_verify` after miss |
+| `queue_admissions_total` | `result` | Inflight queue gate |
+| `singleflight_requests_total` | `role` | Leader runs verify; follower waits |
+| `verify_failures_total` | `host`,`port`,`reason` | Failed verifies by target |
 
-**Labels:** `role` ∈ `leader` | `follower`  
-**Meaning:** Request role in per-key single-flight:
+`reason` includes `operation_expired`, `socket_timeout`, `auth_failed`,
+`permission_denied`, `redirect_limit`, … (see `ClassifyXrdClStatus`).
 
-- **`leader`** runs the verify path (subject to queue admission).
-- **`follower`** waits for an in-flight leader and reuses its result.
+### cmsd lookup stalls (not per-site)
 
-### `xrootd_openverify_verify_failures_total`
+cmsd returns `SFS_STALL` (positive seconds) **before** a redirect target is
+known, so these counters have no `host` label — they measure federation lookup
+delay, not “stall at site X”.
 
-**Labels:** `host`, `port` (`port="none"` if redirect had no port), `reason`
-(stable snake_case string from internal / XrdCl classification), plus optional
-`xrootd_instance`.
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `cmsd_stalls_total` | (instance) | Number of stall responses |
+| `cmsd_stall_seconds_total` | (instance) | Sum of stall seconds requested |
+| `cmsd_stall_budget_exhausted_total` | (instance) | Opens that hit `XRD_OPENVERIFY_STALL_TIMEOUT` |
+| `cmsd_stall_seconds` | histogram | Distribution of individual stall durations |
 
-**Meaning:** Sub-count of **`xrootd_openverify_runs_total{result="failure"}`**, split by
-redirect target and failure reason. Sum over all label combinations of this
-metric should match the failure counter (same process lifetime).
+### Redirect traffic and “bad redirects saved”
 
-**Note:** No samples until the first failure (see above).
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `redirects_handled_total` | (instance) | Every `SFS_REDIRECT` seen |
+| `redirects_avoided_total` | `reason=quarantine\|negative_cache` | Target skipped via `tried=` before client follow |
 
-### Observe mode (`XRD_OPENVERIFY_OBSERVE=1`)
+Avoidance rate ≈  
+`rate(redirects_avoided_total) / rate(redirects_handled_total)`.
 
-The **same metrics** are updated. Behavior differences (no cache writes, no
-plugin `tried=`, no internal retry) do not change metric names or labels; only
-traffic patterns change.
+### Time penalty (redirect handling delay)
+
+Histogram of wall time from receiving `SFS_REDIRECT` until accept/retry
+decision (cache hit, verify, or avoid) — the OpenVerify-added latency for that
+hop (excludes cmsd stall sleeps).
+
+| Series | Labels |
+|--------|--------|
+| `redirect_delay_seconds_bucket` | `outcome`, `le` |
+| `redirect_delay_seconds_sum` | `outcome` |
+| `redirect_delay_seconds_count` | `outcome` |
+
+`outcome` ∈ `cache_hit_positive` | `cache_hit_negative` | `verify_success` |
+`verify_failure` | `avoided`.
+
+Buckets (seconds): 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, +Inf.
+
+### Site status / scores
+
+Exported from `OpenVerifyHostReliability` on each metrics flush:
+
+| Metric | Type | Meaning |
+|--------|------|---------|
+| `site_ewma_health` | gauge | EWMA “badness” (0 = good, higher = worse) |
+| `site_healthy` | gauge | `1` if not quarantined, else `0` |
+| `site_verify_successes_total` | counter | Per-site verify successes |
+| `site_verify_failures_total` | counter | Per-site verify failures |
+
+Labels: `host`, `port` (`none` if no port), optional `xrootd_instance`.
 
 ---
 
 ## Example PromQL
 
-Adjust label matchers (`xrootd_instance`, job, etc.) to your scrape config.
-
-### Cache lookup rate (per second)
+### Developer
 
 ```promql
-sum by (result, xrootd_instance) (
-  rate(xrootd_openverify_cache_lookups_total[5m])
-)
-```
-
-### Verify run rate after cache misses
-
-```promql
-sum by (result, xrootd_instance) (
-  rate(xrootd_openverify_runs_total[5m])
-)
-```
-
-### Share of cache hits among lookups (instant ratio, 5m window)
-
-```promql
+# Cache hit ratio
 sum(rate(xrootd_openverify_cache_lookups_total{result=~"hit_.*"}[5m]))
 /
 sum(rate(xrootd_openverify_cache_lookups_total[5m]))
-```
 
-### Verify failure rate
-
-```promql
-sum(rate(xrootd_openverify_runs_total{result="failure"}[5m]))
-```
-
-### Failure rate by reason (after first failures exist)
-
-```promql
-sum by (reason, host) (
-  rate(xrootd_openverify_verify_failures_total[5m])
-)
-```
-
-### Failure reasons as fraction of all verify runs
-
-```promql
-sum by (reason) (rate(xrootd_openverify_verify_failures_total[5m]))
-/
-sum(rate(xrootd_openverify_runs_total[5m]))
-```
-
-### Single-flight dedup ratio (followers per leader)
-
-```promql
+# Single-flight followers per leader
 sum(rate(xrootd_openverify_singleflight_requests_total{role="follower"}[5m]))
 /
 clamp_min(sum(rate(xrootd_openverify_singleflight_requests_total{role="leader"}[5m])), 1e-9)
+
+# p95 redirect penalty
+histogram_quantile(0.95,
+  sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket[5m])))
 ```
 
-### Grafana tip
+### Operator / CMS redirector
 
-Use **`rate(...[$__rate_interval])`** or a fixed range like **`[5m]`** on
-panels so counters are displayed as rates; raw counter values climb forever and
-reset on restart.
+```promql
+# Redirects handled (proxy for redirector open load through OV)
+sum(rate(xrootd_openverify_redirects_handled_total[5m]))
+
+# Bad redirects saved
+sum by (reason) (rate(xrootd_openverify_redirects_avoided_total[5m]))
+
+# Unhealthy sites
+count(xrootd_openverify_site_healthy == 0) or vector(0)
+
+# Worst site scores
+topk(10, xrootd_openverify_site_ewma_health)
+
+# Top sites by verify TIMEOUT (operation_expired / socket_timeout)
+topk(15, sum by (host) (
+  rate(xrootd_openverify_verify_failures_total{
+    reason=~"operation_expired|socket_timeout"}[5m])))
+
+# Top sites by ANY verify failure, split by reason
+topk(15, sum by (host, reason) (
+  rate(xrootd_openverify_verify_failures_total[5m])))
+
+# cmsd stall rate (lookup delay; not attributed to a site)
+sum(rate(xrootd_openverify_cmsd_stalls_total[5m]))
+sum(rate(xrootd_openverify_cmsd_stall_budget_exhausted_total[5m]))
+```
+
+### Observe mode
+
+`XRD_OPENVERIFY_OBSERVE=1` still records metrics (including delay). Quarantine /
+negative-cache avoidance counters only increment when enforcement applies
+`tried=` (observe does not skip via quarantine the same way for client path;
+quarantine avoid is skipped entirely in observe).

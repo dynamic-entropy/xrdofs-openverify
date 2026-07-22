@@ -1,5 +1,7 @@
 #include "OpenVerifyMetrics.hh"
 
+#include "OpenVerifyHostReliability.hh"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +35,23 @@ std::string EscapeLabelValue(const std::string& in) {
         }
     }
     return out;
+}
+
+const char* DelayOutcomeLabel(OpenVerifyMetrics::DelayOutcome o) {
+    switch (o) {
+        case OpenVerifyMetrics::DelayOutcome::CacheHitPositive:
+            return "cache_hit_positive";
+        case OpenVerifyMetrics::DelayOutcome::CacheHitNegative:
+            return "cache_hit_negative";
+        case OpenVerifyMetrics::DelayOutcome::VerifySuccess:
+            return "verify_success";
+        case OpenVerifyMetrics::DelayOutcome::VerifyFailure:
+            return "verify_failure";
+        case OpenVerifyMetrics::DelayOutcome::Avoided:
+            return "avoided";
+        default:
+            return "unknown";
+    }
 }
 
 }  // namespace
@@ -119,7 +138,81 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_singleflight_leader.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_singleflight_requests_total{role=\"follower\""
          << lbl << "} " << m_singleflight_follower.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
+            "# HELP xrootd_openverify_redirects_handled_total SFS_REDIRECT responses seen by OpenVerify.\n"
+            "# TYPE xrootd_openverify_redirects_handled_total counter\n"
+            "xrootd_openverify_redirects_handled_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_redirects_handled.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_redirects_avoided_total Bad redirects skipped before client follow.\n"
+            "# TYPE xrootd_openverify_redirects_avoided_total counter\n"
+            "xrootd_openverify_redirects_avoided_total{reason=\"quarantine\""
+         << lbl << "} " << m_redirects_avoided_quarantine.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_redirects_avoided_total{reason=\"negative_cache\""
+         << lbl << "} " << m_redirects_avoided_negative_cache.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_cmsd_stalls_total cmsd SFS_STALL responses seen before a redirect.\n"
+            "# TYPE xrootd_openverify_cmsd_stalls_total counter\n"
+            "xrootd_openverify_cmsd_stalls_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_cmsd_stall_events.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_cmsd_stall_seconds_total Sum of cmsd stall seconds requested.\n"
+            "# TYPE xrootd_openverify_cmsd_stall_seconds_total counter\n"
+            "xrootd_openverify_cmsd_stall_seconds_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_cmsd_stall_budget_exhausted_total Opens that hit XRD_OPENVERIFY_STALL_TIMEOUT.\n"
+            "# TYPE xrootd_openverify_cmsd_stall_budget_exhausted_total counter\n"
+            "xrootd_openverify_cmsd_stall_budget_exhausted_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_cmsd_stall_budget_exhausted.load(std::memory_order_relaxed) << "\n";
+
+    body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
+            "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
+    {
+        const DelayHistogram& h = m_cmsd_stall_hist;
+        uint64_t cumulative = 0;
+        for (size_t b = 0; b < DelayHistogram::kBucketCount; ++b) {
+            cumulative += h.buckets[b].load(std::memory_order_relaxed);
+            body << "xrootd_openverify_cmsd_stall_seconds_bucket{le=\"";
+            if (b < DelayHistogram::kBoundCount) {
+                body << DelayHistogram::kBounds[b];
+            } else {
+                body << "+Inf";
+            }
+            body << "\"" << lbl << "} " << cumulative << "\n";
+        }
+        const double sum_s = static_cast<double>(h.sum_micros.load(std::memory_order_relaxed)) / 1e6;
+        const std::string inst =
+            m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}");
+        body << "xrootd_openverify_cmsd_stall_seconds_sum" << inst << " " << sum_s << "\n"
+             << "xrootd_openverify_cmsd_stall_seconds_count" << inst << " "
+             << h.count.load(std::memory_order_relaxed) << "\n";
+    }
+
+    body << "# HELP xrootd_openverify_redirect_delay_seconds OpenVerify handling time per redirect target.\n"
+            "# TYPE xrootd_openverify_redirect_delay_seconds histogram\n";
+    for (int oi = 0; oi < static_cast<int>(DelayOutcome::Count); ++oi) {
+        const auto outcome = static_cast<DelayOutcome>(oi);
+        const char* olabel = DelayOutcomeLabel(outcome);
+        const DelayHistogram& h = m_delay[oi];
+        uint64_t cumulative = 0;
+        for (size_t b = 0; b < DelayHistogram::kBucketCount; ++b) {
+            cumulative += h.buckets[b].load(std::memory_order_relaxed);
+            body << "xrootd_openverify_redirect_delay_seconds_bucket{outcome=\"" << olabel << "\",le=\"";
+            if (b < DelayHistogram::kBoundCount) {
+                body << DelayHistogram::kBounds[b];
+            } else {
+                body << "+Inf";
+            }
+            body << "\"" << lbl << "} " << cumulative << "\n";
+        }
+        const double sum_s = static_cast<double>(h.sum_micros.load(std::memory_order_relaxed)) / 1e6;
+        body << "xrootd_openverify_redirect_delay_seconds_sum{outcome=\"" << olabel << "\"" << lbl << "} " << sum_s
+             << "\n"
+             << "xrootd_openverify_redirect_delay_seconds_count{outcome=\"" << olabel << "\"" << lbl << "} "
+             << h.count.load(std::memory_order_relaxed) << "\n";
+    }
+
+    body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
             "# TYPE xrootd_openverify_verify_failures_total counter\n";
 
     {
@@ -133,6 +226,30 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         }
     }
 
+    if (m_sites) {
+        const auto sites = m_sites->Snapshot();
+        body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"
+                "# TYPE xrootd_openverify_site_ewma_health gauge\n"
+                "# HELP xrootd_openverify_site_healthy 1 if site is not quarantined, else 0.\n"
+                "# TYPE xrootd_openverify_site_healthy gauge\n"
+                "# HELP xrootd_openverify_site_verify_successes_total Per-site verify successes.\n"
+                "# TYPE xrootd_openverify_site_verify_successes_total counter\n"
+                "# HELP xrootd_openverify_site_verify_failures_total Per-site verify failures.\n"
+                "# TYPE xrootd_openverify_site_verify_failures_total counter\n";
+        for (const auto& s : sites) {
+            const std::string host_esc = EscapeLabelValue(s.host);
+            const std::string port_lbl = PortLabelForMetrics(s.port);
+            body << "xrootd_openverify_site_ewma_health{host=\"" << host_esc << "\",port=\"" << port_lbl << "\"" << lbl
+                 << "} " << s.ewma_health << "\n"
+                 << "xrootd_openverify_site_healthy{host=\"" << host_esc << "\",port=\"" << port_lbl << "\"" << lbl
+                 << "} " << (s.healthy ? 1 : 0) << "\n"
+                 << "xrootd_openverify_site_verify_successes_total{host=\"" << host_esc << "\",port=\"" << port_lbl
+                 << "\"" << lbl << "} " << s.successes << "\n"
+                 << "xrootd_openverify_site_verify_failures_total{host=\"" << host_esc << "\",port=\"" << port_lbl
+                 << "\"" << lbl << "} " << s.failures << "\n";
+        }
+    }
+
     return body.str();
 }
 
@@ -141,13 +258,15 @@ void OpenVerifyMetrics::RecordCacheMiss() {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordCacheHitPositive() {
+void OpenVerifyMetrics::RecordCacheHitPositive(double delay_seconds) {
     m_cache_hit_positive.fetch_add(1, std::memory_order_relaxed);
+    if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::CacheHitPositive);
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordCacheHitNegative() {
+void OpenVerifyMetrics::RecordCacheHitNegative(double delay_seconds) {
     m_cache_hit_negative.fetch_add(1, std::memory_order_relaxed);
+    if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::CacheHitNegative);
     if (!m_path.empty()) Flush();
 }
 
@@ -185,6 +304,106 @@ void OpenVerifyMetrics::RecordSingleFlightLeader() {
 
 void OpenVerifyMetrics::RecordSingleFlightFollower() {
     m_singleflight_follower.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRedirectHandled() {
+    m_redirects_handled.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRedirectAvoided(const std::string& reason, double delay_seconds) {
+    if (reason == "quarantine") {
+        m_redirects_avoided_quarantine.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_redirects_avoided_negative_cache.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::Avoided);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRedirectVerifyFinished(bool success, double delay_seconds) {
+    RecordRedirectDelay(delay_seconds, success ? DelayOutcome::VerifySuccess : DelayOutcome::VerifyFailure);
+}
+
+void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
+    if (seconds <= 0) return;
+    m_cmsd_stall_events.fetch_add(1, std::memory_order_relaxed);
+    m_cmsd_stall_seconds_sum.fetch_add(static_cast<uint64_t>(seconds), std::memory_order_relaxed);
+
+    // Reuse delay histogram bucketing for stall duration distribution.
+    const double stall_s = static_cast<double>(seconds);
+    size_t bucket = DelayHistogram::kBoundCount;  // +Inf
+    for (size_t i = 0; i < DelayHistogram::kBoundCount; ++i) {
+        if (stall_s <= DelayHistogram::kBounds[i]) {
+            bucket = i;
+            break;
+        }
+    }
+    m_cmsd_stall_hist.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
+    m_cmsd_stall_hist.count.fetch_add(1, std::memory_order_relaxed);
+    m_cmsd_stall_hist.sum_micros.fetch_add(static_cast<uint64_t>(stall_s * 1e6), std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordCmsdStallBudgetExhausted() {
+    m_cmsd_stall_budget_exhausted.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+OpenVerifyMetrics::RedirectTimer::RedirectTimer(OpenVerifyMetrics& metrics)
+    : m_metrics(metrics), m_t0(std::chrono::steady_clock::now()) {
+    m_metrics.RecordRedirectHandled();
+}
+
+double OpenVerifyMetrics::RedirectTimer::ElapsedSeconds() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - m_t0).count();
+}
+
+void OpenVerifyMetrics::RedirectTimer::CacheHitPositive() {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordCacheHitPositive(ElapsedSeconds());
+}
+
+void OpenVerifyMetrics::RedirectTimer::CacheHitNegative(bool count_as_avoided) {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordCacheHitNegative(ElapsedSeconds());
+    if (count_as_avoided) {
+        // Counter only — delay already attributed to cache_hit_negative.
+        m_metrics.RecordRedirectAvoided("negative_cache");
+    }
+}
+
+void OpenVerifyMetrics::RedirectTimer::Avoided(const std::string& reason) {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordRedirectAvoided(reason, ElapsedSeconds());
+}
+
+void OpenVerifyMetrics::RedirectTimer::VerifyFinished(bool success) {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordRedirectVerifyFinished(success, ElapsedSeconds());
+}
+
+void OpenVerifyMetrics::RecordRedirectDelay(double seconds, DelayOutcome outcome) {
+    if (seconds < 0) seconds = 0;
+    const int oi = static_cast<int>(outcome);
+    if (oi < 0 || oi >= static_cast<int>(DelayOutcome::Count)) return;
+
+    DelayHistogram& h = m_delay[oi];
+    size_t bucket = DelayHistogram::kBoundCount;  // +Inf
+    for (size_t i = 0; i < DelayHistogram::kBoundCount; ++i) {
+        if (seconds <= DelayHistogram::kBounds[i]) {
+            bucket = i;
+            break;
+        }
+    }
+    h.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
+    h.count.fetch_add(1, std::memory_order_relaxed);
+    h.sum_micros.fetch_add(static_cast<uint64_t>(seconds * 1e6), std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

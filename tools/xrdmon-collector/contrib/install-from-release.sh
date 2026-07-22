@@ -21,7 +21,7 @@ case "${ARCH}" in
 esac
 
 TEXTFILE_DIR="${XRDMON_TEXTFILE_DIR:-/var/lib/node_exporter/textfile_collector}"
-BIN_DIR="${XRDMON_BIN_DIR:-/usr/local/bin}"
+BIN_DIR="${XRDMON_BIN_DIR:-/usr/bin}"
 UNIT_SRC="$(cd "$(dirname "$0")" && pwd)/xrdmon-collector.service"
 
 if [[ -z "${VERSION}" ]]; then

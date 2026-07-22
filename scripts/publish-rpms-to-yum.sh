@@ -2,7 +2,7 @@
 # publish-rpms-to-yum.sh
 #
 # End-to-end deploy script:
-#   1. Build RPMs inside the podman container
+#   1. Build RPMs inside the podman container (OpenVerify + xrdmon-collector)
 #   2. Copy the new binary RPMs into the local yum repo checkout
 #   3. Regenerate repodata with createrepo_c
 #   4. Commit and push the yum repo to GitHub (Pages serves it as the DNF repo)
@@ -108,8 +108,9 @@ if [[ ! -d "${RPM_DST}" ]]; then
 fi
 
 echo "==> Copying RPMs from ${RPM_SRC} to ${RPM_DST} ..."
-# Only copy xrdofs-openverify packages (skip unrelated leftovers in rpmbuild)
-find "${RPM_SRC}" -name 'xrdofs-openverify*.rpm' -exec cp -v {} "${RPM_DST}/" \;
+# OpenVerify plugin + AAA monitor collector (skip unrelated leftovers in rpmbuild)
+find "${RPM_SRC}" \( -name 'xrdofs-openverify*.rpm' -o -name 'xrdmon-collector*.rpm' \) \
+  -exec cp -v {} "${RPM_DST}/" \;
 
 # ---------------------------------------------------------------------------
 # Step 3 – Regenerate repodata
@@ -123,10 +124,12 @@ createrepo_c --update "${RPM_DST}"
 if [[ $SKIP_PUSH -eq 0 ]]; then
     VERSION="$(rpmspec -q --srpm --qf '%{VERSION}-%{RELEASE}\n' \
         "${REPO_ROOT}/xrdofs-openverify.spec" | head -1)"
+    XRD_MON_VER="$(rpmspec -q --srpm --qf '%{VERSION}-%{RELEASE}\n' \
+        "${REPO_ROOT}/xrdmon-collector.spec" | head -1)"
 
-    echo "==> Committing yum repo (version ${VERSION}) ..."
+    echo "==> Committing yum repo (openverify ${VERSION}, xrdmon-collector ${XRD_MON_VER}) ..."
     git -C "${YUM_REPO}" add "${OS_VER}/"
-    git -C "${YUM_REPO}" commit -m "Update xrdofs-openverify to ${VERSION}"
+    git -C "${YUM_REPO}" commit -m "Update xrdofs-openverify ${VERSION}; xrdmon-collector ${XRD_MON_VER}"
     git -C "${YUM_REPO}" push
 
     echo "==> yum repo pushed; GitHub Pages will serve the updated metadata shortly."
