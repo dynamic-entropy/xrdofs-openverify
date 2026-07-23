@@ -780,9 +780,9 @@
     },
     {
       "id": 22,
-      "type": "timeseries",
-      "title": "cmsd stalls (lookup delay)",
-      "description": "Pre-redirect cmsd SFS_STALL — not attributed to a site. Budget exhausted = XRD_OPENVERIFY_STALL_TIMEOUT.",
+      "type": "heatmap",
+      "title": "cmsd stall duration (histogram)",
+      "description": "Distribution of cmsd SFS_STALL seconds passed to the client. Buckets: \u22641, 2, 3, 5, 10, 15, 30, 60, +Inf.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -796,19 +796,9 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "stall events",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        },
-        {
-          "refId": "B",
-          "expr": "sum(rate(xrootd_openverify_cmsd_stall_budget_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "budget exhausted",
+          "expr": "sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -819,27 +809,50 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never"
+            "scaleDistribution": {
+              "type": "linear"
+            }
           }
         },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
-            "lastNotNull"
-          ]
+        "calculate": false,
+        "yBucketBound": "auto",
+        "yBucketSize": null,
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "color": {
+          "mode": "scheme",
+          "scheme": "Spectral",
+          "fill": "dark-orange",
+          "reverse": false,
+          "steps": 64,
+          "min": null,
+          "max": null,
+          "exponent": 0.5
+        },
+        "cellGap": 1,
+        "filterValues": {
+          "le": 1e-9
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "single",
+          "yHistogram": true
+        },
+        "legend": {
+          "show": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "s",
+          "decimals": 0
+        },
+        "cellValues": {
+          "unit": "ops"
         }
       }
     },

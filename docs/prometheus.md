@@ -42,7 +42,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_redirects_handled_total`
 - `xrootd_openverify_redirects_avoided_total` (`quarantine` | `negative_cache`)
 - `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`)
-- `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total` / `cmsd_stall_budget_exhausted_total`
+- `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
 
 **Appear after first event:**
@@ -78,14 +78,32 @@ Same meanings as before:
 
 cmsd returns `SFS_STALL` (positive seconds) **before** a redirect target is
 known, so these counters have no `host` label — they measure federation lookup
-delay, not “stall at site X”.
+delay, not “stall at site X”. OpenVerify passes the stall through to the
+protocol layer (`kXR_wait` for root; Bridge redrive for HTTP) rather than
+sleeping in the plugin.
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `cmsd_stalls_total` | (instance) | Number of stall responses |
+| `cmsd_stalls_total` | (instance) | Number of stall responses passed to the client |
 | `cmsd_stall_seconds_total` | (instance) | Sum of stall seconds requested |
-| `cmsd_stall_budget_exhausted_total` | (instance) | Opens that hit `XRD_OPENVERIFY_STALL_TIMEOUT` |
 | `cmsd_stall_seconds` | histogram | Distribution of individual stall durations |
+
+Histogram buckets (seconds, upper-inclusive): `1`, `2`, `3`, `5`, `10`, `15`,
+`30`, `60`, `+Inf`.
+
+Average stall duration:
+
+```promql
+rate(xrootd_openverify_cmsd_stall_seconds_total[5m])
+/
+clamp_min(rate(xrootd_openverify_cmsd_stalls_total[5m]), 1e-9)
+```
+
+Heatmap / bin rates:
+
+```promql
+sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
+```
 
 ### Redirect traffic and “bad redirects saved”
 
@@ -101,7 +119,7 @@ Avoidance rate ≈
 
 Histogram of wall time from receiving `SFS_REDIRECT` until accept/retry
 decision (cache hit, verify, or avoid) — the OpenVerify-added latency for that
-hop (excludes cmsd stall sleeps).
+hop (cmsd stalls are returned to the client and are not part of this timer).
 
 | Series | Labels |
 |--------|--------|
@@ -175,7 +193,7 @@ topk(15, sum by (host, reason) (
 
 # cmsd stall rate (lookup delay; not attributed to a site)
 sum(rate(xrootd_openverify_cmsd_stalls_total[5m]))
-sum(rate(xrootd_openverify_cmsd_stall_budget_exhausted_total[5m]))
+sum(rate(xrootd_openverify_cmsd_stall_seconds_total[5m]))
 ```
 
 ### Observe mode

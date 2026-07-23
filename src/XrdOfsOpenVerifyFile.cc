@@ -33,13 +33,6 @@ time_t OpenVerifyTimeoutSeconds() {
     return v > 0 ? static_cast<time_t>(v) : static_cast<time_t>(5);
 }
 
-int OpenVerifyStallTimeoutSeconds() {
-    const char* p = std::getenv("XRD_OPENVERIFY_STALL_TIMEOUT");
-    if (!p || !*p) return 30;
-    const long long v = std::strtoll(p, nullptr, 10);
-    return v > 0 ? static_cast<int>(v) : 30;
-}
-
 // Returns base_s ± (fraction * base_s)
 std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
     static thread_local std::mt19937 rng{std::random_device{}()};
@@ -80,7 +73,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     std::string tried_hosts;
     int retry_count{0};
     const int max_retries = m_observe ? 1 : 3;
-    int stall_budget = OpenVerifyStallTimeoutSeconds();
     bool retry = true;
 
     while (retry && retry_count < max_retries) {
@@ -113,17 +105,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
         m_log.Emsg("INFO", "returned from open with rc =", std::to_string(rc).c_str(), "\n");
 
+        // SFS_STALL: pass through to the protocol layer (kXR_wait for root; Bridge
+        // redrive for HTTP). Do not sleep here — that holds an open worker for the
+        // stall duration and prevents the client/bridge from owning the delay.
         if (rc > 0) {
             m_metrics.RecordCmsdStall(rc);
-            stall_budget -= rc;
-            if (stall_budget <= 0) {
-                m_metrics.RecordCmsdStallBudgetExhausted();
-                m_log.Emsg(" WARN", "openverify stall budget exhausted waiting for cmsd lookup");
-                break;
-            }
-            sleep(rc);
-            m_log.Emsg("INFO", "slept for stall; retrying");
-            continue;
+            m_log.Emsg("INFO", "cmsd stall; returning to client for", std::to_string(rc).c_str(), "sec");
+            return rc;
         }
         retry_count++;
 
@@ -200,16 +188,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     return rc;
 }
-
-// Need to think how to handle these other return states
-// #define SFS_STALL         1 // Return value -> Seconds to stall client
-// #define SFS_OK            0 // ErrInfo code -> All is well
-// #define SFS_ERROR        -1 // ErrInfo code -> Error occurred
-// #define SFS_REDIRECT   -256 // ErrInfo code -> Port number to redirect to
-// #define SFS_STARTED    -512 // ErrInfo code -> Estimated seconds to completion
-// #define SFS_DATA      -1024 // ErrInfo code -> Length of data
-// #define SFS_DATAVEC   -2048 // ErrInfo code -> Num iovec elements in msgbuff
-
 
 int OpenVerifyFile::close() {
     m_log.Emsg(" INFO", "FileWrapper::close");

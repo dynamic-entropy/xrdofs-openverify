@@ -68,10 +68,9 @@ class OpenVerifyMetrics {
     // Wall time for a verify miss path after single-flight returns (counters already recorded).
     void RecordRedirectVerifyFinished(bool success, double delay_seconds);
 
-    // cmsd returned SFS_STALL (rc > 0 seconds). No host label: stall is pre-redirect lookup delay.
+    // cmsd returned SFS_STALL (rc > 0 seconds). Passed through to the client/bridge.
+    // No host label: stall is pre-redirect lookup delay.
     void RecordCmsdStall(int seconds);
-    // Stall budget (XRD_OPENVERIFY_STALL_TIMEOUT) exhausted; open returned without a redirect.
-    void RecordCmsdStallBudgetExhausted();
 
     // Starts at construction (records redirects_handled). Call exactly one terminal method.
     class RedirectTimer {
@@ -114,6 +113,17 @@ class OpenVerifyMetrics {
         std::atomic<uint64_t> sum_micros{0};
     };
 
+    // cmsd SFS_STALL is whole seconds; use coarser bounds than DelayHistogram.
+    struct StallHistogram {
+        static constexpr double kBounds[] = {1, 2, 3, 5, 10, 15, 30, 60};
+        static constexpr size_t kBoundCount = sizeof(kBounds) / sizeof(kBounds[0]);
+        static constexpr size_t kBucketCount = kBoundCount + 1;  // +Inf
+
+        std::atomic<uint64_t> buckets[kBucketCount]{};
+        std::atomic<uint64_t> count{0};
+        std::atomic<uint64_t> sum_micros{0};
+    };
+
     PerFailureMetrics& EnsureFailure(const std::string& host, int port, const std::string& reason);
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     std::string BuildExpositionBody() const;
@@ -139,10 +149,9 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
-    std::atomic<uint64_t> m_cmsd_stall_budget_exhausted{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
-    DelayHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
+    StallHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;

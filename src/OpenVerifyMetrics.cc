@@ -149,7 +149,7 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_redirects_avoided_quarantine.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_redirects_avoided_total{reason=\"negative_cache\""
          << lbl << "} " << m_redirects_avoided_negative_cache.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_cmsd_stalls_total cmsd SFS_STALL responses seen before a redirect.\n"
+            "# HELP xrootd_openverify_cmsd_stalls_total cmsd SFS_STALL responses passed through to the client.\n"
             "# TYPE xrootd_openverify_cmsd_stalls_total counter\n"
             "xrootd_openverify_cmsd_stalls_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
@@ -158,23 +158,18 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "# TYPE xrootd_openverify_cmsd_stall_seconds_total counter\n"
             "xrootd_openverify_cmsd_stall_seconds_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
-         << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_cmsd_stall_budget_exhausted_total Opens that hit XRD_OPENVERIFY_STALL_TIMEOUT.\n"
-            "# TYPE xrootd_openverify_cmsd_stall_budget_exhausted_total counter\n"
-            "xrootd_openverify_cmsd_stall_budget_exhausted_total"
-         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
-         << m_cmsd_stall_budget_exhausted.load(std::memory_order_relaxed) << "\n";
+         << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n";
 
     body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
             "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
     {
-        const DelayHistogram& h = m_cmsd_stall_hist;
+        const StallHistogram& h = m_cmsd_stall_hist;
         uint64_t cumulative = 0;
-        for (size_t b = 0; b < DelayHistogram::kBucketCount; ++b) {
+        for (size_t b = 0; b < StallHistogram::kBucketCount; ++b) {
             cumulative += h.buckets[b].load(std::memory_order_relaxed);
             body << "xrootd_openverify_cmsd_stall_seconds_bucket{le=\"";
-            if (b < DelayHistogram::kBoundCount) {
-                body << DelayHistogram::kBounds[b];
+            if (b < StallHistogram::kBoundCount) {
+                body << StallHistogram::kBounds[b];
             } else {
                 body << "+Inf";
             }
@@ -331,11 +326,10 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     m_cmsd_stall_events.fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_seconds_sum.fetch_add(static_cast<uint64_t>(seconds), std::memory_order_relaxed);
 
-    // Reuse delay histogram bucketing for stall duration distribution.
     const double stall_s = static_cast<double>(seconds);
-    size_t bucket = DelayHistogram::kBoundCount;  // +Inf
-    for (size_t i = 0; i < DelayHistogram::kBoundCount; ++i) {
-        if (stall_s <= DelayHistogram::kBounds[i]) {
+    size_t bucket = StallHistogram::kBoundCount;  // +Inf
+    for (size_t i = 0; i < StallHistogram::kBoundCount; ++i) {
+        if (stall_s <= StallHistogram::kBounds[i]) {
             bucket = i;
             break;
         }
@@ -343,11 +337,6 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     m_cmsd_stall_hist.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_hist.count.fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_hist.sum_micros.fetch_add(static_cast<uint64_t>(stall_s * 1e6), std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
-}
-
-void OpenVerifyMetrics::RecordCmsdStallBudgetExhausted() {
-    m_cmsd_stall_budget_exhausted.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 
