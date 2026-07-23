@@ -39,6 +39,18 @@
       "id": "table",
       "name": "Table",
       "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "heatmap",
+      "name": "Heatmap",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "barchart",
+      "name": "Bar chart",
+      "version": ""
     }
   ],
   "annotations": {
@@ -324,7 +336,8 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "Mean OV penalty",
+      "title": "Mean OV penalty by outcome",
+      "description": "Wall time from SFS_REDIRECT until accept/retry decision — includes FIFO queue wait + verify RTT. Does NOT include cmsd stalls (those happen before redirect). verify_failure is often ~queue_timeout (5s).",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -338,7 +351,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "{{outcome}}",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -349,6 +363,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -357,8 +372,12 @@
                 "value": null
               },
               {
+                "color": "yellow",
+                "value": 1
+              },
+              {
                 "color": "red",
-                "value": 80
+                "value": 5
               }
             ]
           }
@@ -372,7 +391,9 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area"
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
       }
     },
     {
@@ -610,6 +631,84 @@
       }
     },
     {
+      "id": 26,
+      "type": "heatmap",
+      "title": "OpenVerify redirect delay (histogram)",
+      "description": "Distribution of wall time from SFS_REDIRECT until accept/retry (queue wait + verify). Filter with Delay outcome. Buckets: 1ms\u202630s, +Inf. Does not include cmsd stalls.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\",outcome=~\"$delay_outcome\"}[$__rate_interval]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "calculate": false,
+        "yBucketBound": "auto",
+        "yBucketSize": null,
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "color": {
+          "mode": "scheme",
+          "scheme": "Spectral",
+          "fill": "dark-orange",
+          "reverse": false,
+          "steps": 64,
+          "min": null,
+          "max": null,
+          "exponent": 0.5
+        },
+        "cellGap": 1,
+        "filterValues": {
+          "le": 1e-9
+        },
+        "tooltip": {
+          "mode": "single",
+          "yHistogram": true
+        },
+        "legend": {
+          "show": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "s",
+          "decimals": 3
+        },
+        "cellValues": {
+          "unit": "ops"
+        }
+      }
+    },
+    {
       "id": 14,
       "type": "timeseries",
       "title": "Site EWMA health (higher = worse)",
@@ -617,7 +716,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "datasource": {
         "type": "prometheus",
@@ -671,7 +770,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 20
+        "y": 28
       },
       "datasource": {
         "type": "prometheus",
@@ -729,7 +828,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "datasource": {
         "type": "prometheus",
@@ -787,7 +886,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 36
       },
       "datasource": {
         "type": "prometheus",
@@ -857,6 +956,132 @@
       }
     },
     {
+      "id": 24,
+      "type": "barchart",
+      "title": "OpenVerify success by site attempt",
+      "description": "How often the accepted redirect was the 1st / 2nd / 3rd cmsd candidate (counts over the dashboard time range). attempt=1 means first site succeeded.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (attempt) (increase(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__range]))",
+          "legendFormat": "{{attempt}}",
+          "format": "time_series",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "showValue": "always",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "OpenVerify accept rate by attempt",
+      "description": "Rate of opens accepted on the Nth cmsd candidate site. Exhausted = max attempts without verify success (best-effort redirect). Useful once observe mode is off and retries are active.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "attempt {{attempt}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "exhausted",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
       "id": 23,
       "type": "table",
       "title": "Verify failures: site \u00d7 error (counts in range)",
@@ -865,7 +1090,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 52
       },
       "datasource": {
         "type": "prometheus",
@@ -973,7 +1198,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 62
       },
       "datasource": {
         "type": "prometheus",
@@ -1139,6 +1364,30 @@
         },
         "options": [],
         "sort": 1
+      },
+      {
+        "name": "delay_outcome",
+        "label": "Delay outcome",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}, outcome)",
+        "query": {
+          "query": "label_values(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}, outcome)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "sort": 1
       }
     ]
   },
@@ -1151,5 +1400,5 @@
   "title": "OpenVerify \u2014 CMS Redirector Ops",
   "uid": "openverify-cms-ops",
   "version": 2,
-  "description": "Operator view for CMS global redirector: traffic, site\u00d7error drill-down (Site / Error reason variables), cmsd stalls, site health."
+  "description": "Operator view for CMS global redirector: traffic, site\u00d7error drill-down, cmsd stalls, accept-by-attempt, site health."
 }

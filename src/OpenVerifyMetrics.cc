@@ -158,7 +158,18 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "# TYPE xrootd_openverify_cmsd_stall_seconds_total counter\n"
             "xrootd_openverify_cmsd_stall_seconds_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
-         << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n";
+         << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect, by candidate site attempt.\n"
+            "# TYPE xrootd_openverify_accepted_total counter\n";
+    for (int a = 0; a < kMaxAcceptAttempts; ++a) {
+        body << "xrootd_openverify_accepted_total{attempt=\"" << (a + 1) << "\"" << lbl << "} "
+             << m_accepted_by_attempt[a].load(std::memory_order_relaxed) << "\n";
+    }
+    body << "# HELP xrootd_openverify_retry_exhausted_total Opens that hit max site attempts without a verify success.\n"
+            "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
+            "xrootd_openverify_retry_exhausted_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_retry_exhausted.load(std::memory_order_relaxed) << "\n";
 
     body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
             "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
@@ -337,6 +348,18 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     m_cmsd_stall_hist.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_hist.count.fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_hist.sum_micros.fetch_add(static_cast<uint64_t>(stall_s * 1e6), std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordOpenAccepted(int attempt) {
+    if (attempt < 1) attempt = 1;
+    if (attempt > kMaxAcceptAttempts) attempt = kMaxAcceptAttempts;
+    m_accepted_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordOpenRetryExhausted() {
+    m_retry_exhausted.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

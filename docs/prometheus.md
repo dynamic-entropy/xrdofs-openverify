@@ -44,6 +44,8 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
+- `xrootd_openverify_accepted_total` (`attempt` = `1`|`2`|`3`)
+- `xrootd_openverify_retry_exhausted_total`
 
 **Appear after first event:**
 
@@ -105,6 +107,27 @@ Heatmap / bin rates:
 sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
 ```
 
+### Accept attempt (retry depth)
+
+When enforce mode retries across cmsd candidates (up to 3), record which attempt
+finally accepted a verified / positive-cache redirect. Quarantine skips and
+failed verifies both advance the attempt counter.
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `accepted_total` | `attempt=1\|2\|3` | Open accepted a redirect on the Nth candidate |
+| `retry_exhausted_total` | (instance) | Max attempts with no verify success; last redirect returned best-effort |
+
+```promql
+# Frequency over a window (bar chart)
+sum by (attempt) (increase(xrootd_openverify_accepted_total[6h]))
+
+# Share accepted on first try
+sum(rate(xrootd_openverify_accepted_total{attempt="1"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_accepted_total[5m])), 1e-9)
+```
+
 ### Redirect traffic and “bad redirects saved”
 
 | Metric | Labels | Meaning |
@@ -130,7 +153,8 @@ hop (cmsd stalls are returned to the client and are not part of this timer).
 `outcome` ∈ `cache_hit_positive` | `cache_hit_negative` | `verify_success` |
 `verify_failure` | `avoided`.
 
-Buckets (seconds): 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, +Inf.
+Buckets (seconds): 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+7.5, 10, 15, 30, +Inf.
 
 ### Site status / scores
 

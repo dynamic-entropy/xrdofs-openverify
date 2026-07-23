@@ -72,6 +72,15 @@ class OpenVerifyMetrics {
     // No host label: stall is pre-redirect lookup delay.
     void RecordCmsdStall(int seconds);
 
+    // Enforce-mode (and observe): open accepted a verified/cached-positive redirect after
+    // `attempt` candidate sites (1 = first cmsd target succeeded). attempt is clamped to
+    // [1, kMaxAcceptAttempts].
+    void RecordOpenAccepted(int attempt);
+    // Hit max candidate retries without a successful verify; last redirect returned best-effort.
+    void RecordOpenRetryExhausted();
+
+    static constexpr int kMaxAcceptAttempts = 3;
+
     // Starts at construction (records redirects_handled). Call exactly one terminal method.
     class RedirectTimer {
        public:
@@ -104,7 +113,8 @@ class OpenVerifyMetrics {
 
     struct DelayHistogram {
         // Upper bounds in seconds; final bucket is +Inf.
-        static constexpr double kBounds[] = {0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0};
+        // Fine bins for cache hits; coarser above 1s for queue wait / verify RTT / timeouts.
+        static constexpr double kBounds[] = {0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 30.0};
         static constexpr size_t kBoundCount = sizeof(kBounds) / sizeof(kBounds[0]);
         static constexpr size_t kBucketCount = kBoundCount + 1;  // +Inf
 
@@ -149,6 +159,8 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
+    std::atomic<uint64_t> m_accepted_by_attempt[kMaxAcceptAttempts]{};
+    std::atomic<uint64_t> m_retry_exhausted{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
     StallHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)

@@ -72,8 +72,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     int rc = 0;
     std::string tried_hosts;
     int retry_count{0};
-    const int max_retries = m_observe ? 1 : 3;
+    const int max_retries = m_observe ? 1 : OpenVerifyMetrics::kMaxAcceptAttempts;
     bool retry = true;
+    bool accepted = false;
+    int sites_tried = 0;
 
     while (retry && retry_count < max_retries) {
         // if max_retries exhausts and open_verify fail on all of them
@@ -117,6 +119,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         if (rc != SFS_REDIRECT) break;
 
+        ++sites_tried;
         OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
         int port;
@@ -165,6 +168,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
                 hop.VerifyFinished(verify_result.IsOK());
                 if (verify_result.IsOK()) {
+                    accepted = true;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                 } else {
@@ -175,6 +179,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             }
             case OpenVerifyCache::Status::Positive:
                 hop.CacheHitPositive();
+                accepted = true;
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
                 retry = false;
                 break;
@@ -184,6 +189,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;
         }
+    }
+
+    if (accepted) {
+        m_metrics.RecordOpenAccepted(sites_tried);
+    } else if (rc == SFS_REDIRECT && sites_tried > 0) {
+        m_metrics.RecordOpenRetryExhausted();
     }
 
     return rc;
