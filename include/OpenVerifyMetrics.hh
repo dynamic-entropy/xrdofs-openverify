@@ -41,6 +41,8 @@ class OpenVerifyMetrics {
         VerifySuccess,
         VerifyFailure,
         Avoided,
+        QueueTimeout,  // FIFO wait hit QUEUE_TIMEOUT; open_verify never ran
+        QueueFull,     // wait queue full; open_verify never ran
         Count
     };
 
@@ -62,6 +64,10 @@ class OpenVerifyMetrics {
     void RecordQueueAdmissionAdmitted();
     void RecordQueueAdmissionFull();
     void RecordQueueAdmissionTimeout();
+    // FIFO wait before a verify slot (leaders only). timed_out=true when wait hit QUEUE_TIMEOUT.
+    void RecordQueueWait(double seconds, bool timed_out);
+    // Wall time inside open_verify (leaders that were admitted and ran fn).
+    void RecordVerifyRtt(double seconds, bool success);
     // Single-flight request role split.
     void RecordSingleFlightLeader();
     void RecordSingleFlightFollower();
@@ -71,7 +77,10 @@ class OpenVerifyMetrics {
     // Bad redirect skipped: reason quarantine | negative_cache.
     void RecordRedirectAvoided(const std::string& reason, double delay_seconds = -1);
     // Wall time for a verify miss path after single-flight returns (counters already recorded).
+    // Only for paths that reached open_verify (or shared a leader that did).
     void RecordRedirectVerifyFinished(bool success, double delay_seconds);
+    // Miss path ended in FIFO reject before open_verify. kind: queue_timeout | queue_full.
+    void RecordRedirectQueueRejected(const std::string& kind, double delay_seconds);
 
     // cmsd returned SFS_STALL (rc > 0 seconds). Passed through to the client/bridge.
     // No host label: stall is pre-redirect lookup delay.
@@ -81,8 +90,9 @@ class OpenVerifyMetrics {
     // sites (1 = first cmsd target succeeded). attempt is clamped to [1, kMaxAcceptAttempts].
     // In observe mode only attempt=1 is possible (no retry).
     void RecordOpenAccepted(int attempt);
-    // Enforce mode only: hit max candidate retries without a successful verify;
-    // last redirect returned best-effort. Not recorded in observe mode.
+    // Enforce mode only: retry budget fully spent (retry_count >= max_retries)
+    // with no accepted verify; last redirect returned best-effort.
+    // Never recorded in observe mode (observe does not retry).
     void RecordOpenRetryExhausted();
 
     static constexpr int kMaxAcceptAttempts = 3;
@@ -98,6 +108,8 @@ class OpenVerifyMetrics {
         void CacheHitNegative(bool count_as_avoided);
         void Avoided(const std::string& reason);
         void VerifyFinished(bool success);
+        // kind: queue_timeout | queue_full (must match SingleFlight error messages without prefix).
+        void QueueRejected(const std::string& kind);
 
        private:
         double ElapsedSeconds() const;
@@ -142,6 +154,7 @@ class OpenVerifyMetrics {
 
     PerFailureMetrics& EnsureFailure(const std::string& host, int port, const std::string& reason);
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
+    static void ObserveHistogram(DelayHistogram& h, double seconds);
     std::string BuildExpositionBody() const;
     void Flush();
 
@@ -169,6 +182,12 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_retry_exhausted{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
+    // Leaders that entered the FIFO: wait until admit or timeout.
+    DelayHistogram m_queue_wait_admitted;
+    DelayHistogram m_queue_wait_timeout;
+    // Leaders that ran open_verify after admission.
+    DelayHistogram m_verify_rtt_success;
+    DelayHistogram m_verify_rtt_failure;
     StallHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
 
     mutable std::mutex m_failure_mtx;

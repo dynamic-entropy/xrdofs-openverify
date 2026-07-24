@@ -258,7 +258,8 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "Sum of per-instance dest-host gauges. With multiple instances selected this is not a unique-host union."
     },
     {
       "id": 5,

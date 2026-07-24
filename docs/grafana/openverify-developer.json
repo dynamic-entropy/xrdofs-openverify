@@ -162,7 +162,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Cache hit ratio",
+      "title": "Positive cache hit ratio",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -176,7 +176,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=~\"hit_.*\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -211,7 +211,8 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "hit_positive / all lookups. Excludes hit_negative (known-bad)."
     },
     {
       "id": 4,
@@ -270,7 +271,7 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Avg redirect delay",
+      "title": "Verify RTT (success mean)",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -284,7 +285,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -319,12 +320,13 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "Healthy-path mean verify RTT. Chart below has success and failure."
     },
     {
       "id": 6,
       "type": "stat",
-      "title": "Queue full / s",
+      "title": "Queue reject / s",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -338,7 +340,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=\"queue_full\",xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$__rate_interval]))",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -373,7 +375,8 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "Leaders rejected by FIFO before open_verify (queue_timeout + queue_full)."
     },
     {
       "id": 10,
@@ -419,7 +422,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -472,7 +474,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -525,7 +526,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -578,7 +578,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -590,12 +589,130 @@
     {
       "id": 14,
       "type": "timeseries",
-      "title": "Redirect delay p50 / p95 (all outcomes)",
+      "title": "Queue wait (admitted mean)",
+      "description": "Mean FIFO wait for leaders that got a verify slot. Rejects are rates \u2014 see Queue reject / s and Queue admissions.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
         "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_queue_wait_seconds_sum{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_queue_wait_seconds_count{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "admitted",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Verify RTT (mean)",
+      "description": "open_verify wall time after admission. success/failure only \u2014 FIFO rejects are on Queue admissions. Failure mean often \u2248 VERIFY_TIMEOUT when timeouts dominate.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "success",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "failure",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Redirect delay p50 / p95 / p99 (all outcomes)",
+      "description": "All-outcomes hop latency quantiles. Spikes near configured timeouts are often queue/verify timeouts \u2014 prefer Queue wait and Verify RTT (success) for tuning.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
       },
       "datasource": {
         "type": "prometheus",
@@ -653,60 +770,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
-            "lastNotNull"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "Redirect delay by outcome (mean)",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
-          "legendFormat": "{{outcome}}",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -723,7 +786,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "datasource": {
         "type": "prometheus",
@@ -759,14 +822,14 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "description": "Failure-type breakdown for actual open_verify runs (not FIFO rejects)."
     }
   ],
   "refresh": "30s",
@@ -819,5 +882,5 @@
   "title": "OpenVerify \u2014 Developer",
   "uid": "openverify-developer",
   "version": 1,
-  "description": "Plugin internals: cache, single-flight, queue, verify latency histogram, failure reasons."
+  "description": "Plugin internals: cache, single-flight, queue, verify RTT, failure reasons. Delay outcomes include queue_timeout/queue_full (FIFO reject \u2260 verify_failure)."
 }

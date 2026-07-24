@@ -181,7 +181,15 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     return st;
                 });
 
-                hop.VerifyFinished(verify_result.IsOK());
+                // FIFO rejects never ran open_verify — do not label as verify_failure.
+                const std::string verify_err = verify_result.GetErrorMessage();
+                if (verify_err == "openverify_queue_timeout") {
+                    hop.QueueRejected("queue_timeout");
+                } else if (verify_err == "openverify_queue_full") {
+                    hop.QueueRejected("queue_full");
+                } else {
+                    hop.VerifyFinished(verify_result.IsOK());
+                }
                 if (verify_result.IsOK()) {
                     accepted = true;
                     retry = false;
@@ -214,9 +222,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     if (accepted) {
         m_metrics.RecordOpenAccepted(sites_tried);
-    } else if (!m_observe && rc == SFS_REDIRECT && sites_tried > 0) {
-        // Enforce only: observe never retries, so "exhausted" would just mean
-        // "first candidate failed verify" while still returning that redirect.
+    } else if (!m_observe && rc == SFS_REDIRECT && retry_count >= max_retries) {
+        // Enforce only: the retry budget was fully spent with no accept.
+        // Observe uses max_retries=1 and must not record exhausted — that would
+        // just mean "first candidate failed verify" while still returning it.
         m_metrics.RecordOpenRetryExhausted();
     }
 

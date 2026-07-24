@@ -118,9 +118,9 @@
       }
     },
     {
-      "id": 2,
+      "id": 5,
       "type": "stat",
-      "title": "Bad redirects saved / s",
+      "title": "Verify failure rate",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -134,61 +134,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Avoidance rate",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 0
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_runs_total{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -223,7 +169,64 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "runs_total failure / runs_total \u2014 only hops that actually executed open_verify. Excludes FIFO queue_timeout / queue_full (see Queue reject / s)."
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Queue reject / s",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "description": "Leaders rejected by FIFO before open_verify (queue_timeout + queue_full). Not counted in runs_total / verify_failures_total."
     },
     {
       "id": 4,
@@ -277,12 +280,14 @@
         },
         "colorMode": "value",
         "graphMode": "area"
-      }
+      },
+      "description": "Count of sites with site_healthy=0 (EWMA quarantine threshold). In observe mode quarantine does not skip redirects \u2014 this is a forecast of enforce behavior, not 'bad redirects saved'."
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "stat",
-      "title": "Verify failure rate",
+      "title": "Verify RTT (success mean)",
+      "description": "Instant mean open_verify RTT for successes only (healthy path). See Verify RTT (mean) chart for success vs failure over time.",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -296,63 +301,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_runs_total{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "id": 6,
-      "type": "stat",
-      "title": "Mean OV penalty",
-      "description": "Count-weighted mean wall time from SFS_REDIRECT until accept/retry across all outcomes — includes FIFO queue wait + verify RTT. Does NOT include cmsd stalls. Slow verify_failure (~queue/verify timeout) can dominate this average; use the delay histogram + Delay outcome filter (or developer dash) for per-outcome means.",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 0
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
-          "legendFormat": "mean",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "success mean",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -395,13 +345,73 @@
       }
     },
     {
+      "id": 3,
+      "type": "stat",
+      "title": "Positive cache hit ratio",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "description": "hit_positive / all lookups. Excludes hit_negative (known-bad cache; in observe the redirect is still returned)."
+    },
+    {
       "id": 10,
       "type": "timeseries",
-      "title": "OV penalty by outcome (mean)",
-      "description": "Count-weighted mean wall time from SFS_REDIRECT until accept/retry, split by outcome. cache_hit_* should be ~ms; verify_success is site RTT; verify_failure often sits near queue/verify timeout (~5s).",
+      "title": "Queue wait (admitted mean)",
+      "description": "Mean FIFO wait for leaders that got a verify slot (seconds). Timeout/full are rates on Queue admissions \u2014 not shown as a mean (\u2248 QUEUE_TIMEOUT).",
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
         "y": 4
       },
@@ -412,8 +422,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_sum{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum by (outcome) (rate(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
-          "legendFormat": "{{outcome}}",
+          "expr": "sum(rate(xrootd_openverify_queue_wait_seconds_sum{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_queue_wait_seconds_count{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "admitted",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -439,7 +449,59 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Queue admissions",
+      "description": "Leaders entering the FIFO: admitted got a slot; queue_timeout / queue_full never ran open_verify. This is where queue pressure shows up as a rate.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(xrootd_openverify_queue_admissions_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{result}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
             "lastNotNull"
           ]
         },
@@ -451,13 +513,77 @@
     {
       "id": 11,
       "type": "timeseries",
+      "title": "Verify RTT (mean)",
+      "description": "open_verify wall time after FIFO admission (leaders that ran verify). success/failure are real verify outcomes \u2014 FIFO rejects are not here (see Queue admissions). Failure mean often sits near VERIFY_TIMEOUT when timeouts dominate; that is still a useful signal.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "success",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"failure\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "failure",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
       "title": "Cache path mix",
-      "description": "Rate of openverify cache lookups by result. hit_positive skips live verify; miss drives verify_success/failure delay; hit_negative triggers tried= retry in enforce mode.",
+      "description": "Rate of openverify cache lookups by result. hit_positive skips live verify; miss drives verify; hit_negative is a known-bad cache entry (tried= retry only in enforce mode; in observe the redirect is still returned).",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 4
+        "x": 0,
+        "y": 12
       },
       "datasource": {
         "type": "prometheus",
@@ -497,7 +623,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -507,15 +632,68 @@
       }
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "timeseries",
-      "title": "OpenVerify time penalty (p50 / p95 / p99)",
-      "description": "Distribution of OV hop latency (SFS_REDIRECT \u2192 accept/retry). p50 = typical; p95 = bad tail; p99 = extreme tail (often timeouts). All outcomes mixed — use OV penalty by outcome for path split.",
+      "title": "Verify outcomes",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{result}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "Rate of actual open_verify runs by success/failure (excludes FIFO queue rejects)."
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "OpenVerify time penalty (p50 / p95 / p99)",
+      "description": "OV hop latency quantiles across all outcomes. Spikes near QUEUE_TIMEOUT / VERIFY_TIMEOUT are often rejects or timed-out verifies \u2014 filter the delay heatmap by outcome for path split.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
       },
       "datasource": {
         "type": "prometheus",
@@ -573,60 +751,6 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
-            "lastNotNull"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "Verify outcomes",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (result) (rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{result}}",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
@@ -639,12 +763,12 @@
       "id": 26,
       "type": "heatmap",
       "title": "OpenVerify redirect delay (histogram)",
-      "description": "Distribution of wall time from SFS_REDIRECT until accept/retry (queue wait + verify). Filter with Delay outcome. Buckets: 1ms\u202630s, +Inf. Does not include cmsd stalls.",
+      "description": "Distribution of wall time from SFS_REDIRECT until accept/retry. Filter with Delay outcome: verify_* = actual open_verify; queue_timeout/queue_full = FIFO reject (never verified); cache_hit_*; avoided = quarantine skip (enforce). Does not include cmsd stalls.",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "datasource": {
         "type": "prometheus",
@@ -693,7 +817,7 @@
         },
         "cellGap": 1,
         "filterValues": {
-          "le": 1e-9
+          "le": 1e-09
         },
         "tooltip": {
           "mode": "single",
@@ -721,7 +845,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "datasource": {
         "type": "prometheus",
@@ -757,25 +881,25 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
             "lastNotNull"
           ]
         },
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "description": "EWMA badness (higher = worse). topk(15) membership can change over time (legend flicker). Updates in observe and enforce; only enforce skips via tried=."
     },
     {
       "id": 15,
       "type": "timeseries",
       "title": "Sites \u2192 error types (rate)",
-      "description": "Pick Site(s) above to see which error reasons they produce. Uses $site and $reason filters.",
+      "description": "Verify failure reasons (XrdCl / openverify_*) for selected Site(s). This is the failure-type breakdown \u2014 complementary to Verify RTT failure mean.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 36
       },
       "datasource": {
         "type": "prometheus",
@@ -815,8 +939,7 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
-            "sum"
+            "lastNotNull"
           ]
         },
         "tooltip": {
@@ -833,7 +956,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "datasource": {
         "type": "prometheus",
@@ -873,8 +996,7 @@
           "displayMode": "table",
           "placement": "bottom",
           "calcs": [
-            "mean",
-            "sum"
+            "lastNotNull"
           ]
         },
         "tooltip": {
@@ -891,7 +1013,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 44
       },
       "datasource": {
         "type": "prometheus",
@@ -940,7 +1062,7 @@
         },
         "cellGap": 1,
         "filterValues": {
-          "le": 1e-9
+          "le": 1e-09
         },
         "tooltip": {
           "mode": "single",
@@ -957,132 +1079,6 @@
         },
         "cellValues": {
           "unit": "ops"
-        }
-      }
-    },
-    {
-      "id": 24,
-      "type": "barchart",
-      "title": "OpenVerify success by site attempt",
-      "description": "How often the accepted redirect was the 1st / 2nd / 3rd cmsd candidate (counts over the dashboard time range). attempt=1 means first site succeeded.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 44
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (attempt) (increase(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__range]))",
-          "legendFormat": "{{attempt}}",
-          "format": "time_series",
-          "instant": true,
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "lineWidth": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "orientation": "horizontal",
-        "xTickLabelRotation": 0,
-        "showValue": "always",
-        "stacking": "none",
-        "groupWidth": 0.7,
-        "barWidth": 0.9,
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      }
-    },
-    {
-      "id": 25,
-      "type": "timeseries",
-      "title": "OpenVerify accept rate by attempt",
-      "description": "Rate of opens accepted on the Nth cmsd candidate site. Exhausted (enforce only) = max attempts without verify success (best-effort redirect). In observe mode only attempt=1 is used and exhausted is not recorded.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 44
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "attempt {{attempt}}",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        },
-        {
-          "refId": "B",
-          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "exhausted",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 20,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
-            "sum"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi"
         }
       }
     },
@@ -1218,7 +1214,8 @@
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
-          }
+          },
+          "legendFormat": "ewma"
         },
         {
           "refId": "B",
@@ -1228,27 +1225,30 @@
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
-          }
+          },
+          "legendFormat": "healthy"
         },
         {
           "refId": "C",
-          "expr": "xrootd_openverify_site_verify_successes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}",
+          "expr": "sum by (host, port) (increase(xrootd_openverify_site_verify_successes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$__range]))",
           "format": "table",
           "instant": true,
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
-          }
+          },
+          "legendFormat": "successes"
         },
         {
           "refId": "D",
-          "expr": "xrootd_openverify_site_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\"}",
+          "expr": "sum by (host, port) (increase(xrootd_openverify_site_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$__range]))",
           "format": "table",
           "instant": true,
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
-          }
+          },
+          "legendFormat": "failures"
         }
       ],
       "options": {
@@ -1268,11 +1268,332 @@
           "options": {
             "excludeByName": {
               "Time": true,
-              "__name__": true
+              "__name__": true,
+              "xrootd_instance": true
+            },
+            "renameByName": {
+              "Value #A": "ewma",
+              "Value #B": "healthy",
+              "Value #C": "successes (range)",
+              "Value #D": "failures (range)",
+              "Value": "value"
             }
           }
         }
-      ]
+      ],
+      "description": "Per-site EWMA / healthy flag / verify outcomes over the dashboard time range. healthy=0 can appear in observe without redirects being skipped."
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Enforce mode (avoidance / retry depth)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 30,
+          "type": "stat",
+          "title": "Bad redirects saved / s",
+          "description": "Enforce only: quarantine / negative-cache skips via tried=. Stays ~0 in observe.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "instant": true,
+              "editorMode": "code"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "id": 31,
+          "type": "stat",
+          "title": "Avoidance rate",
+          "description": "Enforce only: avoided / handled. Stays ~0 in observe.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "instant": true,
+              "editorMode": "code"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.2
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "id": 34,
+          "type": "stat",
+          "title": "Exhausted / s",
+          "description": "Enforce only: opens that hit max attempts without verify success. Not recorded in observe.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "instant": true,
+              "editorMode": "code"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "id": 32,
+          "type": "barchart",
+          "title": "OpenVerify success by site attempt",
+          "description": "Enforce only: which cmsd candidate was accepted (1/2/3). In observe only attempt=1 is possible.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (attempt) (increase(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__range]))",
+              "legendFormat": "{{attempt}}",
+              "format": "time_series",
+              "instant": true,
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "xTickLabelRotation": 0,
+            "showValue": "always",
+            "stacking": "none",
+            "groupWidth": 0.7,
+            "barWidth": 0.9,
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          }
+        },
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "OpenVerify accept rate by attempt",
+          "description": "Rate of opens accepted on the Nth cmsd candidate, plus exhausted. exhausted = enforce only: retry budget spent with no verify success (not recorded in observe; observe never retries).",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+              "legendFormat": "attempt {{attempt}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code",
+              "range": true
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+              "legendFormat": "exhausted",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code",
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        }
+      ],
+      "options": {}
     }
   ],
   "refresh": "30s",
@@ -1405,5 +1726,5 @@
   "title": "OpenVerify \u2014 CMS Redirector Ops",
   "uid": "openverify-cms-ops",
   "version": 2,
-  "description": "Operator view for CMS global redirector: traffic, site\u00d7error drill-down, cmsd stalls, accept-by-attempt, site health."
+  "description": "Operator view for CMS global redirector (observe-friendly top row). Capacity, verify RTT, site\u00d7error drill-down, cmsd stalls. Avoidance / accept-by-attempt under the collapsed Enforce row."
 }

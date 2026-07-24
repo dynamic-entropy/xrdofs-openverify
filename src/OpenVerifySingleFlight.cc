@@ -1,5 +1,6 @@
 #include "OpenVerifySingleFlight.hh"
 
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 
@@ -10,6 +11,10 @@ int ReadIntEnvOrDefault(const char* name, int dflt) {
     if (!p || !*p) return dflt;
     const int v = std::atoi(p);
     return v > 0 ? v : dflt;
+}
+
+double ElapsedSeconds(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
 }  // namespace
@@ -71,7 +76,8 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
         FifoWaitTag tag;
         m_fifo.push_back(&tag);
         const auto my_it = std::prev(m_fifo.end());
-        const auto deadline = std::chrono::steady_clock::now() + m_queue_timeout;
+        const auto queue_t0 = std::chrono::steady_clock::now();
+        const auto deadline = queue_t0 + m_queue_timeout;
 
         // wait_until checks the predicate before blocking
         // so the first requets always go through without waiting
@@ -87,6 +93,7 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
             if (was_front && !m_fifo.empty())
                 m_fifo.front()->cv.notify_one();
             fifo_lock.unlock();
+            m_metrics.RecordQueueWait(ElapsedSeconds(queue_t0), /*timed_out=*/true);
             m_metrics.RecordQueueAdmissionTimeout();
             return finish_leader(
                 XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_queue_timeout"});
@@ -98,14 +105,17 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
         if (!m_fifo.empty() && m_active < cap)
             m_fifo.front()->cv.notify_one();
         fifo_lock.unlock();
+        m_metrics.RecordQueueWait(ElapsedSeconds(queue_t0), /*timed_out=*/false);
         m_metrics.RecordQueueAdmissionAdmitted();
 
         XrdCl::XRootDStatus result;
+        const auto verify_t0 = std::chrono::steady_clock::now();
         try {
             result = fn ? fn() : XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidOp, 0, "openverify_noop"};
         } catch (...) {
             result = XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInternal, 0, "openverify_exception"};
         }
+        m_metrics.RecordVerifyRtt(ElapsedSeconds(verify_t0), result.IsOK());
 
         {
             std::lock_guard<std::mutex> lk(m_fifo_mutex);

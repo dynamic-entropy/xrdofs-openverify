@@ -12,7 +12,8 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 | File | Audience |
 |------|----------|
 | [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
-| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS redirector ops: traffic, site×error drill-down, stalls, scores |
+| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS redirector ops: traffic, capacity, site×error; Enforce row for avoidance/attempts |
+| [`docs/grafana/xrdmon-cms-ops.json`](grafana/xrdmon-cms-ops.json) | AAA baseline from xrdmon-collector (r-stream, destinations, link/cmsm) |
 
 **CMS ops variables** (top of dashboard):
 
@@ -40,7 +41,9 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_singleflight_requests_total` (`leader` | `follower`)
 - `xrootd_openverify_redirects_handled_total`
 - `xrootd_openverify_redirects_avoided_total` (`quarantine` | `negative_cache`)
-- `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`)
+- `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`; total hop = queue + RTT on miss)
+- `xrootd_openverify_queue_wait_seconds` (histogram by `result` = `admitted` | `timeout`)
+- `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
 - `xrootd_openverify_accepted_total` (`attempt` = `1`|`2`|`3`)
@@ -142,6 +145,7 @@ Avoidance rate ≈
 Histogram of wall time from receiving `SFS_REDIRECT` until accept/retry
 decision (cache hit, verify, or avoid) — the OpenVerify-added latency for that
 hop (cmsd stalls are returned to the client and are not part of this timer).
+On the miss path this total includes FIFO queue wait + `open_verify` RTT.
 
 | Series | Labels |
 |--------|--------|
@@ -150,10 +154,38 @@ hop (cmsd stalls are returned to the client and are not part of this timer).
 | `redirect_delay_seconds_count` | `outcome` |
 
 `outcome` ∈ `cache_hit_positive` | `cache_hit_negative` | `verify_success` |
-`verify_failure` | `avoided`.
+`verify_failure` | `avoided` | `queue_timeout` | `queue_full`.
+
+FIFO rejects (`queue_timeout` / `queue_full`) never ran `open_verify` — they are
+**not** counted in `runs_total` or `verify_failures_total`. Do not read
+`outcome=verify_failure` delay as including capacity waits.
 
 Buckets (seconds): 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
 7.5, 10, 15, 30, +Inf.
+
+### Queue wait vs verify RTT (miss-path split)
+
+Leaders only (followers coalesce on the in-flight key and are not timed here).
+
+| Series | Labels | Meaning |
+|--------|--------|---------|
+| `queue_wait_seconds_*` | `result=admitted\|timeout` | Time waiting for a FIFO verify slot |
+| `verify_rtt_seconds_*` | `result=success\|failure` | Wall time inside `open_verify` after admission |
+
+`queue_full` immediate rejects do not record a queue-wait sample. Same bucket
+bounds as `redirect_delay_seconds`.
+
+```promql
+# Mean queue wait (admitted leaders)
+sum(rate(xrootd_openverify_queue_wait_seconds_sum{result="admitted"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_queue_wait_seconds_count{result="admitted"}[5m])), 1e-9)
+
+# Mean verify RTT (successful opens)
+sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result="success"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result="success"}[5m])), 1e-9)
+```
 
 ### Site status / scores
 
@@ -175,8 +207,8 @@ Labels: `host`, `port` (`none` if no port), optional `xrootd_instance`.
 ### Developer
 
 ```promql
-# Cache hit ratio
-sum(rate(xrootd_openverify_cache_lookups_total{result=~"hit_.*"}[5m]))
+# Positive cache hit ratio (exclude hit_negative — known-bad)
+sum(rate(xrootd_openverify_cache_lookups_total{result="hit_positive"}[5m]))
 /
 sum(rate(xrootd_openverify_cache_lookups_total[5m]))
 
@@ -225,3 +257,13 @@ sum(rate(xrootd_openverify_cmsd_stall_seconds_total[5m]))
 negative-cache avoidance counters only increment when enforcement applies
 `tried=` (observe does not skip via quarantine the same way for client path;
 quarantine avoid is skipped entirely in observe).
+
+In observe:
+- `accepted_total` is only `attempt=1`; `retry_exhausted_total` is not incremented
+- `redirects_avoided_total` stays 0 (neg-cache hits use delay outcome
+  `cache_hit_negative` but are not counted as avoided)
+- `site_healthy` / EWMA still update from verify outcomes, but quarantine does
+  not change the client redirect path — treat “Unhealthy sites” as a forecast
+  signal, not “bad redirects saved”
+- Miss-path delay outcomes include `queue_timeout` / `queue_full` when the FIFO
+  rejects before verify

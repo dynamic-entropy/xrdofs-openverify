@@ -49,6 +49,10 @@ const char* DelayOutcomeLabel(OpenVerifyMetrics::DelayOutcome o) {
             return "verify_failure";
         case OpenVerifyMetrics::DelayOutcome::Avoided:
             return "avoided";
+        case OpenVerifyMetrics::DelayOutcome::QueueTimeout:
+            return "queue_timeout";
+        case OpenVerifyMetrics::DelayOutcome::QueueFull:
+            return "queue_full";
         default:
             return "unknown";
     }
@@ -194,7 +198,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
              << h.count.load(std::memory_order_relaxed) << "\n";
     }
 
-    body << "# HELP xrootd_openverify_redirect_delay_seconds OpenVerify handling time per redirect target.\n"
+    body << "# HELP xrootd_openverify_redirect_delay_seconds OpenVerify handling time per redirect target "
+            "(queue wait + verify RTT for miss path).\n"
             "# TYPE xrootd_openverify_redirect_delay_seconds histogram\n";
     for (int oi = 0; oi < static_cast<int>(DelayOutcome::Count); ++oi) {
         const auto outcome = static_cast<DelayOutcome>(oi);
@@ -217,6 +222,41 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
              << "xrootd_openverify_redirect_delay_seconds_count{outcome=\"" << olabel << "\"" << lbl << "} "
              << h.count.load(std::memory_order_relaxed) << "\n";
     }
+
+    auto emit_labeled_delay_hist = [&](const char* name, const char* help, const char* label_name,
+                                       const char* label_a, const DelayHistogram& ha, const char* label_b,
+                                       const DelayHistogram& hb) {
+        body << "# HELP " << name << " " << help << "\n"
+             << "# TYPE " << name << " histogram\n";
+        const DelayHistogram* histos[] = {&ha, &hb};
+        const char* labels[] = {label_a, label_b};
+        for (int i = 0; i < 2; ++i) {
+            const DelayHistogram& h = *histos[i];
+            uint64_t cumulative = 0;
+            for (size_t b = 0; b < DelayHistogram::kBucketCount; ++b) {
+                cumulative += h.buckets[b].load(std::memory_order_relaxed);
+                body << name << "_bucket{" << label_name << "=\"" << labels[i] << "\",le=\"";
+                if (b < DelayHistogram::kBoundCount) {
+                    body << DelayHistogram::kBounds[b];
+                } else {
+                    body << "+Inf";
+                }
+                body << "\"" << lbl << "} " << cumulative << "\n";
+            }
+            const double sum_s = static_cast<double>(h.sum_micros.load(std::memory_order_relaxed)) / 1e6;
+            body << name << "_sum{" << label_name << "=\"" << labels[i] << "\"" << lbl << "} " << sum_s << "\n"
+                 << name << "_count{" << label_name << "=\"" << labels[i] << "\"" << lbl << "} "
+                 << h.count.load(std::memory_order_relaxed) << "\n";
+        }
+    };
+
+    emit_labeled_delay_hist(
+        "xrootd_openverify_queue_wait_seconds",
+        "FIFO wait for a verify slot (leaders only; excludes queue_full immediate rejects).", "result", "admitted",
+        m_queue_wait_admitted, "timeout", m_queue_wait_timeout);
+    emit_labeled_delay_hist("xrootd_openverify_verify_rtt_seconds",
+                            "open_verify wall time after FIFO admission (excludes queue wait).", "result", "success",
+                            m_verify_rtt_success, "failure", m_verify_rtt_failure);
 
     body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
             "# TYPE xrootd_openverify_verify_failures_total counter\n";
@@ -303,6 +343,16 @@ void OpenVerifyMetrics::RecordQueueAdmissionTimeout() {
     if (!m_path.empty()) Flush();
 }
 
+void OpenVerifyMetrics::RecordQueueWait(double seconds, bool timed_out) {
+    ObserveHistogram(timed_out ? m_queue_wait_timeout : m_queue_wait_admitted, seconds);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordVerifyRtt(double seconds, bool success) {
+    ObserveHistogram(success ? m_verify_rtt_success : m_verify_rtt_failure, seconds);
+    if (!m_path.empty()) Flush();
+}
+
 void OpenVerifyMetrics::RecordSingleFlightLeader() {
     m_singleflight_leader.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
@@ -330,6 +380,15 @@ void OpenVerifyMetrics::RecordRedirectAvoided(const std::string& reason, double 
 
 void OpenVerifyMetrics::RecordRedirectVerifyFinished(bool success, double delay_seconds) {
     RecordRedirectDelay(delay_seconds, success ? DelayOutcome::VerifySuccess : DelayOutcome::VerifyFailure);
+}
+
+void OpenVerifyMetrics::RecordRedirectQueueRejected(const std::string& kind, double delay_seconds) {
+    if (kind == "queue_full") {
+        RecordRedirectDelay(delay_seconds, DelayOutcome::QueueFull);
+    } else {
+        // Default / "queue_timeout"
+        RecordRedirectDelay(delay_seconds, DelayOutcome::QueueTimeout);
+    }
 }
 
 void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
@@ -400,12 +459,21 @@ void OpenVerifyMetrics::RedirectTimer::VerifyFinished(bool success) {
     m_metrics.RecordRedirectVerifyFinished(success, ElapsedSeconds());
 }
 
+void OpenVerifyMetrics::RedirectTimer::QueueRejected(const std::string& kind) {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordRedirectQueueRejected(kind, ElapsedSeconds());
+}
+
 void OpenVerifyMetrics::RecordRedirectDelay(double seconds, DelayOutcome outcome) {
-    if (seconds < 0) seconds = 0;
     const int oi = static_cast<int>(outcome);
     if (oi < 0 || oi >= static_cast<int>(DelayOutcome::Count)) return;
+    ObserveHistogram(m_delay[oi], seconds);
+    if (!m_path.empty()) Flush();
+}
 
-    DelayHistogram& h = m_delay[oi];
+void OpenVerifyMetrics::ObserveHistogram(DelayHistogram& h, double seconds) {
+    if (seconds < 0) seconds = 0;
     size_t bucket = DelayHistogram::kBoundCount;  // +Inf
     for (size_t i = 0; i < DelayHistogram::kBoundCount; ++i) {
         if (seconds <= DelayHistogram::kBounds[i]) {
@@ -416,7 +484,6 @@ void OpenVerifyMetrics::RecordRedirectDelay(double seconds, DelayOutcome outcome
     h.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
     h.count.fetch_add(1, std::memory_order_relaxed);
     h.sum_micros.fetch_add(static_cast<uint64_t>(seconds * 1e6), std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
 }
 
 void OpenVerifyMetrics::Flush() {
