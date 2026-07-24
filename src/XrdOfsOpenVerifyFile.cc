@@ -10,7 +10,7 @@
 namespace {
 
 // Redirect targets may use IPv6 loopback ("[::1]"); XrdCl rejects root://[::1]:port/... ("Invalid address").
-// Later will fix in upstream xrootd later 
+// Later will fix in upstream xrootd later
 std::string NormalizeHostForXrdCl(const std::string& host) {
     if (host == "[::1]" || host == "::1") {
         return "127.0.0.1";
@@ -41,11 +41,22 @@ std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
     return std::chrono::seconds(base_s + dist(rng));
 }
 
+// Rewrite SFS_REDIRECT ErrInfo to the verified data server when known.
+void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const std::string& final_host, int final_port,
+                                       XrdSysError& log) {
+    if (!enabled || final_host.empty() || final_port < 0) {
+        return;
+    }
+    err.setErrInfo(final_port, final_host.c_str());
+    const std::string msg = final_host + ":" + std::to_string(final_port);
+    log.Emsg(" INFO", "direct-server rewrite redirect to", msg.c_str());
+}
+
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
                                OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                               bool observe, std::string ov_cert, std::string ov_key)
+                               bool observe, bool direct_server, std::string ov_cert, std::string ov_key)
     : XrdSfsFile(wrapF->error),
       m_wrapped(wrapF),
       m_log(log),
@@ -54,6 +65,7 @@ OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCa
       m_single_flight(single_flight),
       m_host_reliability(host_reliability),
       m_observe(observe),
+      m_direct_server(direct_server),
       m_ov_cert(std::move(ov_cert)),
       m_ov_key(std::move(ov_key)) {}
 
@@ -146,16 +158,19 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         const char* verify_opaque = m_observe ? opaque : opaque_str.c_str();
 
-        switch (cached) {
+        switch (cached.status) {
             case OpenVerifyCache::Status::Miss: {
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
                 const auto verify_result = m_single_flight.Run(key, [&]() {
-                    const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds());
+                    std::string final_host;
+                    int final_port = -1;
+                    const auto st =
+                        open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host, &final_port);
                     if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
-                        m_cache.PutPositive(key, std::chrono::seconds(120));
+                        m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
                     } else {
                         const std::string failure_reason = st.GetErrorMessage().empty() ? "openverify_failure"
                                                                                          : st.GetErrorMessage();
@@ -171,6 +186,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     accepted = true;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
+                    // Leader and followers both read the DS from cache after put.
+                    if (m_direct_server) {
+                        const auto after = m_cache.Get(key);
+                        MaybeRewriteRedirectToFinalServer(error, true, after.final_host, after.final_port, m_log);
+                    }
                 } else {
                     tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());
@@ -181,6 +201,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 hop.CacheHitPositive();
                 accepted = true;
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
+                MaybeRewriteRedirectToFinalServer(error, m_direct_server, cached.final_host, cached.final_port, m_log);
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
@@ -193,7 +214,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     if (accepted) {
         m_metrics.RecordOpenAccepted(sites_tried);
-    } else if (rc == SFS_REDIRECT && sites_tried > 0) {
+    } else if (!m_observe && rc == SFS_REDIRECT && sites_tried > 0) {
+        // Enforce only: observe never retries, so "exhausted" would just mean
+        // "first candidate failed verify" while still returning that redirect.
         m_metrics.RecordOpenRetryExhausted();
     }
 

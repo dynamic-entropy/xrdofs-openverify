@@ -165,7 +165,7 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         body << "xrootd_openverify_accepted_total{attempt=\"" << (a + 1) << "\"" << lbl << "} "
              << m_accepted_by_attempt[a].load(std::memory_order_relaxed) << "\n";
     }
-    body << "# HELP xrootd_openverify_retry_exhausted_total Opens that hit max site attempts without a verify success.\n"
+    body << "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
             "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
             "xrootd_openverify_retry_exhausted_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "

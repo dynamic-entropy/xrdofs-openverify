@@ -27,6 +27,11 @@ class OpenVerifyHostReliability;
 // inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
 // returned unchanged.
 //
+// XRD_OPENVERIFY_DIRECT_SERVER: if set to exactly 1, after a successful verify
+// (or positive-cache hit that recorded a data server), rewrite the client
+// SFS_REDIRECT host/port to that final data server instead of the cmsd next hop
+// (typically a site / lower redirector).
+//
 class OpenVerifyMetrics {
    public:
     // Outcome label for redirect-handling delay histogram (plugin time after OFS returns SFS_REDIRECT).
@@ -72,11 +77,12 @@ class OpenVerifyMetrics {
     // No host label: stall is pre-redirect lookup delay.
     void RecordCmsdStall(int seconds);
 
-    // Enforce-mode (and observe): open accepted a verified/cached-positive redirect after
-    // `attempt` candidate sites (1 = first cmsd target succeeded). attempt is clamped to
-    // [1, kMaxAcceptAttempts].
+    // Open accepted a verified/cached-positive redirect after `attempt` candidate
+    // sites (1 = first cmsd target succeeded). attempt is clamped to [1, kMaxAcceptAttempts].
+    // In observe mode only attempt=1 is possible (no retry).
     void RecordOpenAccepted(int attempt);
-    // Hit max candidate retries without a successful verify; last redirect returned best-effort.
+    // Enforce mode only: hit max candidate retries without a successful verify;
+    // last redirect returned best-effort. Not recorded in observe mode.
     void RecordOpenRetryExhausted();
 
     static constexpr int kMaxAcceptAttempts = 3;

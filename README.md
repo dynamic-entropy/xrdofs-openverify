@@ -40,6 +40,12 @@ Add the plugin in your server config:
 xrootd.fslib ++ libXrdOfsOpenVerify.so
 ```
 
+Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full set):
+
+| Variable | Effect |
+|----------|--------|
+| `XRD_OPENVERIFY_OBSERVE=1` | Metrics + verify on miss; no `tried=` / retry; cmsd redirect unchanged |
+| `XRD_OPENVERIFY_DIRECT_SERVER=1` | After a successful verify (or positive cache with a recorded data server), rewrite the client redirect to that final data-server host:port instead of the cmsd next hop |
 ## Metrics (Prometheus)
 
 Counters and example queries are documented in

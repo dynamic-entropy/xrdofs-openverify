@@ -85,35 +85,41 @@ const OpenVerifyCache::Node* OpenVerifyCache::Traverse(const std::vector<std::st
     return node;
 }
 
-OpenVerifyCache::Status OpenVerifyCache::Get(const std::string& key, std::chrono::steady_clock::time_point now) const {
+OpenVerifyCache::Lookup OpenVerifyCache::Get(const std::string& key, std::chrono::steady_clock::time_point now) const {
     const std::shared_lock lk(m_mutex);
 
     const auto* node = Traverse(SplitPath(key));
-    if (!node) {
-        return Status::Miss;
+    if (!node || !node->entry || now >= node->entry->expiry) {
+        return Lookup{};
     }
 
-    if (!node->entry) {
-        return Status::Miss;
+    Lookup out;
+    out.status = node->entry->status;
+    if (out.status == Status::Positive) {
+        out.final_host = node->entry->final_host;
+        out.final_port = node->entry->final_port;
     }
-    if (now >= node->entry->expiry) {
-        return Status::Miss;
-    }
-    return node->entry->status;
+    return out;
 }
 
 void OpenVerifyCache::PutPositive(const std::string& key, std::chrono::seconds ttl,
                                   std::chrono::steady_clock::time_point now) {
+    PutPositive(key, ttl, std::string{}, -1, now);
+}
+
+void OpenVerifyCache::PutPositive(const std::string& key, std::chrono::seconds ttl, std::string final_host,
+                                  int final_port, std::chrono::steady_clock::time_point now) {
     const std::unique_lock lk(m_mutex);
     Node* node = TraverseCreate(SplitPath(key));
-    node->entry = std::make_unique<Entry>(Entry{Status::Positive, now + ttl});
+    node->entry = std::make_unique<Entry>(
+        Entry{Status::Positive, now + ttl, std::move(final_host), final_port});
 }
 
 void OpenVerifyCache::PutNegative(const std::string& key, std::chrono::seconds ttl,
                                   std::chrono::steady_clock::time_point now) {
     const std::unique_lock lk(m_mutex);
     Node* node = TraverseCreate(SplitPath(key));
-    node->entry = std::make_unique<Entry>(Entry{Status::Negative, now + ttl});
+    node->entry = std::make_unique<Entry>(Entry{Status::Negative, now + ttl, {}, -1});
 }
 
 void OpenVerifyCache::Expire(std::chrono::steady_clock::time_point now) {

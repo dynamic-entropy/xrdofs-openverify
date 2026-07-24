@@ -13,6 +13,11 @@ bool OpenVerifyObserveModeEnabled() {
     return p && std::strcmp(p, "1") == 0;
 }
 
+bool OpenVerifyDirectServerEnabled() {
+    const char* p = std::getenv("XRD_OPENVERIFY_DIRECT_SERVER");
+    return p && std::strcmp(p, "1") == 0;
+}
+
 }  // namespace
 
 OpenVerifyFileSystem* ofs = nullptr;
@@ -53,13 +58,19 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
       m_log(0, "ofs_plugin"),
       m_config(configFn),
       m_env(envP),
-      m_observe(OpenVerifyObserveModeEnabled()) {
+      m_observe(OpenVerifyObserveModeEnabled()),
+      m_direct_server(OpenVerifyDirectServerEnabled()) {
     m_log.logger(Logger);
     m_log.Emsg("ERR:: ", "*** XrdOfsOpenVerify Initialised ****");
     if (m_observe) {
         m_log.Emsg("INFO",
                    "openverify observe mode (XRD_OPENVERIFY_OBSERVE): cache metrics + verify on miss only; "
                    "no cache/tried changes; redirect unchanged");
+    }
+    if (m_direct_server) {
+        m_log.Emsg("INFO",
+                   "openverify direct server (XRD_OPENVERIFY_DIRECT_SERVER): rewrite accepted redirects to "
+                   "verified data-server host:port");
     }
     Configure();
     m_metrics.SetSiteSource(&m_host_reliability);
@@ -85,7 +96,7 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
     XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_observe,
-                                        m_ov_cert, m_ov_key);
+                                        m_direct_server, m_ov_cert, m_ov_key);
     return fw;
 }
 

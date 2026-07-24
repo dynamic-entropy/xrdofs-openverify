@@ -116,7 +116,7 @@ failed verifies both advance the attempt counter.
 | Metric | Labels | Meaning |
 |--------|--------|---------|
 | `accepted_total` | `attempt=1\|2\|3` | Open accepted a redirect on the Nth candidate |
-| `retry_exhausted_total` | (instance) | Max attempts with no verify success; last redirect returned best-effort |
+| `retry_exhausted_total` | (instance) | Enforce only: max attempts with no verify success; last redirect returned best-effort |
 
 ```promql
 # Frequency over a window (bar chart)

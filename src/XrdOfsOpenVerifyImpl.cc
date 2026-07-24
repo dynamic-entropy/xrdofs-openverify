@@ -12,6 +12,7 @@
 
 #include "XrdCl/XrdClFile.hh"
 #include "XrdCl/XrdClStatus.hh"
+#include "XrdCl/XrdClURL.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOfsOpenVerify.hh"
 #include "XrdOuc/XrdOucUtils.hh"
@@ -337,6 +338,26 @@ std::string PathFromVerifyKey(const std::string& key) {
     return key.substr(sep + 2);
 }
 
+// XrdCl DataServer is host:port (optionally user[:password]@host:port).
+bool ParseDataServerHostPort(const std::string& dataServer, std::string& host, int& port) {
+    if (dataServer.empty()) return false;
+    const XrdCl::URL url("root://" + dataServer + "/");
+    if (!url.IsValid() || url.GetHostName().empty()) return false;
+    host = url.GetHostName();
+    port = url.GetPort();
+    return port >= 0;
+}
+
+bool ExtractFinalDataServer(XrdCl::File& f, std::string& host, int& port) {
+    host.clear();
+    port = -1;
+    std::string dataServer;
+    if (!f.GetProperty("DataServer", dataServer) || dataServer.empty()) {
+        return false;
+    }
+    return ParseDataServerHostPort(dataServer, host, port);
+}
+
 bool ExtractClientBearerToken(const XrdSecEntity* client, const char* opaque, std::string& outToken,
                               const char** outSource) {
     outToken.clear();
@@ -358,7 +379,10 @@ bool ExtractClientBearerToken(const XrdSecEntity* client, const char* opaque, st
 }  // namespace
 
 XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                                                time_t timeout_seconds) {
+                                                time_t timeout_seconds, std::string* final_host, int* final_port) {
+    if (final_host) final_host->clear();
+    if (final_port) *final_port = -1;
+
     std::string token;
     const char* tokenSource = nullptr;
     ExtractClientBearerToken(client, opaque, token, &tokenSource);
@@ -482,6 +506,19 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         auto closeSt = f.Close();
         (void)closeSt;
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
+    }
+
+    if (final_host || final_port) {
+        std::string dsHost;
+        int dsPort = -1;
+        if (ExtractFinalDataServer(f, dsHost, dsPort)) {
+            if (final_host) *final_host = dsHost;
+            if (final_port) *final_port = dsPort;
+            const std::string dsMsg = "openverify: data server " + dsHost + ":" + std::to_string(dsPort);
+            m_log.Emsg("DEBUG", dsMsg.c_str());
+        } else {
+            m_log.Emsg("DEBUG", "openverify: DataServer property unavailable after verify");
+        }
     }
 
     auto closeSt = f.Close();

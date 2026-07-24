@@ -85,6 +85,9 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     OpenVerifySingleFlight m_single_flight{m_metrics};
     OpenVerifyHostReliability m_host_reliability;
     const bool m_observe;
+    // When true, rewrite accepted SFS_REDIRECT host/port to the verified data server
+    // (XRD_OPENVERIFY_DIRECT_SERVER=1).
+    const bool m_direct_server;
 
     std::string m_ov_cert;
     std::string m_ov_key;
@@ -142,7 +145,7 @@ class OpenVerifyFile : public XrdSfsFile {
 
     OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
                    OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability, bool observe,
-                   std::string ov_cert, std::string ov_key);
+                   bool direct_server, std::string ov_cert, std::string ov_key);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
@@ -152,12 +155,15 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifySingleFlight& m_single_flight;
     OpenVerifyHostReliability& m_host_reliability;
     const bool m_observe;
+    const bool m_direct_server;
     const std::string m_ov_cert;
     const std::string m_ov_key;
 
    private:
+    // On success, optionally fills final_host/final_port with the data server XrdCl reached.
     XrdCl::XRootDStatus open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                                    time_t timeout_seconds);
+                                    time_t timeout_seconds, std::string* final_host = nullptr,
+                                    int* final_port = nullptr);
 };
 
 #endif

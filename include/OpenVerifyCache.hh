@@ -12,10 +12,19 @@
 
 // A path-segment trie cache keyed by path, storing whether a previous
 // open_verify succeeded ("positive") or failed ("negative") with TTLs.
+// Positive entries may also retain the final data-server host:port observed
+// during verify (for XRD_OPENVERIFY_DIRECT_SERVER).
 //
 class OpenVerifyCache {
    public:
     enum class Status { Miss, Positive, Negative };
+
+    struct Lookup {
+        Status status{Status::Miss};
+        // Set only for Positive hits when a data server was recorded at Put time.
+        std::string final_host;
+        int final_port{-1};
+    };
 
     OpenVerifyCache() = default;
     OpenVerifyCache(const OpenVerifyCache&) = delete;
@@ -27,10 +36,13 @@ class OpenVerifyCache {
     void StopExpiryThread();
 
     // Lookup for a key (exact match).
-    Status Get(const std::string& key,
+    Lookup Get(const std::string& key,
                std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) const;
 
     void PutPositive(const std::string& key, std::chrono::seconds ttl,
+                     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+
+    void PutPositive(const std::string& key, std::chrono::seconds ttl, std::string final_host, int final_port,
                      std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
 
     void PutNegative(const std::string& key, std::chrono::seconds ttl,
@@ -44,6 +56,8 @@ class OpenVerifyCache {
     struct Entry {
         Status status;
         std::chrono::steady_clock::time_point expiry;
+        std::string final_host;
+        int final_port{-1};
     };
 
     struct Node {
