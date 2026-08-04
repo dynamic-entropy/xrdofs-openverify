@@ -173,7 +173,30 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
             "xrootd_openverify_retry_exhausted_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
-         << m_retry_exhausted.load(std::memory_order_relaxed) << "\n";
+         << m_retry_exhausted.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_lookups_total Rucio list_replicas outcomes (Rucio-first locate).\n"
+            "# TYPE xrootd_openverify_rucio_lookups_total counter\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"ok\""
+         << lbl << "} " << m_rucio_lookup_ok.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"empty\""
+         << lbl << "} " << m_rucio_lookup_empty.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"auth_error\""
+         << lbl << "} " << m_rucio_lookup_auth_error.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"timeout\""
+         << lbl << "} " << m_rucio_lookup_timeout.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"error\""
+         << lbl << "} " << m_rucio_lookup_error.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_candidates_total PFN candidates returned by successful Rucio lookups.\n"
+            "# TYPE xrootd_openverify_rucio_candidates_total counter\n"
+            "xrootd_openverify_rucio_candidates_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_candidates.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_location_source_total Accepted opens by location source.\n"
+            "# TYPE xrootd_openverify_location_source_total counter\n"
+            "xrootd_openverify_location_source_total{source=\"rucio\""
+         << lbl << "} " << m_location_source_rucio.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_location_source_total{source=\"cmsd\""
+         << lbl << "} " << m_location_source_cmsd.load(std::memory_order_relaxed) << "\n";
 
     body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
             "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
@@ -419,6 +442,36 @@ void OpenVerifyMetrics::RecordOpenAccepted(int attempt) {
 
 void OpenVerifyMetrics::RecordOpenRetryExhausted() {
     m_retry_exhausted.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioLookup(const std::string& result) {
+    if (result == "ok") {
+        m_rucio_lookup_ok.fetch_add(1, std::memory_order_relaxed);
+    } else if (result == "empty") {
+        m_rucio_lookup_empty.fetch_add(1, std::memory_order_relaxed);
+    } else if (result == "auth_error") {
+        m_rucio_lookup_auth_error.fetch_add(1, std::memory_order_relaxed);
+    } else if (result == "timeout") {
+        m_rucio_lookup_timeout.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_rucio_lookup_error.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioCandidates(size_t count) {
+    if (count == 0) return;
+    m_rucio_candidates.fetch_add(static_cast<uint64_t>(count), std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
+    if (source == "rucio") {
+        m_location_source_rucio.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_location_source_cmsd.fetch_add(1, std::memory_order_relaxed);
+    }
     if (!m_path.empty()) Flush();
 }
 

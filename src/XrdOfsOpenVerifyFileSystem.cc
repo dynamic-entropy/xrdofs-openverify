@@ -58,6 +58,7 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
       m_log(0, "ofs_plugin"),
       m_config(configFn),
       m_env(envP),
+      m_rucio(m_log),
       m_observe(OpenVerifyObserveModeEnabled()),
       m_direct_server(OpenVerifyDirectServerEnabled()) {
     m_log.logger(Logger);
@@ -70,8 +71,9 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
     if (m_direct_server) {
         m_log.Emsg("INFO",
                    "openverify direct server (XRD_OPENVERIFY_DIRECT_SERVER): rewrite accepted redirects to "
-                   "verified data-server host:port");
+                   "verified data-server host:port (cmsd path only; unsafe for EOS FST)");
     }
+    m_rucio.LogConfig();
     Configure();
     m_metrics.SetSiteSource(&m_host_reliability);
     m_cache.StartExpiryThread();
@@ -95,8 +97,8 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_observe,
-                                        m_direct_server, m_ov_cert, m_ov_key);
+    XrdSfsFile* fw = new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_rucio,
+                                        m_observe, m_direct_server, m_ov_cert, m_ov_key);
     return fw;
 }
 

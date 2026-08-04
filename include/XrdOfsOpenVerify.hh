@@ -7,6 +7,7 @@
 #include "OpenVerifyCache.hh"
 #include "OpenVerifyHostReliability.hh"
 #include "OpenVerifyMetrics.hh"
+#include "OpenVerifyRucio.hh"
 #include "OpenVerifySingleFlight.hh"
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOuc/XrdOucErrInfo.hh"
@@ -84,9 +85,10 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     OpenVerifyCache m_cache;
     OpenVerifySingleFlight m_single_flight{m_metrics};
     OpenVerifyHostReliability m_host_reliability;
+    OpenVerifyRucio m_rucio;
     const bool m_observe;
     // When true, rewrite accepted SFS_REDIRECT host/port to the verified data server
-    // (XRD_OPENVERIFY_DIRECT_SERVER=1).
+    // (XRD_OPENVERIFY_DIRECT_SERVER=1). cmsd path only — do not use for EOS FSTs.
     const bool m_direct_server;
 
     std::string m_ov_cert;
@@ -144,8 +146,8 @@ class OpenVerifyFile : public XrdSfsFile {
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
     OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability, bool observe,
-                   bool direct_server, std::string ov_cert, std::string ov_key);
+                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
+                   OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert, std::string ov_key);
     ~OpenVerifyFile();
 
     XrdSfsFile* m_wrapped;
@@ -154,6 +156,7 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyMetrics& m_metrics;
     OpenVerifySingleFlight& m_single_flight;
     OpenVerifyHostReliability& m_host_reliability;
+    OpenVerifyRucio& m_rucio;
     const bool m_observe;
     const bool m_direct_server;
     const std::string m_ov_cert;

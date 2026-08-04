@@ -30,7 +30,11 @@ class OpenVerifyHostReliability;
 // XRD_OPENVERIFY_DIRECT_SERVER: if set to exactly 1, after a successful verify
 // (or positive-cache hit that recorded a data server), rewrite the client
 // SFS_REDIRECT host/port to that final data server instead of the cmsd next hop
-// (typically a site / lower redirector).
+// (typically a site / lower redirector). Applies to the cmsd path only — unsafe
+// for EOS when pointing at an FST (missing MGM-signed opaque). Rucio-first
+// redirects always use the site gateway from the PFN.
+//
+// XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 //
 class OpenVerifyMetrics {
    public:
@@ -94,6 +98,13 @@ class OpenVerifyMetrics {
     // with no accepted verify; last redirect returned best-effort.
     // Never recorded in observe mode (observe does not retry).
     void RecordOpenRetryExhausted();
+
+    // Rucio list_replicas outcome: ok | empty | auth_error | timeout | error.
+    void RecordRucioLookup(const std::string& result);
+    // Number of PFN candidates returned by a successful Rucio lookup.
+    void RecordRucioCandidates(size_t count);
+    // Accepted open location source: rucio | cmsd.
+    void RecordLocationSource(const std::string& source);
 
     static constexpr int kMaxAcceptAttempts = 3;
 
@@ -180,6 +191,15 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
     std::atomic<uint64_t> m_accepted_by_attempt[kMaxAcceptAttempts]{};
     std::atomic<uint64_t> m_retry_exhausted{0};
+
+    std::atomic<uint64_t> m_rucio_lookup_ok{0};
+    std::atomic<uint64_t> m_rucio_lookup_empty{0};
+    std::atomic<uint64_t> m_rucio_lookup_auth_error{0};
+    std::atomic<uint64_t> m_rucio_lookup_timeout{0};
+    std::atomic<uint64_t> m_rucio_lookup_error{0};
+    std::atomic<uint64_t> m_rucio_candidates{0};
+    std::atomic<uint64_t> m_location_source_rucio{0};
+    std::atomic<uint64_t> m_location_source_cmsd{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
     // Leaders that entered the FIFO: wait until admit or timeout.

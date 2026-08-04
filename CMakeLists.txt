@@ -8,6 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(GNUInstallDirs)
 
 find_package(XRootD CONFIG REQUIRED)
+find_package(CURL REQUIRED)
+find_package(nlohmann_json 3.2.0 REQUIRED)
 
 add_library(XrdOfsOpenVerify SHARED
     src/XrdOfsOpenVerifyFile.cc
@@ -17,6 +19,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/OpenVerifyMetrics.cc
     src/OpenVerifySingleFlight.cc
     src/XrdOfsOpenVerifyImpl.cc
+    src/OpenVerifyRucio.cc
 )
 
 target_include_directories(XrdOfsOpenVerify
@@ -29,6 +32,8 @@ target_link_libraries(XrdOfsOpenVerify
         XRootD::XrdServer
         XRootD::XrdUtils
         XRootD::XrdCl
+        CURL::libcurl
+        nlohmann_json::nlohmann_json
 )
 
 set_target_properties(XrdOfsOpenVerify PROPERTIES
@@ -71,3 +76,21 @@ target_link_libraries(openverify_singleflight_tests
 )
 
 add_test(NAME openverify_singleflight_tests COMMAND openverify_singleflight_tests)
+
+add_executable(openverify_rucio_tests
+    tests/OpenVerifyRucioTests.cc
+    src/OpenVerifyRucio.cc
+)
+
+target_include_directories(openverify_rucio_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(openverify_rucio_tests
+    PRIVATE
+        CURL::libcurl
+        nlohmann_json::nlohmann_json
+        XRootD::XrdUtils
+)
+
+add_test(NAME openverify_rucio_tests COMMAND openverify_rucio_tests)

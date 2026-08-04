@@ -584,60 +584,8 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
-    },
-    {
-      "id": 14,
-      "type": "timeseries",
-      "title": "Queue wait (admitted mean)",
-      "description": "Mean FIFO wait for leaders that got a verify slot. Rejects are rates \u2014 see Queue reject / s and Queue admissions.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 20
       },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(xrootd_openverify_queue_wait_seconds_sum{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_queue_wait_seconds_count{result=\"admitted\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
-          "legendFormat": "admitted",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
+      "description": "Leaders: admitted / queue_timeout / queue_full. queue_timeout rate is the capacity signal; admitted wait mean omitted (usually ~0)."
     },
     {
       "id": 15,
@@ -646,8 +594,8 @@
       "description": "open_verify wall time after admission. success/failure only \u2014 FIFO rejects are on Queue admissions. Failure mean often \u2248 VERIFY_TIMEOUT when timeouts dominate.",
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 24,
+        "x": 0,
         "y": 20
       },
       "datasource": {
@@ -707,7 +655,7 @@
       "id": 17,
       "type": "timeseries",
       "title": "Redirect delay p50 / p95 / p99 (all outcomes)",
-      "description": "All-outcomes hop latency quantiles. Spikes near configured timeouts are often queue/verify timeouts \u2014 prefer Queue wait and Verify RTT (success) for tuning.",
+      "description": "All-outcomes hop latency quantiles. Spikes near configured timeouts are often queue/verify timeouts \u2014 prefer Queue admissions and Verify RTT (success) for tuning.",
       "gridPos": {
         "h": 8,
         "w": 24,

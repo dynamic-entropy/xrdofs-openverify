@@ -42,6 +42,7 @@ std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
 }
 
 // Rewrite SFS_REDIRECT ErrInfo to the verified data server when known.
+// cmsd path only — do not use for Rucio gateway redirects (EOS FST lacks MGM opaque).
 void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const std::string& final_host, int final_port,
                                        XrdSysError& log) {
     if (!enabled || final_host.empty() || final_port < 0) {
@@ -52,11 +53,55 @@ void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const s
     log.Emsg(" INFO", "direct-server rewrite redirect to", msg.c_str());
 }
 
+void AppendTriedHost(std::string& tried_hosts, const std::string& hostPort) {
+    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+}
+
+std::string MergeTriedOpaque(const char* opaque, const std::string& tried_hosts, bool observe) {
+    std::string opaque_str = opaque ? opaque : "";
+    if (observe || tried_hosts.empty()) return opaque_str;
+
+    if (opaque_str.empty()) {
+        return "tried=" + tried_hosts;
+    }
+    size_t tried_pos = opaque_str.find("tried=");
+    if (tried_pos != std::string::npos) {
+        size_t end_pos = opaque_str.find('&', tried_pos);
+        if (end_pos == std::string::npos) {
+            opaque_str += "," + tried_hosts;
+        } else {
+            opaque_str.insert(end_pos, "," + tried_hosts);
+        }
+    } else {
+        opaque_str += "&tried=" + tried_hosts;
+    }
+    return opaque_str;
+}
+
+const char* RucioLookupResultLabel(OpenVerifyRucioLookupResult status) {
+    switch (status) {
+        case OpenVerifyRucioLookupResult::Ok:
+            return "ok";
+        case OpenVerifyRucioLookupResult::Empty:
+            return "empty";
+        case OpenVerifyRucioLookupResult::AuthError:
+            return "auth_error";
+        case OpenVerifyRucioLookupResult::Timeout:
+            return "timeout";
+        case OpenVerifyRucioLookupResult::Error:
+            return "error";
+        case OpenVerifyRucioLookupResult::Disabled:
+            return "error";
+    }
+    return "error";
+}
+
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
                                OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                               bool observe, bool direct_server, std::string ov_cert, std::string ov_key)
+                               OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
+                               std::string ov_key)
     : XrdSfsFile(wrapF->error),
       m_wrapped(wrapF),
       m_log(log),
@@ -64,6 +109,7 @@ OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCa
       m_metrics(metrics),
       m_single_flight(single_flight),
       m_host_reliability(host_reliability),
+      m_rucio(rucio),
       m_observe(observe),
       m_direct_server(direct_server),
       m_ov_cert(std::move(ov_cert)),
@@ -88,31 +134,133 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     bool retry = true;
     bool accepted = false;
     int sites_tried = 0;
+    bool accepted_from_rucio = false;
+    const std::string pathStr = fileName ? fileName : "";
+
+    // --- Rucio-first locate (feature-flagged) ---------------------------------
+    if (m_rucio.Enabled() && !pathStr.empty()) {
+        const char* prot = (client && client->prot[0]) ? client->prot : "";
+        const std::string scheme = OpenVerifyRucioSchemeFromProt(prot);
+        const std::string client_ip = (client && client->host) ? client->host : "";
+
+        const auto listed = m_rucio.ListReplicas(pathStr, scheme, client_ip);
+        if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
+            m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status));
+        }
+        if (listed.status == OpenVerifyRucioLookupResult::Ok) {
+            m_metrics.RecordRucioCandidates(listed.candidates.size());
+            m_log.Emsg(" INFO", "openverify rucio candidates", std::to_string(listed.candidates.size()).c_str());
+
+            for (const auto& cand : listed.candidates) {
+                if (retry_count >= max_retries) break;
+
+                std::string hostStr = NormalizeHostForXrdCl(cand.host);
+                const int portVal = cand.port;
+                const std::string hostPort =
+                    (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
+
+                // Synthesize SFS_REDIRECT to the site gateway from the PFN.
+                error.setErrInfo(portVal, hostStr.c_str());
+                rc = SFS_REDIRECT;
+                ++sites_tried;
+                ++retry_count;
+                OpenVerifyMetrics::RedirectTimer hop(m_metrics);
+
+                m_log.Emsg(" INFO", "rucio redirecting to", hostPort.c_str());
+
+                if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
+                    AppendTriedHost(tried_hosts, hostPort);
+                    hop.Avoided("quarantine");
+                    m_log.Emsg(" WARN", "skipping unhealthy rucio host:", hostPort.c_str());
+                    continue;
+                }
+
+                const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+                const auto cached = m_cache.Get(key);
+                const char* verify_opaque = opaque;
+
+                switch (cached.status) {
+                    case OpenVerifyCache::Status::Miss: {
+                        m_metrics.RecordCacheMiss();
+                        m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
+                        const auto verify_result = m_single_flight.Run(key, [&]() {
+                            std::string final_host;
+                            int final_port = -1;
+                            const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(),
+                                                        &final_host, &final_port);
+                            if (st.IsOK()) {
+                                m_metrics.RecordVerifySuccess();
+                                m_host_reliability.RecordVerifySuccess(hostStr, portVal);
+                                // Store DS for metrics/cache completeness; do not rewrite Rucio redirect to it.
+                                m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
+                            } else {
+                                const std::string failure_reason = st.GetErrorMessage().empty()
+                                                                       ? "openverify_failure"
+                                                                       : st.GetErrorMessage();
+                                m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
+                                m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                                m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                            }
+                            return st;
+                        });
+
+                        const std::string verify_err = verify_result.GetErrorMessage();
+                        if (verify_err == "openverify_queue_timeout") {
+                            hop.QueueRejected("queue_timeout");
+                        } else if (verify_err == "openverify_queue_full") {
+                            hop.QueueRejected("queue_full");
+                        } else {
+                            hop.VerifyFinished(verify_result.IsOK());
+                        }
+                        if (verify_result.IsOK()) {
+                            accepted = true;
+                            accepted_from_rucio = true;
+                            // Keep gateway host:port already in error (no DIRECT_SERVER rewrite).
+                            m_log.Emsg(" INFO", "openverify succeeded (rucio) for", key.c_str());
+                        } else {
+                            AppendTriedHost(tried_hosts, hostPort);
+                            m_log.Emsg(" WARN", "openverify failed (rucio) for", key.c_str());
+                        }
+                        break;
+                    }
+                    case OpenVerifyCache::Status::Positive:
+                        hop.CacheHitPositive();
+                        accepted = true;
+                        accepted_from_rucio = true;
+                        m_log.Emsg(" INFO", "openverify succeeded (rucio cached) for", key.c_str());
+                        break;
+                    case OpenVerifyCache::Status::Negative:
+                        hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
+                        AppendTriedHost(tried_hosts, hostPort);
+                        m_log.Emsg(" WARN", "openverify failed (rucio cached) for", key.c_str());
+                        break;
+                }
+
+                if (accepted) break;
+            }
+        } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
+            m_log.Emsg(" INFO", "openverify rucio lookup soft-fail; falling back to cmsd");
+        }
+    }
+
+    // --- cmsd fallback (base OFS) ---------------------------------------------
+    retry = !accepted;
+    // Preserve Rucio attempt count toward the overall budget only for enforce retries
+    // remaining; cmsd loop uses its own retry_count starting from current value so
+    // total candidates across both paths stay within max_retries in enforce mode.
+    // For cmsd we reset the per-loop counter semantics: allow up to max_retries cmsd
+    // attempts after Rucio exhaustion (Rucio failures still feed tried=).
+    if (!accepted) {
+        retry_count = 0;
+        retry = true;
+    }
 
     while (retry && retry_count < max_retries) {
         // if max_retries exhausts and open_verify fail on all of them
         // currently we return the last redirect, thus only performing a best effort verify
         // another approach is we change this and return SFS_ERROR instead
 
-        std::string opaque_str = opaque ? opaque : "";
-        // Observe mode: never append plugin tried_hosts; client opaque (including any client tried=) is unchanged.
-        if (!m_observe && !tried_hosts.empty()) {
-            if (opaque_str.empty()) {
-                opaque_str = "tried=" + tried_hosts;
-            } else {
-                size_t tried_pos = opaque_str.find("tried=");
-                if (tried_pos != std::string::npos) {
-                    size_t end_pos = opaque_str.find('&', tried_pos);
-                    if (end_pos == std::string::npos) {
-                        opaque_str += "," + tried_hosts;
-                    } else {
-                        opaque_str.insert(end_pos, "," + tried_hosts);
-                    }
-                } else {
-                    opaque_str += "&tried=" + tried_hosts;
-                }
-            }
-        }
+        std::string opaque_str = MergeTriedOpaque(opaque, tried_hosts, m_observe);
 
         m_log.Emsg("INFO", "Retrying with opaque = ", opaque_str.c_str());
 
@@ -146,13 +294,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         // Decide if the host should be added to the tried list
         // based on past error patterns
         if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
-            tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+            AppendTriedHost(tried_hosts, hostPort);
             hop.Avoided("quarantine");
             m_log.Emsg(" WARN", "skipping unhealthy host:", hostPort.c_str());
             continue;
         }
 
-        const std::string pathStr = fileName ? fileName : "";
         const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
         const auto cached = m_cache.Get(key);
 
@@ -192,6 +339,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 }
                 if (verify_result.IsOK()) {
                     accepted = true;
+                    accepted_from_rucio = false;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
                     // Leader and followers both read the DS from cache after put.
@@ -200,7 +348,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         MaybeRewriteRedirectToFinalServer(error, true, after.final_host, after.final_port, m_log);
                     }
                 } else {
-                    tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                    AppendTriedHost(tried_hosts, hostPort);
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());
                 }
                 break;
@@ -208,13 +356,14 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Positive:
                 hop.CacheHitPositive();
                 accepted = true;
+                accepted_from_rucio = false;
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
                 MaybeRewriteRedirectToFinalServer(error, m_direct_server, cached.final_host, cached.final_port, m_log);
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:
                 hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
-                tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
+                AppendTriedHost(tried_hosts, hostPort);
                 m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
                 break;
         }
@@ -222,6 +371,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     if (accepted) {
         m_metrics.RecordOpenAccepted(sites_tried);
+        m_metrics.RecordLocationSource(accepted_from_rucio ? "rucio" : "cmsd");
+        if (accepted_from_rucio) {
+            rc = SFS_REDIRECT;
+        }
     } else if (!m_observe && rc == SFS_REDIRECT && retry_count >= max_retries) {
         // Enforce only: the retry budget was fully spent with no accept.
         // Observe uses max_retries=1 and must not record exhausted — that would

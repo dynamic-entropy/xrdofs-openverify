@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -11,8 +11,11 @@ BuildRequires:  cmake
 BuildRequires:  gcc-c++
 BuildRequires:  make
 BuildRequires:  xrootd-server-devel >= 6.0.0
+BuildRequires:  libcurl-devel
+BuildRequires:  nlohmann-json-devel
 
 Requires:       xrootd-server%{?_isa} >= 6.0.0
+Requires:       libcurl%{?_isa}
 
 %description
 XrdOfsOpenVerify is an XRootD OFS plugin that wraps the native filesystem
@@ -36,5 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 04 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.0-1
+- Add feature-flagged Rucio-first replica lookup with cmsd fallback.
+- Redirect to site gateway from Rucio PFNs; match scheme to client protocol.
+- Add Rucio/location-source Prometheus metrics.
+
 * Fri May 08 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.1.0-1
 - Initial RPM packaging for the OpenVerify plugin.

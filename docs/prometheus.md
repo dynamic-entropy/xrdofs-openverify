@@ -4,6 +4,7 @@ Metrics are written in Prometheus text exposition format via
 `XRD_OPENVERIFY_METRICS_PATH` (node_exporter `textfile_collector`).
 
 Environment variables are summarized in `include/OpenVerifyMetrics.hh`.
+Rucio-first locate (`XRD_OPENVERIFY_RUCIO=1`) adds lookup/source counters below.
 
 ## Grafana dashboards
 
@@ -48,6 +49,9 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
 - `xrootd_openverify_accepted_total` (`attempt` = `1`|`2`|`3`)
 - `xrootd_openverify_retry_exhausted_total`
+- `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`)
+- `xrootd_openverify_rucio_candidates_total`
+- `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd`)
 
 **Appear after first event:**
 
@@ -107,6 +111,29 @@ Heatmap / bin rates:
 
 ```promql
 sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
+```
+
+### Rucio-first locate
+
+When `XRD_OPENVERIFY_RUCIO=1`, OpenVerify queries CMS Rucio before cmsd.
+Soft-fails (empty / auth / timeout / error) and all-candidates-failed fall back
+to cmsd. See the **Rucio-first locate** row on
+[`openverify-cms-ops.json`](grafana/openverify-cms-ops.json).
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error` | `list_replicas` outcome |
+| `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
+| `location_source_total` | `source=rucio\|cmsd` | Accepted open’s location source |
+
+```promql
+# Share of accepts from Rucio
+sum(rate(xrootd_openverify_location_source_total{source="rucio"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_location_source_total[5m])), 1e-9)
+
+# Soft-fail rate (fallback to cmsd)
+sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
 ```
 
 ### Accept attempt (retry depth)
