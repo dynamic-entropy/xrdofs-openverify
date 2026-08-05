@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <random>
 #include <string>
+#include <unordered_set>
 
 #include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
@@ -16,6 +17,46 @@ std::string NormalizeHostForXrdCl(const std::string& host) {
         return "127.0.0.1";
     }
     return host;
+}
+
+// Parse client/plugin `tried=` CGI (comma-separated host or host:port entries).
+std::unordered_set<std::string> ParseTriedHosts(const char* opaque) {
+    std::unordered_set<std::string> out;
+    if (!opaque || !*opaque) return out;
+
+    std::string s = opaque;
+    if (!s.empty() && s.front() == '?') s.erase(s.begin());
+
+    const size_t pos = s.find("tried=");
+    if (pos == std::string::npos) return out;
+    size_t start = pos + 6;
+    size_t end = s.find('&', start);
+    if (end == std::string::npos) end = s.size();
+    const std::string list = s.substr(start, end - start);
+
+    size_t i = 0;
+    while (i < list.size()) {
+        size_t j = list.find(',', i);
+        if (j == std::string::npos) j = list.size();
+        std::string entry = list.substr(i, j - i);
+        // trim whitespace
+        while (!entry.empty() && (entry.front() == ' ' || entry.front() == '\t')) entry.erase(entry.begin());
+        while (!entry.empty() && (entry.back() == ' ' || entry.back() == '\t')) entry.pop_back();
+        if (!entry.empty()) out.insert(std::move(entry));
+        i = j + 1;
+    }
+    return out;
+}
+
+// True if host or host:port appears in the client's tried= list.
+bool IsInTriedList(const std::unordered_set<std::string>& tried, const std::string& host, int port) {
+    if (tried.empty() || host.empty()) return false;
+    if (tried.count(host)) return true;
+    if (port >= 0) {
+        const std::string hostPort = host + ":" + std::to_string(port);
+        if (tried.count(hostPort)) return true;
+    }
+    return false;
 }
 
 bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
@@ -133,9 +174,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     const int max_retries = m_observe ? 1 : OpenVerifyMetrics::kMaxAcceptAttempts;
     bool retry = true;
     bool accepted = false;
-    int sites_tried = 0;
+    int rucio_sites_tried = 0;
+    int cmsd_sites_tried = 0;
     bool accepted_from_rucio = false;
     const std::string pathStr = fileName ? fileName : "";
+    // Client-supplied tried= (and any prior plugin injections on retries).
+    const auto client_tried = ParseTriedHosts(opaque);
 
     // --- Rucio-first locate (feature-flagged) ---------------------------------
     if (m_rucio.Enabled() && !pathStr.empty()) {
@@ -159,10 +203,17 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 const std::string hostPort =
                     (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
 
+                // Honour client tried= (bare host or host:port) before counting an attempt.
+                if (IsInTriedList(client_tried, hostStr, portVal)) {
+                    m_log.Emsg(" INFO", "skipping rucio host in client tried=:", hostPort.c_str());
+                    AppendTriedHost(tried_hosts, hostPort);
+                    continue;
+                }
+
                 // Synthesize SFS_REDIRECT to the site gateway from the PFN.
                 error.setErrInfo(portVal, hostStr.c_str());
                 rc = SFS_REDIRECT;
-                ++sites_tried;
+                ++rucio_sites_tried;
                 ++retry_count;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
@@ -244,15 +295,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     // --- cmsd fallback (base OFS) ---------------------------------------------
-    retry = !accepted;
-    // Preserve Rucio attempt count toward the overall budget only for enforce retries
-    // remaining; cmsd loop uses its own retry_count starting from current value so
-    // total candidates across both paths stay within max_retries in enforce mode.
-    // For cmsd we reset the per-loop counter semantics: allow up to max_retries cmsd
-    // attempts after Rucio exhaustion (Rucio failures still feed tried=).
+    // Fresh attempt budget for cmsd (Rucio failures still feed tried=).
     if (!accepted) {
         retry_count = 0;
+        cmsd_sites_tried = 0;
         retry = true;
+    } else {
+        retry = false;
     }
 
     while (retry && retry_count < max_retries) {
@@ -279,7 +328,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         if (rc != SFS_REDIRECT) break;
 
-        ++sites_tried;
+        ++cmsd_sites_tried;
         OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
         int port;
@@ -370,8 +419,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     if (accepted) {
-        m_metrics.RecordOpenAccepted(sites_tried);
-        m_metrics.RecordLocationSource(accepted_from_rucio ? "rucio" : "cmsd");
+        const char* source = accepted_from_rucio ? "rucio" : "cmsd";
+        const int attempt = accepted_from_rucio ? rucio_sites_tried : cmsd_sites_tried;
+        m_metrics.RecordOpenAccepted(attempt, source);
+        m_metrics.RecordLocationSource(source);
         if (accepted_from_rucio) {
             rc = SFS_REDIRECT;
         }

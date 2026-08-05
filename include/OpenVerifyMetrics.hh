@@ -91,9 +91,10 @@ class OpenVerifyMetrics {
     void RecordCmsdStall(int seconds);
 
     // Open accepted a verified/cached-positive redirect after `attempt` candidate
-    // sites (1 = first cmsd target succeeded). attempt is clamped to [1, kMaxAcceptAttempts].
+    // sites within `source` ("rucio" or "cmsd"). attempt is clamped to [1, kMaxAcceptAttempts].
+    // Counters are separate per source (Rucio retries do not inflate cmsd attempt).
     // In observe mode only attempt=1 is possible (no retry).
-    void RecordOpenAccepted(int attempt);
+    void RecordOpenAccepted(int attempt, const std::string& source);
     // Enforce mode only: retry budget fully spent (retry_count >= max_retries)
     // with no accepted verify; last redirect returned best-effort.
     // Never recorded in observe mode (observe does not retry).
@@ -189,7 +190,8 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
-    std::atomic<uint64_t> m_accepted_by_attempt[kMaxAcceptAttempts]{};
+    std::atomic<uint64_t> m_accepted_rucio_by_attempt[kMaxAcceptAttempts]{};
+    std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxAcceptAttempts]{};
     std::atomic<uint64_t> m_retry_exhausted{0};
 
     std::atomic<uint64_t> m_rucio_lookup_ok{0};

@@ -163,11 +163,15 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_cmsd_stall_seconds_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
          << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect, by candidate site attempt.\n"
+            "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect, by source and candidate attempt.\n"
             "# TYPE xrootd_openverify_accepted_total counter\n";
     for (int a = 0; a < kMaxAcceptAttempts; ++a) {
-        body << "xrootd_openverify_accepted_total{attempt=\"" << (a + 1) << "\"" << lbl << "} "
-             << m_accepted_by_attempt[a].load(std::memory_order_relaxed) << "\n";
+        body << "xrootd_openverify_accepted_total{source=\"rucio\",attempt=\"" << (a + 1) << "\"" << lbl << "} "
+             << m_accepted_rucio_by_attempt[a].load(std::memory_order_relaxed) << "\n";
+    }
+    for (int a = 0; a < kMaxAcceptAttempts; ++a) {
+        body << "xrootd_openverify_accepted_total{source=\"cmsd\",attempt=\"" << (a + 1) << "\"" << lbl << "} "
+             << m_accepted_cmsd_by_attempt[a].load(std::memory_order_relaxed) << "\n";
     }
     body << "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
             "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
@@ -433,10 +437,14 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordOpenAccepted(int attempt) {
+void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& source) {
     if (attempt < 1) attempt = 1;
     if (attempt > kMaxAcceptAttempts) attempt = kMaxAcceptAttempts;
-    m_accepted_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+    if (source == "rucio") {
+        m_accepted_rucio_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_accepted_cmsd_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+    }
     if (!m_path.empty()) Flush();
 }
 

@@ -47,7 +47,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
-- `xrootd_openverify_accepted_total` (`attempt` = `1`|`2`|`3`)
+- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd`, `attempt` = `1`|`2`|`3`)
 - `xrootd_openverify_retry_exhausted_total`
 - `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`)
 - `xrootd_openverify_rucio_candidates_total`
@@ -138,20 +138,22 @@ sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout
 
 ### Accept attempt (retry depth)
 
-When enforce mode retries across cmsd candidates (up to 3), record which attempt
-finally accepted a verified / positive-cache redirect. Quarantine skips and
-failed verifies both advance the attempt counter.
+When enforce mode retries across candidates (up to 3), record which attempt
+finally accepted a verified / positive-cache redirect. **Rucio and cmsd are
+counted separately** (`source` label). Quarantine skips and failed verifies
+advance the attempt counter within that source; client `tried=` skips on the
+Rucio path do not.
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `accepted_total` | `attempt=1\|2\|3` | Open accepted a redirect on the Nth candidate |
+| `accepted_total` | `source=rucio\|cmsd`, `attempt=1\|2\|3` | Open accepted on the Nth candidate of that source |
 | `retry_exhausted_total` | (instance) | Enforce only: max attempts with no verify success; last redirect returned best-effort |
 
 ```promql
-# Frequency over a window (bar chart)
-sum by (attempt) (increase(xrootd_openverify_accepted_total[6h]))
+# Frequency over a window (bar chart), split by source
+sum by (source, attempt) (increase(xrootd_openverify_accepted_total[6h]))
 
-# Share accepted on first try
+# Share accepted on first try (all sources)
 sum(rate(xrootd_openverify_accepted_total{attempt="1"}[5m]))
 /
 clamp_min(sum(rate(xrootd_openverify_accepted_total[5m])), 1e-9)

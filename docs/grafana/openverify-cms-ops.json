@@ -1552,7 +1552,7 @@
       "id": 32,
       "type": "barchart",
       "title": "OpenVerify success by site attempt",
-      "description": "Enforce only: which cmsd candidate was accepted (1/2/3). In observe only attempt=1 is possible.",
+      "description": "Which candidate within each source was accepted (1/2/3). Rucio and cmsd are counted separately. In observe only attempt=1 is possible.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1566,8 +1566,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (attempt) (increase(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__range]))",
-          "legendFormat": "{{attempt}}",
+          "expr": "sum by (source, attempt) (increase(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__range]))",
+          "legendFormat": "{{source}} attempt {{attempt}}",
           "format": "time_series",
           "instant": true,
           "datasource": {
@@ -1609,7 +1609,7 @@
       "id": 33,
       "type": "timeseries",
       "title": "OpenVerify accept rate by attempt",
-      "description": "Rate of opens accepted on the Nth cmsd candidate, plus exhausted. exhausted = enforce only: retry budget spent with no verify success (not recorded in observe; observe never retries).",
+      "description": "Rate of opens accepted on the Nth candidate within each source (rucio|cmsd), plus exhausted. exhausted = enforce only: cmsd retry budget spent with no verify success.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1623,8 +1623,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "attempt {{attempt}}",
+          "expr": "sum by (source, attempt) (rate(xrootd_openverify_accepted_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{source}} attempt {{attempt}}",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
@@ -1733,7 +1733,7 @@
       "id": 42,
       "type": "stat",
       "title": "Accept attempt mix (range)",
-      "description": "Share of accepted opens that needed attempt 2 or 3 in the selected time range.",
+      "description": "Share of accepted opens (any source) that needed attempt 2 or 3 within that source.",
       "gridPos": {
         "h": 4,
         "w": 6,

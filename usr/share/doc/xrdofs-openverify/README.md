@@ -53,7 +53,7 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
 | `X509_USER_PROXY` | X.509 proxy used for Rucio `x509_proxy` auth (same default credentials path as verify) |
 
-Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
+Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Client `tried=` is honoured when walking Rucio PFNs. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
 
 ## Metrics (Prometheus)
 
