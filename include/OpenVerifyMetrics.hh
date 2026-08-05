@@ -109,6 +109,12 @@ class OpenVerifyMetrics {
     // Lookup was ok (PFNs returned) but none accepted; fall through to cmsd.
     // Distinct from soft-fail (empty/auth/timeout/error) and from cmsd retry_exhausted.
     void RecordRucioExhausted();
+    // After rucio exhaust, cmsd openverify accepted (recovery). Subset of exhausted;
+    // excludes soft-fail→cmsd and exhaust where cmsd also fails.
+    void RecordRucioExhaustedRecovered();
+    // After rucio exhaust, cmsd accepted: was that host already in the Rucio PFN list?
+    // result: overlap | catalog_disagree (diagnostic; sum equals recovered).
+    void RecordRucioCmsdCompare(const std::string& result);
     // Accepted open locate path: rucio | cmsd (rename series planned).
     void RecordLocationSource(const std::string& source);
     // Wall time of one locate call: source "rucio" (list_replicas) or "cmsd" (wrapped OFS open/select).
@@ -212,6 +218,9 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_rucio_lookup_error{0};
     std::atomic<uint64_t> m_rucio_candidates{0};
     std::atomic<uint64_t> m_rucio_exhausted{0};
+    std::atomic<uint64_t> m_rucio_exhausted_recovered{0};
+    std::atomic<uint64_t> m_rucio_cmsd_compare_overlap{0};
+    std::atomic<uint64_t> m_rucio_cmsd_compare_catalog_disagree{0};
     std::atomic<uint64_t> m_location_source_rucio{0};
     std::atomic<uint64_t> m_location_source_cmsd{0};
 

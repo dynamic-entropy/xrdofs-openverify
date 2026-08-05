@@ -3,6 +3,7 @@
 #include <random>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "OpenVerifyCacheKey.hh"
 #include "XrdOfsOpenVerify.hh"
@@ -98,6 +99,50 @@ void AppendTriedHost(std::string& tried_hosts, const std::string& hostPort) {
     tried_hosts = tried_hosts.empty() ? hostPort : tried_hosts + "," + hostPort;
 }
 
+// Index Rucio PFN hosts for later cmsd-accept compare (bare host + host:port).
+void IndexRucioHosts(const std::vector<OpenVerifyRucioCandidate>& candidates,
+                     std::unordered_set<std::string>& out) {
+    for (const auto& cand : candidates) {
+        const std::string host = NormalizeHostForXrdCl(cand.host);
+        if (host.empty()) continue;
+        out.insert(host);
+        if (cand.port >= 0) {
+            out.insert(host + ":" + std::to_string(cand.port));
+        }
+    }
+}
+
+std::string JoinRucioHostPorts(const std::vector<OpenVerifyRucioCandidate>& candidates) {
+    std::string out;
+    for (const auto& cand : candidates) {
+        const std::string host = NormalizeHostForXrdCl(cand.host);
+        if (host.empty()) continue;
+        const std::string hp =
+            (cand.port < 0) ? host : (host + ":" + std::to_string(cand.port));
+        out = out.empty() ? hp : out + "," + hp;
+    }
+    return out;
+}
+
+// After Rucio exhaust + cmsd accept: overlap = cmsd host was in Rucio list (skipped /
+// tried= / quarantine / cmsd ignored tried=); catalog_disagree = cmsd host absent from list.
+void RecordCmsdAfterRucioExhaust(OpenVerifyMetrics& metrics, XrdSysError& log, const std::string& path,
+                                 const std::string& cmsd_host, int cmsd_port,
+                                 const std::unordered_set<std::string>& rucio_hosts, const std::string& rucio_list) {
+    // Durable: cmsd openverify succeeded after every Rucio PFN failed/was skipped.
+    metrics.RecordRucioExhaustedRecovered();
+    // Temporary diagnostic: hostname overlap vs Rucio list (redirector vs direct site).
+    const bool overlap = IsInTriedList(rucio_hosts, cmsd_host, cmsd_port);
+    const char* result = overlap ? "overlap" : "catalog_disagree";
+    metrics.RecordRucioCmsdCompare(result);
+    const std::string cmsd_hp =
+        (cmsd_port < 0) ? cmsd_host : (cmsd_host + ":" + std::to_string(cmsd_port));
+    // One greppable line: LFN + cmsd host that worked + Rucio list that failed.
+    const std::string msg = std::string("path=") + path + " cmsd=" + cmsd_hp + " result=" + result + " rucio=[" +
+                            rucio_list + "]";
+    log.Emsg(" INFO", "openverify cmsd after rucio exhaust:", msg.c_str());
+}
+
 std::string MergeTriedOpaque(const char* opaque, const std::string& tried_hosts, bool observe) {
     std::string opaque_str = opaque ? opaque : "";
     if (observe || tried_hosts.empty()) return opaque_str;
@@ -177,6 +222,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     int rucio_sites_tried = 0;
     int cmsd_sites_tried = 0;
     bool accepted_from_rucio = false;
+    bool after_rucio_exhaust = false;
+    std::unordered_set<std::string> rucio_host_index;
+    std::string rucio_host_list;
     const std::string pathStr = fileName ? fileName : "";
     // Client-supplied tried= (and any prior plugin injections on retries).
     const auto client_tried = ParseTriedHosts(opaque);
@@ -197,7 +245,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         }
         if (listed.status == OpenVerifyRucioLookupResult::Ok) {
             m_metrics.RecordRucioCandidates(listed.candidates.size());
-            m_log.Emsg(" INFO", "openverify rucio candidates", std::to_string(listed.candidates.size()).c_str());
+            IndexRucioHosts(listed.candidates, rucio_host_index);
+            rucio_host_list = JoinRucioHostPorts(listed.candidates);
+            m_log.Emsg(" INFO", "openverify rucio candidates", std::to_string(listed.candidates.size()).c_str(),
+                       rucio_host_list.c_str());
 
             for (const auto& cand : listed.candidates) {
                 // Observe: single candidate only. Enforce: walk every Rucio PFN (no 3-cap).
@@ -295,8 +346,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             }
             // PFNs were returned but none accepted (verify fail / cache-neg / quarantine / tried=).
             if (!accepted) {
+                after_rucio_exhaust = true;
                 m_metrics.RecordRucioExhausted();
-                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd");
+                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd; rucio=[",
+                           rucio_host_list.c_str(), "]");
             }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
             m_log.Emsg(" INFO", "openverify rucio lookup soft-fail; falling back to cmsd");
@@ -406,6 +459,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     accepted_from_rucio = false;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify succeeded for", key.c_str());
+                    if (after_rucio_exhaust) {
+                        RecordCmsdAfterRucioExhaust(m_metrics, m_log, pathStr, hostStr, portVal, rucio_host_index,
+                                                    rucio_host_list);
+                    }
                     // Leader and followers both read the DS from cache after put.
                     if (m_direct_server) {
                         const auto after = m_cache.Get(key);
@@ -422,6 +479,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 accepted = true;
                 accepted_from_rucio = false;
                 m_log.Emsg(" INFO", "openverify succeeded (cached) for", key.c_str());
+                if (after_rucio_exhaust) {
+                    RecordCmsdAfterRucioExhaust(m_metrics, m_log, pathStr, hostStr, portVal, rucio_host_index,
+                                                rucio_host_list);
+                }
                 MaybeRewriteRedirectToFinalServer(error, m_direct_server, cached.final_host, cached.final_port, m_log);
                 retry = false;
                 break;

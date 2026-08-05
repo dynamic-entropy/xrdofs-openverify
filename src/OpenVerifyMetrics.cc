@@ -214,6 +214,17 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_rucio_exhausted_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
          << m_rucio_exhausted.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_exhausted_recovered_total Rucio PFN list exhausted then cmsd openverify accepted.\n"
+            "# TYPE xrootd_openverify_rucio_exhausted_recovered_total counter\n"
+            "xrootd_openverify_rucio_exhausted_recovered_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_exhausted_recovered.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_cmsd_compare_total After Rucio exhaust, cmsd accept vs Rucio PFN host list.\n"
+            "# TYPE xrootd_openverify_rucio_cmsd_compare_total counter\n"
+            "xrootd_openverify_rucio_cmsd_compare_total{result=\"overlap\""
+         << lbl << "} " << m_rucio_cmsd_compare_overlap.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_cmsd_compare_total{result=\"catalog_disagree\""
+         << lbl << "} " << m_rucio_cmsd_compare_catalog_disagree.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_location_source_total Accepted opens by locate path (rucio vs cmsd).\n"
             "# TYPE xrootd_openverify_location_source_total counter\n"
             "xrootd_openverify_location_source_total{source=\"rucio\""
@@ -503,6 +514,20 @@ void OpenVerifyMetrics::RecordRucioCandidates(size_t count) {
 
 void OpenVerifyMetrics::RecordRucioExhausted() {
     m_rucio_exhausted.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioExhaustedRecovered() {
+    m_rucio_exhausted_recovered.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioCmsdCompare(const std::string& result) {
+    if (result == "overlap") {
+        m_rucio_cmsd_compare_overlap.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_rucio_cmsd_compare_catalog_disagree.fetch_add(1, std::memory_order_relaxed);
+    }
     if (!m_path.empty()) Flush();
 }
 

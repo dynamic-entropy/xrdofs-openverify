@@ -128,7 +128,15 @@ only after the current verify fails. See the **Rucio-first locate** row on
 | `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error` | `list_replicas` outcome; `empty` = no replicas (soft-fail) |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
 | `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
+| `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |
+| `rucio_cmsd_compare_total` | `result=overlap\|catalog_disagree` | Diagnostic split of recovered by hostname vs Rucio list (sum = recovered) |
 | `location_source_total` | `source=rucio\|cmsd` | Accepted open’s locate path (rucio vs cmsd; not destination site) |
+
+Primary fallthrough success signal: `recovered / exhausted` (how often cmsd
+openverify succeeds after every Rucio PFN failed). Soft-fail→cmsd is **not**
+included (Rucio never produced a tryable list). Diagnostic logs
+`openverify cmsd after rucio exhaust: …` still split recovered into
+`overlap` vs `catalog_disagree`.
 
 When Rucio is enabled, cmsd-path accepts should satisfy:
 
@@ -147,6 +155,14 @@ sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout
 
 # ok-but-no-accept fallthrough
 sum(rate(xrootd_openverify_rucio_exhausted_total[5m]))
+
+# cmsd openverify succeeded after that fallthrough
+sum(rate(xrootd_openverify_rucio_exhausted_recovered_total[5m]))
+
+# recovery fraction (cmsd saved the open)
+sum(rate(xrootd_openverify_rucio_exhausted_recovered_total[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total[5m])), 1e-9)
 
 # Bound check (expect ≤ 1 when Rucio is always on)
 sum(rate(xrootd_openverify_location_source_total{source="cmsd"}[5m]))

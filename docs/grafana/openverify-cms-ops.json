@@ -2846,7 +2846,7 @@
       "gridPos": {
         "x": 0,
         "y": 139,
-        "w": 8,
+        "w": 6,
         "h": 4
       },
       "datasource": {
@@ -2904,9 +2904,9 @@
       "title": "Rucio exhausted / s",
       "description": "Lookup returned PFNs but none accepted (verify fail / negative cache / quarantine / tried=). Fall through to cmsd. With soft-fail: cmsd-path accepts \u2264 soft-fail + exhausted. Requires plugin with rucio_exhausted_total; re-import this dashboard if the panel is missing.",
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 139,
-        "w": 8,
+        "w": 6,
         "h": 4
       },
       "datasource": {
@@ -2964,8 +2964,8 @@
       "title": "PFNs / ok lookup",
       "description": "Average Rucio PFN candidates returned per successful lookup.",
       "gridPos": {
-        "x": 16,
-        "y": 139,
+        "x": 0,
+        "y": 143,
         "w": 8,
         "h": 4
       },
@@ -3018,7 +3018,7 @@
       "description": "Which path supplied the accepted redirect: rucio (verified Rucio PFN) vs cmsd (base OFS, including after Rucio soft-fail or all Rucio candidates failed). Not destination site.",
       "gridPos": {
         "x": 0,
-        "y": 143,
+        "y": 155,
         "w": 12,
         "h": 8
       },
@@ -3078,7 +3078,7 @@
       "description": "ok = candidates returned; empty/auth_error/timeout/error = soft-fail to cmsd.",
       "gridPos": {
         "x": 12,
-        "y": 143,
+        "y": 155,
         "w": 12,
         "h": 8
       },
@@ -3139,7 +3139,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 151
+        "y": 163
       },
       "collapsed": false,
       "panels": []
@@ -3153,7 +3153,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 152
+        "y": 164
       },
       "datasource": {
         "type": "prometheus",
@@ -3214,7 +3214,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 152
+        "y": 164
       },
       "datasource": {
         "type": "prometheus",
@@ -3275,7 +3275,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 156
+        "y": 168
       },
       "datasource": {
         "type": "prometheus",
@@ -3330,7 +3330,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 164
+        "y": 176
       },
       "datasource": {
         "type": "prometheus",
@@ -3370,7 +3370,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 164
+        "y": 176
       },
       "datasource": {
         "type": "prometheus",
@@ -3399,6 +3399,210 @@
           "mode": "scheme",
           "scheme": "Spectral"
         }
+      }
+    },
+    {
+      "id": 111,
+      "type": "timeseries",
+      "title": "cmsd after Rucio exhaust (host compare)",
+      "description": "Diagnostic only: of recovered opens (cmsd OK after Rucio exhaust), whether cmsd host was in the Rucio PFN list. Prefer \"Rucio exhaust \u2192 cmsd OK\" / recovery ratio for the real signal. Sum of series equals rucio_exhausted_recovered_total rate.",
+      "gridPos": {
+        "x": 0,
+        "y": 147,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(xrootd_openverify_rucio_cmsd_compare_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{result}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "overlap"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "catalog_disagree"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 112,
+      "type": "stat",
+      "title": "Rucio exhaust \u2192 cmsd OK / s",
+      "description": "cmsd openverify accepted after every Rucio PFN failed/was skipped. Primary recovery count (excludes soft-fail\u2192cmsd). Requires rucio_exhausted_recovered_total.",
+      "gridPos": {
+        "x": 12,
+        "y": 139,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 113,
+      "type": "stat",
+      "title": "Exhaust recovery ratio",
+      "description": "recovered / exhausted: fraction of Rucio-exhaust opens where cmsd openverify then succeeded.",
+      "gridPos": {
+        "x": 18,
+        "y": 139,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.85
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
       }
     }
   ],
@@ -3533,6 +3737,6 @@
   "timezone": "browser",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 15,
+  "version": 17,
   "description": "CMS global redirector ops: AAA baseline, OpenVerify health/verify/sites, avoidance & retries, Rucio-first, locate latency."
 }
