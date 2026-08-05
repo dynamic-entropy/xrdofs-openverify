@@ -187,8 +187,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const std::string scheme = OpenVerifyRucioSchemeFromProt(prot);
         const std::string client_ip = (client && client->host) ? client->host : "";
 
+        const auto rucio_t0 = std::chrono::steady_clock::now();
         const auto listed = m_rucio.ListReplicas(pathStr, scheme, client_ip);
         if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
+            const double rucio_s =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - rucio_t0).count();
+            m_metrics.RecordLocateLatency("rucio", rucio_s);
             m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status));
         }
         if (listed.status == OpenVerifyRucioLookupResult::Ok) {
@@ -196,7 +200,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             m_log.Emsg(" INFO", "openverify rucio candidates", std::to_string(listed.candidates.size()).c_str());
 
             for (const auto& cand : listed.candidates) {
-                if (retry_count >= max_retries) break;
+                // Observe: single candidate only. Enforce: walk every Rucio PFN (no 3-cap).
+                if (m_observe && rucio_sites_tried >= 1) break;
 
                 std::string hostStr = NormalizeHostForXrdCl(cand.host);
                 const int portVal = cand.port;
@@ -214,7 +219,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 error.setErrInfo(portVal, hostStr.c_str());
                 rc = SFS_REDIRECT;
                 ++rucio_sites_tried;
-                ++retry_count;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
                 m_log.Emsg(" INFO", "rucio redirecting to", hostPort.c_str());
@@ -289,6 +293,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
                 if (accepted) break;
             }
+            // PFNs were returned but none accepted (verify fail / cache-neg / quarantine / tried=).
+            if (!accepted) {
+                m_metrics.RecordRucioExhausted();
+                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd");
+            }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
             m_log.Emsg(" INFO", "openverify rucio lookup soft-fail; falling back to cmsd");
         }
@@ -313,7 +322,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         m_log.Emsg("INFO", "Retrying with opaque = ", opaque_str.c_str());
 
+        const auto cmsd_t0 = std::chrono::steady_clock::now();
         rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
+        {
+            const double cmsd_s =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - cmsd_t0).count();
+            m_metrics.RecordLocateLatency("cmsd", cmsd_s);
+        }
         m_log.Emsg("INFO", "returned from open with rc =", std::to_string(rc).c_str(), "\n");
 
         // SFS_STALL: pass through to the protocol layer (kXR_wait for root; Bridge

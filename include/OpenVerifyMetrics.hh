@@ -91,23 +91,35 @@ class OpenVerifyMetrics {
     void RecordCmsdStall(int seconds);
 
     // Open accepted a verified/cached-positive redirect after `attempt` candidate
-    // sites within `source` ("rucio" or "cmsd"). attempt is clamped to [1, kMaxAcceptAttempts].
-    // Counters are separate per source (Rucio retries do not inflate cmsd attempt).
-    // In observe mode only attempt=1 is possible (no retry).
+    // sites within `source` ("rucio" or "cmsd"). Counters are separate per source.
+    // cmsd: which redirect candidate (1..kMaxCmsdAcceptAttempts) was accepted.
+    // rucio: which ordered PFN/replica (1..kMaxRucioReplicaLabel) passed verify;
+    // overflow label is "N+" (CMS files do not have dozens of replicas).
+    // Observe: only replica/attempt 1.
     void RecordOpenAccepted(int attempt, const std::string& source);
-    // Enforce mode only: retry budget fully spent (retry_count >= max_retries)
-    // with no accepted verify; last redirect returned best-effort.
-    // Never recorded in observe mode (observe does not retry).
+    // Enforce mode only: cmsd retry budget fully spent with no accepted verify;
+    // last redirect returned best-effort. Never recorded in observe mode.
     void RecordOpenRetryExhausted();
 
     // Rucio list_replicas outcome: ok | empty | auth_error | timeout | error.
+    // empty = no replicas (soft-fail to cmsd); auth/timeout/error also soft-fail.
     void RecordRucioLookup(const std::string& result);
     // Number of PFN candidates returned by a successful Rucio lookup.
     void RecordRucioCandidates(size_t count);
-    // Accepted open location source: rucio | cmsd.
+    // Lookup was ok (PFNs returned) but none accepted; fall through to cmsd.
+    // Distinct from soft-fail (empty/auth/timeout/error) and from cmsd retry_exhausted.
+    void RecordRucioExhausted();
+    // Accepted open locate path: rucio | cmsd (rename series planned).
     void RecordLocationSource(const std::string& source);
+    // Wall time of one locate call: source "rucio" (list_replicas) or "cmsd" (wrapped OFS open/select).
+    void RecordLocateLatency(const std::string& source, double seconds);
 
-    static constexpr int kMaxAcceptAttempts = 3;
+    // cmsd / wrapped-OFS candidate budget (enforce).
+    static constexpr int kMaxCmsdAcceptAttempts = 3;
+    // Rucio replica-index label cap; above this → "N+" (e.g. "5+").
+    static constexpr int kMaxRucioReplicaLabel = 5;
+    // Backward-compatible alias used by cmsd open loop.
+    static constexpr int kMaxAcceptAttempts = kMaxCmsdAcceptAttempts;
 
     // Starts at construction (records redirects_handled). Call exactly one terminal method.
     class RedirectTimer {
@@ -190,8 +202,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
-    std::atomic<uint64_t> m_accepted_rucio_by_attempt[kMaxAcceptAttempts]{};
-    std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxAcceptAttempts]{};
+    std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxCmsdAcceptAttempts]{};
     std::atomic<uint64_t> m_retry_exhausted{0};
 
     std::atomic<uint64_t> m_rucio_lookup_ok{0};
@@ -200,6 +211,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_rucio_lookup_timeout{0};
     std::atomic<uint64_t> m_rucio_lookup_error{0};
     std::atomic<uint64_t> m_rucio_candidates{0};
+    std::atomic<uint64_t> m_rucio_exhausted{0};
     std::atomic<uint64_t> m_location_source_rucio{0};
     std::atomic<uint64_t> m_location_source_cmsd{0};
 
@@ -210,8 +222,15 @@ class OpenVerifyMetrics {
     // Leaders that ran open_verify after admission.
     DelayHistogram m_verify_rtt_success;
     DelayHistogram m_verify_rtt_failure;
+    // One-shot locate RTT: Rucio REST list_replicas vs cmsd/OFS open select.
+    DelayHistogram m_locate_rtt_rucio;
+    DelayHistogram m_locate_rtt_cmsd;
     StallHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;
+
+    // Rucio: replica index in try-order that passed verify → count (N or kMaxRucioReplicaLabel).
+    mutable std::mutex m_rucio_accept_mtx;
+    std::unordered_map<int, uint64_t> m_accepted_rucio_by_replica;
 };

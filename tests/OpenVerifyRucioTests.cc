@@ -2,6 +2,7 @@
 #include <string>
 
 #include "OpenVerifyRucio.hh"
+#include "OpenVerifyRucioSelector.hh"
 
 namespace {
 
@@ -78,10 +79,65 @@ void Test_ParseReplicasJsonArray() {
     const auto cands = OpenVerifyRucioParseReplicasJson(body, "root");
     Expect(cands.size() == 2, "array: two root candidates");
     if (cands.size() >= 2) {
-        Expect(cands[0].host == "a.example" && cands[0].port == 1095, "array: priority 1 first");
-        Expect(cands[0].rse == "T2_A", "array: rse A");
-        Expect(cands[1].host == "b.example" && cands[1].port == 1094, "array: priority 2 second");
+        // Parse preserves JSON object iteration order; try-order is a separate selector.
+        bool saw_a = false, saw_b = false;
+        for (const auto& c : cands) {
+            if (c.host == "a.example" && c.port == 1095 && c.rse == "T2_A" && c.priority == 1) saw_a = true;
+            if (c.host == "b.example" && c.port == 1094 && c.rse == "T2_B" && c.priority == 2) saw_b = true;
+        }
+        Expect(saw_a && saw_b, "array: both root PFNs with rse/priority");
     }
+}
+
+void Test_PrioritySelector() {
+    std::vector<OpenVerifyRucioCandidate> cands = {
+        {.host = "b.example", .port = 1094, .priority = 2},
+        {.host = "a.example", .port = 1095, .priority = 1},
+        {.host = "c.example", .port = 1094, .priority = 1},
+    };
+    OpenVerifyRucioPrioritySelector sel;
+    OpenVerifyRucioSelectContext ctx;
+    sel.Order(cands, ctx);
+    Expect(cands.size() == 3, "priority: size");
+    Expect(cands[0].priority == 1 && cands[1].priority == 1 && cands[2].priority == 2, "priority: sorted");
+    Expect(cands[0].host == "a.example", "priority: stable first among ties");
+    Expect(cands[1].host == "c.example", "priority: stable second among ties");
+}
+
+void Test_RandomSelectorDeterministic() {
+    std::vector<OpenVerifyRucioCandidate> cands = {
+        {.host = "a", .port = 1},
+        {.host = "b", .port = 2},
+        {.host = "c", .port = 3},
+        {.host = "d", .port = 4},
+    };
+    OpenVerifyRucioRandomSelector sel(42);
+    OpenVerifyRucioSelectContext ctx;
+    sel.Order(cands, ctx);
+    std::vector<OpenVerifyRucioCandidate> again = {
+        {.host = "a", .port = 1},
+        {.host = "b", .port = 2},
+        {.host = "c", .port = 3},
+        {.host = "d", .port = 4},
+    };
+    OpenVerifyRucioRandomSelector sel2(42);
+    sel2.Order(again, ctx);
+    Expect(cands.size() == again.size(), "random: size");
+    bool same = true;
+    for (size_t i = 0; i < cands.size(); ++i) {
+        if (cands[i].host != again[i].host) same = false;
+    }
+    Expect(same, "random: same seed → same order");
+    // With seed 42, order should differ from input for this size (probabilistic but fixed).
+    Expect(!(cands[0].host == "a" && cands[1].host == "b" && cands[2].host == "c" && cands[3].host == "d"),
+           "random: seed 42 reshuffles");
+}
+
+void Test_MakeSelector() {
+    Expect(std::string(OpenVerifyRucioMakeSelector("random")->Name()) == "random", "make random");
+    Expect(std::string(OpenVerifyRucioMakeSelector("priority")->Name()) == "priority", "make priority");
+    Expect(std::string(OpenVerifyRucioMakeSelector("geoip")->Name()) == "geoip", "make geoip");
+    Expect(std::string(OpenVerifyRucioMakeSelector("unknown")->Name()) == "random", "unknown → random");
 }
 
 void Test_ParseReplicasNdjson() {
@@ -112,6 +168,9 @@ int main() {
     Test_ParseReplicasJsonArray();
     Test_ParseReplicasNdjson();
     Test_ParseReplicasEmpty();
+    Test_PrioritySelector();
+    Test_RandomSelectorDeterministic();
+    Test_MakeSelector();
 
     if (g_failures) {
         std::cerr << g_failures << " failure(s)\n";

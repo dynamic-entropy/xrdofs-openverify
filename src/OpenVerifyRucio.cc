@@ -1,6 +1,6 @@
 #include "OpenVerifyRucio.hh"
+#include "OpenVerifyRucioSelector.hh"
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -177,10 +177,7 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
         return {};
     }
 
-    std::stable_sort(out.begin(), out.end(),
-                     [](const OpenVerifyRucioCandidate& a, const OpenVerifyRucioCandidate& b) {
-                         return a.priority < b.priority;
-                     });
+    // Try-order is applied by OpenVerifyRucioSelector after ListReplicas.
     return out;
 }
 
@@ -192,7 +189,10 @@ OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     while (!m_auth_url.empty() && m_auth_url.back() == '/') m_auth_url.pop_back();
     m_account = EnvOrDefault("XRD_OPENVERIFY_RUCIO_ACCOUNT", "");
     m_timeout_s = EnvLongOrDefault("XRD_OPENVERIFY_RUCIO_TIMEOUT", 10);
+    m_selector = OpenVerifyRucioMakeSelector(OpenVerifyRucioSelectorNameFromEnv());
 }
+
+OpenVerifyRucio::~OpenVerifyRucio() = default;
 
 void OpenVerifyRucio::LogConfig() {
     if (!m_enabled) return;
@@ -202,8 +202,9 @@ void OpenVerifyRucio::LogConfig() {
                    "openverify rucio enabled but XRD_OPENVERIFY_RUCIO_ACCOUNT unset; lookups will soft-fail to cmsd");
         return;
     }
+    const char* select = (m_selector) ? m_selector->Name() : "random";
     const std::string msg = std::string("openverify rucio enabled url=") + m_rucio_url + " auth=" + m_auth_url +
-                            " account=" + m_account;
+                            " account=" + m_account + " select=" + select;
     m_log.Emsg(" INFO", msg.c_str());
 }
 
@@ -390,6 +391,11 @@ OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, 
             }
             result = DoListReplicas(lfn, scheme, client_ip, token);
         }
+    }
+    if (result.status == OpenVerifyRucioLookupResult::Ok && m_selector && !result.candidates.empty()) {
+        OpenVerifyRucioSelectContext ctx;
+        ctx.client_ip = client_ip;
+        m_selector->Order(result.candidates, ctx);
     }
     return result;
 }

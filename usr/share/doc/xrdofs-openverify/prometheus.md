@@ -13,8 +13,7 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 | File | Audience |
 |------|----------|
 | [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
-| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS redirector ops: traffic, capacity, site×error; Enforce row for avoidance/attempts |
-| [`docs/grafana/xrdmon-cms-ops.json`](grafana/xrdmon-cms-ops.json) | AAA baseline from xrdmon-collector (r-stream, destinations, link/cmsm) |
+| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS XRootD OpenVerify: AAA baseline, OV health/verify/sites, avoidance & retries, Rucio, locate latency |
 
 **CMS ops variables** (top of dashboard):
 
@@ -47,11 +46,13 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
-- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd`, `attempt` = `1`|`2`|`3`)
+- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`)
 - `xrootd_openverify_retry_exhausted_total`
-- `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`)
+- `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`; `empty` = no replicas)
 - `xrootd_openverify_rucio_candidates_total`
-- `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd`)
+- `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
+- `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` — locate path, not destination site)
+- `xrootd_openverify_locate_rtt_seconds` (histogram by `source` = `rucio` \| `cmsd`)
 
 **Appear after first event:**
 
@@ -117,14 +118,23 @@ sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
 
 When `XRD_OPENVERIFY_RUCIO=1`, OpenVerify queries CMS Rucio before cmsd.
 Soft-fails (empty / auth / timeout / error) and all-candidates-failed fall back
-to cmsd. See the **Rucio-first locate** row on
+to cmsd. PFN try-order is selected by `XRD_OPENVERIFY_RUCIO_SELECT`
+(`random` default; `priority`; `geoip` reserved) — subsequent PFNs are tried
+only after the current verify fails. See the **Rucio-first locate** row on
 [`openverify-cms-ops.json`](grafana/openverify-cms-ops.json).
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error` | `list_replicas` outcome |
+| `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error` | `list_replicas` outcome; `empty` = no replicas (soft-fail) |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
-| `location_source_total` | `source=rucio\|cmsd` | Accepted open’s location source |
+| `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
+| `location_source_total` | `source=rucio\|cmsd` | Accepted open’s locate path (rucio vs cmsd; not destination site) |
+
+When Rucio is enabled, cmsd-path accepts should satisfy:
+
+`cmsd-path ≤ soft-fail + rucio_exhausted`
+
+(`soft-fail` = `empty|auth_error|timeout|error`; usually strictly smaller when cmsd also fails).
 
 ```promql
 # Share of accepts from Rucio
@@ -132,22 +142,42 @@ sum(rate(xrootd_openverify_location_source_total{source="rucio"}[5m]))
 /
 clamp_min(sum(rate(xrootd_openverify_location_source_total[5m])), 1e-9)
 
-# Soft-fail rate (fallback to cmsd)
+# Soft-fail (no usable list_replicas — includes empty replica list)
 sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
+
+# ok-but-no-accept fallthrough
+sum(rate(xrootd_openverify_rucio_exhausted_total[5m]))
+
+# Bound check (expect ≤ 1 when Rucio is always on)
+sum(rate(xrootd_openverify_location_source_total{source="cmsd"}[5m]))
+/
+clamp_min(
+  sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
+  + sum(rate(xrootd_openverify_rucio_exhausted_total[5m]))
+, 1e-9)
+
+# Mean locate RTT by source (Rucio list_replicas vs cmsd OFS open)
+sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_sum[5m]))
+/
+clamp_min(sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_count[5m])), 1e-9)
 ```
+
+AAA request volume (independent of OpenVerify) comes from **xrdmon**:
+`xrdmon_redir_total{opcode}` — see the **AAA baseline** row on the CMS ops
+dashboard.
 
 ### Accept attempt (retry depth)
 
-When enforce mode retries across candidates (up to 3), record which attempt
-finally accepted a verified / positive-cache redirect. **Rucio and cmsd are
-counted separately** (`source` label). Quarantine skips and failed verifies
-advance the attempt counter within that source; client `tried=` skips on the
-Rucio path do not.
+When enforce mode retries candidates, record which attempt finally accepted a
+verified / positive-cache redirect. **Rucio and cmsd are counted separately**
+(`source` label). Enforce walks **all** Rucio PFNs; cmsd is still capped at 3.
+Quarantine skips and failed verifies advance the attempt counter within that
+source; client `tried=` skips on the Rucio path do not.
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `accepted_total` | `source=rucio\|cmsd`, `attempt=1\|2\|3` | Open accepted on the Nth candidate of that source |
-| `retry_exhausted_total` | (instance) | Enforce only: max attempts with no verify success; last redirect returned best-effort |
+| `accepted_total` | `source=rucio\|cmsd`, `attempt=…` | rucio: verify succeeded on Nth ordered replica (`5+` overflow); cmsd: Nth redirect candidate |
+| `retry_exhausted_total` | (instance) | Enforce only: cmsd max attempts with no verify success; last redirect returned best-effort |
 
 ```promql
 # Frequency over a window (bar chart), split by source

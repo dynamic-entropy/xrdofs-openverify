@@ -51,9 +51,10 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_AUTH_URL` | Rucio auth base URL (default `https://cms-rucio-auth.cern.ch`) |
 | `XRD_OPENVERIFY_RUCIO_ACCOUNT` | Rucio account (required when Rucio lookup is enabled) |
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
+| `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `random` (default), `priority` (Rucio priority), or `geoip` (reserved; currently same as random). Next PFNs are tried only after the current one fails verify |
 | `X509_USER_PROXY` | X.509 proxy used for Rucio `x509_proxy` auth (same default credentials path as verify) |
 
-Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Client `tried=` is honoured when walking Rucio PFNs. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
+Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
 
 ## Metrics (Prometheus)
 

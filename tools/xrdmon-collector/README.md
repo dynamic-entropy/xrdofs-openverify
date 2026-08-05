@@ -7,8 +7,8 @@ UDP collector for CMS AAA redirectors → Prometheus textfile.
 | Goal | Series |
 |------|--------|
 | Demand | `xrdmon_redir_total{opcode}` (locate, openr, …) |
-| Sites touched / blame | `xrdmon_redir_dest_total{host}`, `xrdmon_redir_dest_hosts` |
-| Platform (xrootd) | `xrdmon_link_num\|maxn\|tot` (**xrootd only**, not cmsd) |
+| Destinations | `xrdmon_redir_dest_total{host}`, `xrdmon_redir_dest_hosts` |
+| Platform (xrootd) | `xrdmon_link_num\|maxn\|tot` (**xrootd only**, not cmsd; often absent on AAA redirectors) |
 | cmsd peer health | `xrdmon_cmsm_node_active{node,…}` |
 | Collector health | `xrdmon_packets_total{result}` |
 
@@ -26,7 +26,10 @@ UDP collector for CMS AAA redirectors → Prometheus textfile.
 
 ## Grafana
 
-[`docs/grafana/xrdmon-cms-ops.json`](../../docs/grafana/xrdmon-cms-ops.json) — re-import after updates.
+Panels live on the OpenVerify CMS ops board:
+
+[`docs/grafana/openverify-cms-ops.json`](../../docs/grafana/openverify-cms-ops.json)
+— top row **AAA baseline** (client redirects by type/destination, cmsd peers, collector health).
 
 ## Deploy
 

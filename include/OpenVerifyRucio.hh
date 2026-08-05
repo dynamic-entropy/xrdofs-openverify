@@ -1,11 +1,14 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "XrdSys/XrdSysError.hh"
+
+class OpenVerifyRucioSelector;
 
 // Feature-flagged CMS Rucio replica lookup for OpenVerify.
 //
@@ -14,6 +17,7 @@
 // XRD_OPENVERIFY_RUCIO_AUTH_URL   default https://cms-rucio-auth.cern.ch
 // XRD_OPENVERIFY_RUCIO_ACCOUNT    required when enabled
 // XRD_OPENVERIFY_RUCIO_TIMEOUT    HTTP timeout seconds (default 10)
+// XRD_OPENVERIFY_RUCIO_SELECT     try-order: random (default) | priority | geoip
 // X509_USER_PROXY                 proxy for /auth/x509_proxy
 //
 struct OpenVerifyRucioCandidate {
@@ -47,6 +51,10 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
 class OpenVerifyRucio {
    public:
     explicit OpenVerifyRucio(XrdSysError& log);
+    ~OpenVerifyRucio();
+
+    OpenVerifyRucio(const OpenVerifyRucio&) = delete;
+    OpenVerifyRucio& operator=(const OpenVerifyRucio&) = delete;
 
     bool Enabled() const { return m_enabled; }
 
@@ -69,6 +77,7 @@ class OpenVerifyRucio {
     std::string m_auth_url;
     std::string m_account;
     long m_timeout_s{10};
+    std::unique_ptr<OpenVerifyRucioSelector> m_selector;
 
     std::mutex m_token_mtx;
     std::string m_token;

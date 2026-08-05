@@ -2,12 +2,14 @@
 
 #include "OpenVerifyHostReliability.hh"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -163,13 +165,25 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_cmsd_stall_seconds_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
          << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect, by source and candidate attempt.\n"
+            "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect: "
+            "rucio=verify succeeded on Nth ordered replica; cmsd=Nth redirect candidate.\n"
             "# TYPE xrootd_openverify_accepted_total counter\n";
-    for (int a = 0; a < kMaxAcceptAttempts; ++a) {
-        body << "xrootd_openverify_accepted_total{source=\"rucio\",attempt=\"" << (a + 1) << "\"" << lbl << "} "
-             << m_accepted_rucio_by_attempt[a].load(std::memory_order_relaxed) << "\n";
+    {
+        std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
+        std::vector<int> replicas;
+        replicas.reserve(m_accepted_rucio_by_replica.size());
+        for (const auto& kv : m_accepted_rucio_by_replica) replicas.push_back(kv.first);
+        std::sort(replicas.begin(), replicas.end());
+        for (int a : replicas) {
+            const bool overflow = (a >= kMaxRucioReplicaLabel);
+            const auto it = m_accepted_rucio_by_replica.find(a);
+            const uint64_t n = (it != m_accepted_rucio_by_replica.end()) ? it->second : 0;
+            // Label still "attempt" for scrape compatibility; means replica index for rucio.
+            body << "xrootd_openverify_accepted_total{source=\"rucio\",attempt=\"" << a
+                 << (overflow ? "+" : "") << "\"" << lbl << "} " << n << "\n";
+        }
     }
-    for (int a = 0; a < kMaxAcceptAttempts; ++a) {
+    for (int a = 0; a < kMaxCmsdAcceptAttempts; ++a) {
         body << "xrootd_openverify_accepted_total{source=\"cmsd\",attempt=\"" << (a + 1) << "\"" << lbl << "} "
              << m_accepted_cmsd_by_attempt[a].load(std::memory_order_relaxed) << "\n";
     }
@@ -195,7 +209,12 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_rucio_candidates_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
          << m_rucio_candidates.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_location_source_total Accepted opens by location source.\n"
+            "# HELP xrootd_openverify_rucio_exhausted_total Rucio returned PFNs but none accepted; fall through to cmsd.\n"
+            "# TYPE xrootd_openverify_rucio_exhausted_total counter\n"
+            "xrootd_openverify_rucio_exhausted_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_exhausted.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_location_source_total Accepted opens by locate path (rucio vs cmsd).\n"
             "# TYPE xrootd_openverify_location_source_total counter\n"
             "xrootd_openverify_location_source_total{source=\"rucio\""
          << lbl << "} " << m_location_source_rucio.load(std::memory_order_relaxed) << "\n"
@@ -284,6 +303,10 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
     emit_labeled_delay_hist("xrootd_openverify_verify_rtt_seconds",
                             "open_verify wall time after FIFO admission (excludes queue wait).", "result", "success",
                             m_verify_rtt_success, "failure", m_verify_rtt_failure);
+    emit_labeled_delay_hist(
+        "xrootd_openverify_locate_rtt_seconds",
+        "Wall time of one locate: Rucio list_replicas or cmsd/OFS open select (excludes verify).", "source", "rucio",
+        m_locate_rtt_rucio, "cmsd", m_locate_rtt_cmsd);
 
     body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
             "# TYPE xrootd_openverify_verify_failures_total counter\n";
@@ -439,10 +462,14 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
 
 void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& source) {
     if (attempt < 1) attempt = 1;
-    if (attempt > kMaxAcceptAttempts) attempt = kMaxAcceptAttempts;
     if (source == "rucio") {
-        m_accepted_rucio_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+        if (attempt > kMaxRucioReplicaLabel) attempt = kMaxRucioReplicaLabel;
+        {
+            std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
+            m_accepted_rucio_by_replica[attempt] += 1;
+        }
     } else {
+        if (attempt > kMaxCmsdAcceptAttempts) attempt = kMaxCmsdAcceptAttempts;
         m_accepted_cmsd_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
     }
     if (!m_path.empty()) Flush();
@@ -474,12 +501,23 @@ void OpenVerifyMetrics::RecordRucioCandidates(size_t count) {
     if (!m_path.empty()) Flush();
 }
 
+void OpenVerifyMetrics::RecordRucioExhausted() {
+    m_rucio_exhausted.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
 void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
     if (source == "rucio") {
         m_location_source_rucio.fetch_add(1, std::memory_order_relaxed);
     } else {
         m_location_source_cmsd.fetch_add(1, std::memory_order_relaxed);
     }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordLocateLatency(const std::string& source, double seconds) {
+    if (seconds < 0) return;
+    ObserveHistogram(source == "rucio" ? m_locate_rtt_rucio : m_locate_rtt_cmsd, seconds);
     if (!m_path.empty()) Flush();
 }
 

@@ -20,6 +20,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/OpenVerifySingleFlight.cc
     src/XrdOfsOpenVerifyImpl.cc
     src/OpenVerifyRucio.cc
+    src/OpenVerifyRucioSelector.cc
 )
 
 target_include_directories(XrdOfsOpenVerify
@@ -80,6 +81,7 @@ add_test(NAME openverify_singleflight_tests COMMAND openverify_singleflight_test
 add_executable(openverify_rucio_tests
     tests/OpenVerifyRucioTests.cc
     src/OpenVerifyRucio.cc
+    src/OpenVerifyRucioSelector.cc
 )
 
 target_include_directories(openverify_rucio_tests

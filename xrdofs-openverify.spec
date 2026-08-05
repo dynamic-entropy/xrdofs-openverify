@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.1
+Version:        0.2.2
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,11 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Wed Aug 05 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.2-1
+- Enforce walks all Rucio PFNs (cmsd remains capped at 3).
+- Pluggable Rucio try-order selector (default random; priority/geoip hooks).
+- Split Grafana success/accept-rate panels by source (rucio vs cmsd).
+
 * Wed Aug 05 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.1-1
 - Split accepted_total attempt counters by source (rucio vs cmsd).
 - Honour client tried= when walking Rucio PFN candidates.
