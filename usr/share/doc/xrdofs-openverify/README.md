@@ -59,7 +59,7 @@ Rucio scheme selection follows the client wire protocol: `http`/`https` → `dav
 
 ## Failure log (campaign file)
 
-Set `XRD_OPENVERIFY_FAILURE_LOG` to an absolute path writable by the `xrootd` user to get one structured line per **live** `open_verify` failure (single-flight leader only). Existing daemon WARN lines and Prometheus `verify_failures_total` counters are unchanged (duplicated into this file, not moved).
+Set `XRD_OPENVERIFY_FAILURE_LOG` to an absolute path writable by the `xrootd` user to get one structured line per **live** `open_verify` failure (single-flight leader only). The file is a private append stream (not `XrdSysLogger`), so normal daemon/plugin INFO/WARN traffic stays on the main xrootd log. Existing daemon WARN lines and Prometheus `verify_failures_total` counters are unchanged (failure records are duplicated into this file, not moved).
 
 Recommended path (instance-scoped, matching `xrootd@fed` / `xrootd@local`):
 
@@ -67,16 +67,16 @@ Recommended path (instance-scoped, matching `xrootd@fed` / `xrootd@local`):
 XRD_OPENVERIFY_FAILURE_LOG=/var/log/xrootd/fed/openverify-failures.log
 ```
 
-If bind/open fails at plugin init, OpenVerify warns in the main log and continues without the campaign file.
+If open fails at plugin init, OpenVerify warns in the main log and continues without the campaign file.
 
 **Recorded:** live probe failures on the Rucio-first and cmsd paths (including empty-file failures).
 
 **Not recorded:** negative-cache hits, quarantine skips, queue full/timeout, Rucio lookup/auth soft-fails.
 
-Example line (timestamp/prefix added by `XrdSysLogger`):
+Example line:
 
 ```
-openverify_failure source=rucio attempt=2 host=cms-xrd.example.edu port=1094 path=/store/data/file.root pfn=root://cms-xrd.example.edu:1094//store/data/file.root protocol=root stage=open reason=socket_timeout status_code=103 err_no=0 detail="[ERROR] Socket timeout"
+2026-08-10T12:22:02 openverify_failure source=rucio attempt=2 host=cmsdcadisk.fnal.gov port=1094 path=/store/data/file.root pfn=root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/data/file.root probe=root://cmsdcadisk.fnal.gov:1094//store/data/file.root probe_path=//store/data/file.root protocol=root stage=open reason=not_found status_code=400 err_no=3011 detail="[ERROR] Error response: no such file or directory"
 ```
 
 Fields:
@@ -88,13 +88,15 @@ Fields:
 | `host` / `port` | Original gateway / cmsd next-hop (not the final data server) |
 | `path` | LFN / request path |
 | `pfn` | Rucio replica PFN as returned by catalog; for cmsd, synthesized `root://host:port//path` or `https://host:port/path` (no opaque/token) |
+| `probe` | Credential-free URL actually passed to `XrdCl::Open` (query stripped) |
+| `probe_path` | Path component of `probe` (what `xrdfs … stat` would use) |
 | `protocol` | `root` or `http` |
-| `stage` | `key`, `credential_setup`, `open`, `stat`, `empty_file`, or `vector_read` |
+| `stage` | Failed op: `key`, `credential_setup`, `open`, `stat`, `empty_file`, or `vector_read` |
 | `reason` | Stable classified reason (same vocabulary as Prometheus) |
 | `status_code` / `err_no` | XrdCl `Status::code` / `errNo` |
 | `detail` | Low-level `Status::ToString()` (no URL, opaque, token, or cert paths) |
 
-Filter failed Rucio verifications with e.g. `grep 'source=rucio'`, then group by `reason` / `stage` / `host`. Rotate with system logrotate (`create` as `xrootd:xrootd`); the plugin uses `Bind(..., lfh=0)` (no midnight rotate / fifo).
+Filter failed Rucio verifications with e.g. `grep 'source=rucio'`, then group by `reason` / `stage` / `host`. Rotate with system logrotate (`copytruncate`, `create` as `xrootd:xrootd`) because the plugin keeps the file descriptor open.
 
 ## Metrics (Prometheus)
 

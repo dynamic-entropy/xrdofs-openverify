@@ -7,7 +7,7 @@
 
 #include "OpenVerifyFailureLog.hh"
 #include "XrdSys/XrdSysError.hh"
-#include "XrdSys/XrdSysLogger.hh"
+#include "XrdSys/XrdSysLogger.hh"  // only for a throwaway daemon_log in Configure tests
 
 namespace {
 
@@ -27,7 +27,9 @@ OpenVerifyFailureRecord SampleRecord() {
     rec.host = "cms-xrd.example.edu";
     rec.port = 1094;
     rec.path = "/store/data/file.root";
-    rec.pfn = "root://cms-xrd.example.edu:1094//store/data/file.root";
+    rec.pfn = "root://cms-xrd.example.edu:1094//dcache/uscmsdisk/store/data/file.root";
+    rec.probe = "root://cms-xrd.example.edu:1094//store/data/file.root";
+    rec.probe_path = "//store/data/file.root";
     rec.protocol = "root";
     rec.stage = "open";
     rec.reason = "socket_timeout";
@@ -58,8 +60,12 @@ void Test_FormatRecordFields() {
     Expect(line.find(" host=cms-xrd.example.edu") != std::string::npos, "FormatRecordFields: host");
     Expect(line.find(" port=1094") != std::string::npos, "FormatRecordFields: port");
     Expect(line.find(" path=/store/data/file.root") != std::string::npos, "FormatRecordFields: path");
-    Expect(line.find(" pfn=root://cms-xrd.example.edu:1094//store/data/file.root") != std::string::npos,
+    Expect(line.find(" pfn=root://cms-xrd.example.edu:1094//dcache/uscmsdisk/store/data/file.root") !=
+               std::string::npos,
            "FormatRecordFields: pfn");
+    Expect(line.find(" probe=root://cms-xrd.example.edu:1094//store/data/file.root") != std::string::npos,
+           "FormatRecordFields: probe");
+    Expect(line.find(" probe_path=//store/data/file.root") != std::string::npos, "FormatRecordFields: probe_path");
     Expect(line.find(" protocol=root") != std::string::npos, "FormatRecordFields: protocol");
     Expect(line.find(" stage=open") != std::string::npos, "FormatRecordFields: stage");
     Expect(line.find(" reason=socket_timeout") != std::string::npos, "FormatRecordFields: reason");
@@ -103,6 +109,15 @@ void Test_SynthesizePfn() {
            "SynthesizePfn: no port + normalize path");
 }
 
+void Test_ProbeUrlHelpers() {
+    Expect(OpenVerifyFailureLog::StripUrlQuery("root://h:1094//store/a?authz=secret") == "root://h:1094//store/a",
+           "StripUrlQuery: drops query");
+    Expect(OpenVerifyFailureLog::PathFromUrl("root://h:1094//dcache/store/a.root") == "//dcache/store/a.root",
+           "PathFromUrl: keeps double-slash PFN path");
+    Expect(OpenVerifyFailureLog::PathFromUrl("https://h:1094/store/a.root?x=1") == "/store/a.root",
+           "PathFromUrl: https single-slash path");
+}
+
 void Test_DisabledWithoutEnv() {
     unsetenv("XRD_OPENVERIFY_FAILURE_LOG");
     XrdSysLogger logger(STDERR_FILENO, 0);
@@ -120,7 +135,7 @@ void Test_FileOutputScoped() {
     Expect(fd >= 0, "FileOutputScoped: mkstemp");
     if (fd < 0) return;
     close(fd);
-    unlink(tmpl);  // Bind will create/open the path.
+    unlink(tmpl);  // fopen("a") will create the path.
 
     setenv("XRD_OPENVERIFY_FAILURE_LOG", tmpl, 1);
 
@@ -131,6 +146,8 @@ void Test_FileOutputScoped() {
         OpenVerifyFailureLog fail_log;
         fail_log.Configure(daemon_log);
         Expect(fail_log.Enabled(), "FileOutputScoped: enabled");
+        // Noise on the daemon logger must not appear in the failure file.
+        daemon_log.Emsg(" INFO", "ofs_plugin noise must not leak into failure log");
         fail_log.Log(SampleRecord());
 
         auto cmsd = SampleRecord();
@@ -140,7 +157,6 @@ void Test_FileOutputScoped() {
         cmsd.reason = "openverify_empty_file";
         cmsd.detail = "[ERROR] Data error";
         fail_log.Log(cmsd);
-        // Destructor flushes/closes the bound log FD.
     }
 
     std::ifstream in(tmpl);
@@ -151,12 +167,15 @@ void Test_FileOutputScoped() {
     unlink(tmpl);
     unsetenv("XRD_OPENVERIFY_FAILURE_LOG");
 
+    Expect(contents.find("openverify_failure") != std::string::npos, "FileOutputScoped: failure prefix");
     Expect(contents.find("source=rucio") != std::string::npos, "FileOutputScoped: rucio line present");
     Expect(contents.find("source=cmsd") != std::string::npos, "FileOutputScoped: cmsd line present");
     Expect(contents.find("stage=open") != std::string::npos, "FileOutputScoped: open stage");
     Expect(contents.find("stage=empty_file") != std::string::npos, "FileOutputScoped: empty_file stage");
     Expect(contents.find("reason=socket_timeout") != std::string::npos, "FileOutputScoped: rucio reason");
     Expect(contents.find("reason=openverify_empty_file") != std::string::npos, "FileOutputScoped: empty reason");
+    Expect(contents.find("ofs_plugin") == std::string::npos, "FileOutputScoped: no daemon ofs_plugin noise");
+    Expect(contents.find("noise must not leak") == std::string::npos, "FileOutputScoped: no daemon Emsg text");
     // Must not leak URL-like credential material from our FormatRecord API.
     Expect(contents.find("authz=") == std::string::npos, "FileOutputScoped: no authz");
     Expect(contents.find("xrd.ztn") == std::string::npos, "FileOutputScoped: no ztn");
@@ -172,6 +191,7 @@ int main() {
     Test_FormatRecordCmsdVsRucio();
     Test_FormatRecordDefaults();
     Test_SynthesizePfn();
+    Test_ProbeUrlHelpers();
     Test_DisabledWithoutEnv();
     Test_FileOutputScoped();
 

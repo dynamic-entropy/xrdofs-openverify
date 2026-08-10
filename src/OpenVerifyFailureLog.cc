@@ -1,11 +1,29 @@
 #include "OpenVerifyFailureLog.hh"
 
+#include <cerrno>
 #include <cstdlib>
+#include <ctime>
 #include <sstream>
 
+OpenVerifyFailureLog::~OpenVerifyFailureLog() {
+    const std::lock_guard<std::mutex> lk(m_mtx);
+    if (m_fp) {
+        std::fclose(m_fp);
+        m_fp = nullptr;
+    }
+}
+
+bool OpenVerifyFailureLog::Enabled() const {
+    const std::lock_guard<std::mutex> lk(m_mtx);
+    return m_fp != nullptr;
+}
+
 void OpenVerifyFailureLog::Configure(XrdSysError& daemon_log) {
-    m_err.reset();
-    m_logger.reset();
+    const std::lock_guard<std::mutex> lk(m_mtx);
+    if (m_fp) {
+        std::fclose(m_fp);
+        m_fp = nullptr;
+    }
     m_path.clear();
 
     const char* path = std::getenv("XRD_OPENVERIFY_FAILURE_LOG");
@@ -13,29 +31,51 @@ void OpenVerifyFailureLog::Configure(XrdSysError& daemon_log) {
         return;
     }
 
-    m_path = path;
-    // xrotate=0 and Bind(lfh=0): leave rotation to system logrotate; avoid creating
-    // a directory .lock that would disable the daemon's logrotate stanza.
-    m_logger = std::make_unique<XrdSysLogger>(STDERR_FILENO, /*xrotate=*/0);
-    const int rc = m_logger->Bind(m_path.c_str(), /*lfh=*/0);
-    if (rc != 0) {
-        m_logger.reset();
-        const std::string msg = std::string("openverify failure log bind failed path=") + m_path +
-                                " errno=" + std::to_string(-rc);
+    // Private append FILE — do not use XrdSysLogger::Bind. Binding a second
+    // logger into the instance log dir can share/disturb the daemon log stream.
+    FILE* fp = std::fopen(path, "a");
+    if (!fp) {
+        const int err = errno;
+        const std::string msg = std::string("openverify failure log open failed path=") + path +
+                                " errno=" + std::to_string(err);
         daemon_log.Emsg(" WARN", msg.c_str());
-        m_path.clear();
         return;
     }
 
-    m_err = std::make_unique<XrdSysError>(m_logger.get(), "openverify_fail");
+    // Line-buffered so each failure appears promptly without full-block buffering.
+    std::setvbuf(fp, nullptr, _IOLBF, 0);
+
+    m_path = path;
+    m_fp = fp;
     const std::string msg = std::string("openverify failure log enabled path=") + m_path;
     daemon_log.Emsg(" INFO", msg.c_str());
 }
 
 void OpenVerifyFailureLog::Log(const OpenVerifyFailureRecord& rec) {
-    if (!m_err) return;
     const std::string line = FormatRecord(rec);
-    m_err->Emsg("", line.c_str());
+    const std::string ts = FormatTimestamp();
+
+    const std::lock_guard<std::mutex> lk(m_mtx);
+    if (!m_fp) return;
+    std::fprintf(m_fp, "%s %s\n", ts.c_str(), line.c_str());
+    // fflush is cheap with line buffering; keep for copytruncate safety.
+    std::fflush(m_fp);
+}
+
+std::string OpenVerifyFailureLog::FormatTimestamp() {
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char buf[32];
+    // ISO-ish local time; independent of XrdSysLogger formatting.
+    if (std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm) == 0) {
+        return "unknown-time";
+    }
+    return buf;
 }
 
 std::string OpenVerifyFailureLog::EscapeValue(const std::string& value) {
@@ -87,6 +127,20 @@ std::string OpenVerifyFailureLog::SynthesizePfn(const std::string& protocol, con
     return "root://" + authority + "/" + p;
 }
 
+std::string OpenVerifyFailureLog::StripUrlQuery(const std::string& url) {
+    const auto q = url.find('?');
+    return (q == std::string::npos) ? url : url.substr(0, q);
+}
+
+std::string OpenVerifyFailureLog::PathFromUrl(const std::string& url) {
+    const std::string bare = StripUrlQuery(url);
+    const auto scheme = bare.find("://");
+    if (scheme == std::string::npos) return {};
+    const auto path_start = bare.find('/', scheme + 3);
+    if (path_start == std::string::npos) return {};
+    return bare.substr(path_start);
+}
+
 std::string OpenVerifyFailureLog::FormatRecord(const OpenVerifyFailureRecord& rec) {
     std::ostringstream o;
     o << "openverify_failure"
@@ -96,6 +150,8 @@ std::string OpenVerifyFailureLog::FormatRecord(const OpenVerifyFailureRecord& re
       << " port=" << rec.port
       << " path=" << EscapeValue(rec.path)
       << " pfn=" << EscapeValue(rec.pfn)
+      << " probe=" << EscapeValue(rec.probe)
+      << " probe_path=" << EscapeValue(rec.probe_path)
       << " protocol=" << EscapeValue(rec.protocol.empty() ? "unknown" : rec.protocol)
       << " stage=" << EscapeValue(rec.stage.empty() ? "unknown" : rec.stage)
       << " reason=" << EscapeValue(rec.reason.empty() ? "openverify_failure" : rec.reason)

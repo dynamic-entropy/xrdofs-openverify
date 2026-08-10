@@ -207,7 +207,7 @@ OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapp
 void OpenVerifyFile::LogLiveVerifyFailure(const char* source, int attempt, const std::string& host, int port,
                                           const std::string& path, const std::string& pfn,
                                           const XrdCl::XRootDStatus& st, const std::string& fail_stage,
-                                          const std::string& protocol) {
+                                          const std::string& protocol, const std::string& probe_url) {
     if (!m_failure_log.Enabled()) return;
 
     OpenVerifyFailureRecord rec;
@@ -217,6 +217,10 @@ void OpenVerifyFile::LogLiveVerifyFailure(const char* source, int attempt, const
     rec.port = port;
     rec.path = path;
     rec.pfn = pfn.empty() ? OpenVerifyFailureLog::SynthesizePfn(protocol, host, port, path) : pfn;
+    rec.probe = probe_url.empty() ? OpenVerifyFailureLog::StripUrlQuery(
+                                        OpenVerifyFailureLog::SynthesizePfn(protocol, host, port, path))
+                                  : OpenVerifyFailureLog::StripUrlQuery(probe_url);
+    rec.probe_path = OpenVerifyFailureLog::PathFromUrl(rec.probe);
     rec.protocol = protocol;
     rec.stage = fail_stage;
     rec.reason = st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
@@ -318,9 +322,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             int final_port = -1;
                             std::string fail_stage;
                             std::string protocol;
+                            std::string probe_url;
                             const auto st =
                                 open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
-                                            &final_port, &fail_stage, &protocol);
+                                            &final_port, &fail_stage, &protocol, &probe_url);
                             if (st.IsOK()) {
                                 m_metrics.RecordVerifySuccess();
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -335,7 +340,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
                                 // Leader-only: followers share the result without re-running this lambda.
                                 LogLiveVerifyFailure("rucio", rucio_sites_tried, hostStr, portVal, pathStr, cand.pfn,
-                                                     st, fail_stage, protocol);
+                                                     st, fail_stage, protocol, probe_url);
                             }
                             return st;
                         });
@@ -461,8 +466,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     int final_port = -1;
                     std::string fail_stage;
                     std::string protocol;
-                    const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
-                                                &final_port, &fail_stage, &protocol);
+                    std::string probe_url;
+                    const auto st =
+                        open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host, &final_port,
+                                    &fail_stage, &protocol, &probe_url);
                     if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -476,7 +483,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         // Leader-only: followers share the result without re-running this lambda.
                         // cmsd has no catalog PFN — synthesize a credential-free root/https URL.
                         LogLiveVerifyFailure("cmsd", cmsd_sites_tried, hostStr, portVal, pathStr, /*pfn=*/"", st,
-                                             fail_stage, protocol);
+                                             fail_stage, protocol, probe_url);
                     }
                     return st;
                 });

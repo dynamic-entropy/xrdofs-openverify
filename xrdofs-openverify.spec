@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.3
+Version:        0.2.4
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,13 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.5-1
+- Failure log records probe URL/path actually used by XrdCl Open/Stat.
+
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.4-1
+- Write failure campaign log via private append FILE (not XrdSysLogger::Bind).
+- Keep normal daemon/plugin traffic on the main xrootd log only.
+
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.3-1
 - Add optional XRD_OPENVERIFY_FAILURE_LOG campaign file for live verify failures.
 - Record source, attempt, host/port, LFN, PFN, protocol, stage, reason, and status.

@@ -168,15 +168,17 @@ class OpenVerifyFile : public XrdSfsFile {
 
    private:
     // On success, optionally fills final_host/final_port with the data server XrdCl reached.
-    // On failure, optionally fills fail_stage / protocol for the dedicated failure log.
+    // On failure, optionally fills fail_stage / protocol / probe_url (credential-free) for the
+    // dedicated failure log.
     XrdCl::XRootDStatus open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
                                     time_t timeout_seconds, std::string* final_host = nullptr,
                                     int* final_port = nullptr, std::string* fail_stage = nullptr,
-                                    std::string* protocol = nullptr);
+                                    std::string* protocol = nullptr, std::string* probe_url = nullptr);
 
     void LogLiveVerifyFailure(const char* source, int attempt, const std::string& host, int port,
                               const std::string& path, const std::string& pfn, const XrdCl::XRootDStatus& st,
-                              const std::string& fail_stage, const std::string& protocol);
+                              const std::string& fail_stage, const std::string& protocol,
+                              const std::string& probe_url);
 };
 
 #endif
