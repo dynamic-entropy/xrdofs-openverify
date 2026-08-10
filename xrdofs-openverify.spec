@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.6
+Version:        0.2.7
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.7-1
+- Lockstep release with xrdmon-collector (systemd enable after reinstall).
+
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.6-1
 - Do not forward client opaque (xrd.gsiusrpxy/tried=) onto outbound verify URLs.
 

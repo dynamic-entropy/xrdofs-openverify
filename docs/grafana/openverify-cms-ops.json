@@ -159,7 +159,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -169,8 +171,8 @@
     {
       "type": "timeseries",
       "id": 6,
-      "title": "Top redirect destinations",
-      "description": "The 15 site gateways receiving the most client redirects right now. Lines are independent (not stacked). Membership can change over time as rates shift.",
+      "title": "Top client redirect destinations",
+      "description": "Site gateways receiving the most client redirects (AAA r-stream; all locate paths). Rucio-path and cmsd-path destinations are broken out under verify errors.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -217,7 +219,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -227,8 +231,8 @@
     {
       "type": "table",
       "id": 7,
-      "title": "All redirect destinations",
-      "description": "Full sortable list of destination hosts and current redirect rate. Use this for capacity / triage when the top-15 chart is not enough.",
+      "title": "All client redirect destinations",
+      "description": "Full sortable list of client redirect destinations (AAA r-stream; all locate paths). For Rucio vs cmsd destination failures, use the verify-error tables below.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -474,7 +478,7 @@
       "type": "stat",
       "id": 13,
       "title": "Unhealthy sites",
-      "description": "How many sites currently score as unhealthy (EWMA quarantine). In observe mode clients are still redirected there; in enforce mode OpenVerify tries to skip them.",
+      "description": "How many sites currently score as unhealthy (EWMA quarantine). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -578,7 +582,7 @@
       "type": "stat",
       "id": 15,
       "title": "Negative cache hit ratio",
-      "description": "Share of lookups that found a recent failed probe. In observe mode the redirect is still returned; in enforce mode OpenVerify asks for another site.",
+      "description": "Share of lookups that found a recent failed probe. In observe mode the redirect is still returned; OpenVerify asks for another site.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -733,8 +737,8 @@
     {
       "type": "timeseries",
       "id": 20,
-      "title": "Live verify outcomes",
-      "description": "Rate of live probe opens that succeeded or failed. Does not include cache hits or queue rejects.",
+      "title": "Verify outcomes",
+      "description": "Rate of probe opens that succeeded or failed. Does not include cache hits or queue rejects.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -781,7 +785,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -839,7 +845,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -897,7 +905,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -965,7 +975,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1043,7 +1055,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1477,7 +1491,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1487,8 +1503,8 @@
     {
       "type": "timeseries",
       "id": 35,
-      "title": "Rucio probe failures by site",
-      "description": "Which sites fail when OpenVerify tries their Rucio replica. Uses Site and Error reason filters.",
+      "title": "Rucio redirect destinations (failures)",
+      "description": "Destinations that failed a live probe on the Rucio locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1535,7 +1551,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1545,8 +1563,8 @@
     {
       "type": "table",
       "id": 36,
-      "title": "Rucio probe failures (selected time range)",
-      "description": "Total Rucio-path probe failures in the dashboard time range, by site and error. Sorted by count.",
+      "title": "Rucio redirect destination failures (selected time range)",
+      "description": "Total Rucio-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1693,7 +1711,7 @@
       "type": "stat",
       "id": 41,
       "title": "cmsd retries exhausted / s",
-      "description": "Opens that used up the cmsd retry budget without a successful probe. Near 0 in observe mode (no retries).",
+      "description": "Opens that used up the cmsd retry budget without a successful probe. Near 0 when retries are not enabled.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1792,7 +1810,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1802,8 +1822,8 @@
     {
       "type": "timeseries",
       "id": 44,
-      "title": "cmsd probe failures by site",
-      "description": "Which sites fail when cmsd selected them. Uses Site and Error reason filters.",
+      "title": "cmsd redirect destinations (failures)",
+      "description": "Destinations that failed a live probe on the cmsd locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1850,7 +1870,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1860,8 +1882,8 @@
     {
       "type": "table",
       "id": 45,
-      "title": "cmsd probe failures (selected time range)",
-      "description": "Total cmsd-path probe failures in the dashboard time range, by site and error. Sorted by count.",
+      "title": "cmsd redirect destination failures (selected time range)",
+      "description": "Total cmsd-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1942,7 +1964,7 @@
     },
     {
       "type": "row",
-      "title": "How opens were located (Rucio vs cmsd)",
+      "title": "Locate path",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2159,7 +2181,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2217,7 +2241,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2275,7 +2301,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2286,7 +2314,7 @@
       "type": "timeseries",
       "id": 53,
       "title": "Rucio accepts by replica",
-      "description": "Which ordered Rucio replica was accepted after a successful probe. exhausted = every Rucio replica failed or was skipped, so OpenVerify fell through to cmsd.",
+      "description": "Which ordered Rucio replica was accepted after a successful probe. exhausted = every Rucio replica failed or was skipped (fall through to cmsd).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2316,7 +2344,7 @@
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "B",
-          "legendFormat": "exhausted (fall through to cmsd)",
+          "legendFormat": "exhausted",
           "editorMode": "code",
           "range": true
         }
@@ -2335,31 +2363,7 @@
             }
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "exhausted.*"
-            },
-            "properties": [
-              {
-                "id": "custom.stacking",
-                "value": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              },
-              {
-                "id": "custom.fillOpacity",
-                "value": 0
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "legend": {
@@ -2369,7 +2373,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2380,7 +2386,7 @@
       "type": "timeseries",
       "id": 55,
       "title": "cmsd accepts by attempt",
-      "description": "Which cmsd redirect candidate was accepted after a successful probe. exhausted = cmsd retry budget used up without success (near 0 in observe mode).",
+      "description": "Which cmsd redirect candidate was accepted after a successful probe. exhausted = cmsd retry budget used up without success.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2410,7 +2416,7 @@
           },
           "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "B",
-          "legendFormat": "exhausted (retry budget)",
+          "legendFormat": "exhausted",
           "editorMode": "code",
           "range": true
         }
@@ -2429,31 +2435,7 @@
             }
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "exhausted.*"
-            },
-            "properties": [
-              {
-                "id": "custom.stacking",
-                "value": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              },
-              {
-                "id": "custom.fillOpacity",
-                "value": 0
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "legend": {
@@ -2463,7 +2445,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2627,72 +2611,13 @@
       }
     },
     {
-      "type": "timeseries",
-      "id": 111,
-      "title": "cmsd host vs Rucio list (after exhaust)",
-      "description": "Only for opens that exhausted Rucio then succeeded on cmsd: overlap = cmsd host was already in the Rucio list (skipped/failed earlier); catalog_disagree = cmsd picked a host Rucio never listed. Diagnostic for catalog vs cmsd mismatch.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 143
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (result) (rate(xrootd_openverify_rucio_cmsd_compare_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "legendFormat": "{{result}}",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
       "type": "row",
       "title": "Site health",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 151
+        "y": 143
       },
       "collapsed": false,
       "panels": []
@@ -2710,7 +2635,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 144
       },
       "targets": [
         {
@@ -2748,7 +2673,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -2759,7 +2686,7 @@
       "type": "table",
       "id": 61,
       "title": "Site status (selected time range)",
-      "description": "Current health score and healthy flag, plus probe success/failure counts over the dashboard time range. healthy=0 can appear in observe mode without changing redirects.",
+      "description": "Current health score and healthy flag, plus probe success/failure counts over the dashboard time range. healthy=0 means the site is quarantined in the EWMA score.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2768,7 +2695,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 160
+        "y": 152
       },
       "targets": [
         {
@@ -2821,7 +2748,13 @@
         "overrides": []
       },
       "options": {
-        "showHeader": true
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Failures",
+            "desc": true
+          }
+        ]
       },
       "transformations": [
         {
@@ -2852,12 +2785,12 @@
     },
     {
       "type": "row",
-      "title": "Avoidance & retries (enforce mode)",
+      "title": "Avoidance & retries",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 170
+        "y": 162
       },
       "collapsed": false,
       "panels": []
@@ -2866,7 +2799,7 @@
       "type": "stat",
       "id": 70,
       "title": "Bad redirects avoided / s",
-      "description": "Redirects skipped because the site was quarantined or in the negative cache (client gets tried= and another site). Near 0 in observe mode.",
+      "description": "Redirects skipped because the site was quarantined or in the negative cache (client gets tried= and another site). Near 0 when avoidance is not active.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2875,7 +2808,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 171
+        "y": 163
       },
       "targets": [
         {
@@ -2918,7 +2851,7 @@
       "type": "stat",
       "id": 71,
       "title": "Avoidance rate",
-      "description": "Avoided redirects as a share of OpenVerify-handled redirects. Near 0 in observe mode.",
+      "description": "Avoided redirects as a share of OpenVerify-handled redirects. Near 0 when avoidance is not active.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2927,7 +2860,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 171
+        "y": 163
       },
       "targets": [
         {
@@ -2970,7 +2903,7 @@
       "type": "timeseries",
       "id": 73,
       "title": "Avoided redirects by reason",
-      "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered. Flat near 0 in observe mode.",
+      "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered. Flat near 0 when avoidance is not active.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2979,7 +2912,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 167
       },
       "targets": [
         {
@@ -3017,7 +2950,9 @@
             "lastNotNull",
             "mean"
           ],
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -3222,7 +3157,7 @@
   "timezone": "",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 8,
+  "version": 9,
   "weekStart": "",
-  "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd errors, and locate path. Hover a panel title for a short explanation."
+  "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd destinations/errors, and locate path. Hover a panel title for a short explanation."
 }

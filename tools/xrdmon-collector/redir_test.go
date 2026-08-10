@@ -88,9 +88,31 @@ func TestSplitHostPathURL(t *testing.T) {
 	}
 }
 
+func TestIsProbablyXMLReport(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{`<statistics tod="1" src="h:1094"></statistics>`, true},
+		{`<?xml version="1.0"?><statistics src="h:1094"></statistics>`, true},
+		{`  <statistics src="h:1094"></statistics>`, true},
+		{`<100>`, false},
+		{`{"statistics":{}}`, false},
+		{"r\x00packet", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		got := isProbablyXMLReport([]byte(tc.in))
+		if got != tc.want {
+			t.Fatalf("isProbablyXMLReport(%q)=%v want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestParseRedirPacketURLPayload(t *testing.T) {
-	// Payload is a full root URL (as OpenVerify Rucio redirects emit).
-	s := "root://cms-xrd-transit.cern.ch:1094//store/data/file.root"
+	// XRootD Monitor::Redirect encodes "<hName>:<Path>\0". For OpenVerify full-URL
+	// redirects, hName is the URL and Path is still the client LFN.
+	s := "root://cms-xrd-transit.cern.ch:1094//store/data/file.root:/store/data/file.root"
 	n := len(s) + 1
 	slots := n / 8
 	if n%8 != 0 {

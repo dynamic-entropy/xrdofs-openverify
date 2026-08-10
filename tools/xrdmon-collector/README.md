@@ -42,7 +42,8 @@ Same release path as OpenVerify (one version, both RPMs):
 On the canary (after yum metadata refresh / puppet):
 
 ```bash
-dnf reinstall -y xrdmon-collector && systemctl restart xrdmon-collector
+dnf reinstall -y xrdmon-collector
+systemctl enable --now xrdmon-collector   # required if older RPMs left it disabled
 ```
 
 Default textfile: `/var/lib/node_exporter/textfile_collector/xrdmon.prom` (mode 0644).

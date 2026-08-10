@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -166,11 +167,27 @@ func isAllDigits(s string) bool {
 }
 
 func isProbablyXMLReport(buf []byte) bool {
-	for _, c := range buf {
+	// Only accept real xrd.report envelopes. A bare '<' match is too loose:
+	// stray/truncated UDP payloads (e.g. starting with "<100") were logged as
+	// xml decode errors and dropped without counting as ignored.
+	i := 0
+	for i < len(buf) {
+		c := buf[i]
 		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			i++
 			continue
 		}
-		return c == '<' || c == '{'
+		break
+	}
+	if i >= len(buf) {
+		return false
+	}
+	s := buf[i:]
+	if s[0] == '{' {
+		return false // JSON reports not supported
+	}
+	if bytes.HasPrefix(s, []byte("<?xml")) || bytes.HasPrefix(s, []byte("<statistics")) {
+		return true
 	}
 	return false
 }
