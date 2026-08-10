@@ -333,7 +333,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 }
                 const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
                 const auto cached = m_cache.Get(key);
-                const char* verify_opaque = opaque;
+                // Opaque is only for bearer extraction inside open_verify — never put on the
+                // probe URL (Rucio verifies a concrete PFN; client tried=/gsiusrpxy must not apply).
 
                 switch (cached.status) {
                     case OpenVerifyCache::Status::Miss: {
@@ -346,7 +347,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             std::string protocol;
                             std::string probe_url;
                             const auto st =
-                                open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
+                                open_verify(key, opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
                                             &final_port, &fail_stage, &protocol, &probe_url);
                             if (st.IsOK()) {
                                 m_metrics.RecordVerifySuccess();
@@ -428,6 +429,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         // currently we return the last redirect, thus only performing a best effort verify
         // another approach is we change this and return SFS_ERROR instead
 
+        // cmsd locate needs tried= (client + failed Rucio/cmsd hops) to return the next site.
         std::string opaque_str = MergeTriedOpaque(opaque, tried_hosts, m_observe);
 
         m_log.Emsg("INFO", "Retrying with opaque = ", opaque_str.c_str());
@@ -477,7 +479,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
         const auto cached = m_cache.Get(key);
 
-        const char* verify_opaque = m_observe ? opaque : opaque_str.c_str();
+        // Verify probe: opaque only for bearer extraction (not forwarded onto the URL).
+        // tried= already did its job on m_wrapped->open above.
+        const char* verify_opaque = opaque;
 
         switch (cached.status) {
             case OpenVerifyCache::Status::Miss: {

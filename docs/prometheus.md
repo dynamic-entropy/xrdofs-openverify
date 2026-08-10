@@ -13,21 +13,22 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 | File | Audience |
 |------|----------|
 | [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
-| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS XRootD OpenVerify: AAA baseline, OV health/verify/sites, avoidance & retries, Rucio, locate latency |
+| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS XRootD OpenVerify: client AAA, OV overview, separate Rucio/cmsd probe errors, locate path, site health |
 
 **CMS ops variables** (top of dashboard):
 
 | Variable | Use |
 |----------|-----|
-| `xrootd_instance` | Which redirector daemon(s) |
-| `Site` | Multi-select `host` from `verify_failures_total` |
-| `Error reason` | Multi-select `reason` (scoped to selected sites) |
+| Redirector instance | Which `xrootd_instance` daemon(s) |
+| Rate interval | Bin for `rate()` panels (`auto`, `1m`, `5m`, `1h`, …) |
+| Site | Multi-select `host` from `verify_failures_total` |
+| Error reason | Multi-select `reason` (scoped to selected sites) |
+| Delay outcome | Filter redirect-delay heatmap by outcome |
 
-Drill-down panels:
+Sections:
 
-- **Sites → error types** — pick site(s), see stacked rates by `reason`
-- **Error types → sites** — pick reason(s), see stacked rates by `host`
-- **Verify failures: site × error** — table of counts over the time range (filterable/sortable)
+- **Rucio / cmsd verify errors** — live probe failures by `source` (Site / Error reason filters)
+- **How opens were located** — Rucio soft-fail, exhaust recovery context, accept path / attempt
 
 New series appear after deploying a build that includes latency / avoid / site
 export, and after at least one redirect has been handled (site gauges appear
