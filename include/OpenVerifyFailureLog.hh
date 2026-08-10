@@ -62,6 +62,16 @@ class OpenVerifyFailureLog {
     // Path after authority (keeps leading '/' or '//'); empty if URL has no path.
     static std::string PathFromUrl(const std::string& url);
 
+    // ErrInfo payload for a Rucio gateway redirect.
+    // Root: full URL + code -1 so XrdCl rewrites the open path to the catalog PFN path.
+    // HTTP: host + port only — XrdHttp always appends the original request path.
+    struct RedirectTarget {
+        int code{-1};     // setErrInfo port / -1 for full URL
+        std::string text; // hostname or full URL
+    };
+    static RedirectTarget MakeRucioRedirect(bool http_client, const std::string& host, int port,
+                                            const std::string& pfn, const std::string& path);
+
    private:
     static std::string FormatTimestamp();
 

@@ -57,7 +57,7 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 
 Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
 
-OpenVerify probes the **catalog PFN path** (including any site prefix such as `/dcache/uscmsdisk/store/...`), not the client LFN. The client redirect still targets the gateway host:port with the original request path.
+OpenVerify probes and (for **root** clients) redirects using the **catalog PFN path** (including any site prefix such as `/dcache/uscmsdisk/store/...`), not the client LFN. Root redirects use a full URL (`SFS_REDIRECT` with port `-1`) so XrdCl rewrites the open path. **HTTP** clients still get gateway `host:port` only — XrdHttp always appends the original request path.
 
 ## Failure log (campaign file)
 

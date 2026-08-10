@@ -119,6 +119,26 @@ void Test_ProbeUrlHelpers() {
            "PathFromUrl: https single-slash path");
 }
 
+void Test_MakeRucioRedirect() {
+    const char* pfn = "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root?x=1";
+    const auto root = OpenVerifyFailureLog::MakeRucioRedirect(false, "cmsdcadisk.fnal.gov", 1094, pfn,
+                                                              "/store/mc/file.root");
+    Expect(root.code == -1, "MakeRucioRedirect: root uses full-URL code -1");
+    Expect(root.text == "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root",
+           "MakeRucioRedirect: root strips query and keeps PFN path");
+
+    const auto http = OpenVerifyFailureLog::MakeRucioRedirect(true, "cmsdcadisk.fnal.gov", 1094, pfn,
+                                                              "/store/mc/file.root");
+    Expect(http.code == 1094, "MakeRucioRedirect: http keeps port");
+    Expect(http.text == "cmsdcadisk.fnal.gov", "MakeRucioRedirect: http keeps host only");
+
+    const auto synth = OpenVerifyFailureLog::MakeRucioRedirect(false, "h.example.edu", 1094, "",
+                                                               "//dcache/store/a.root");
+    Expect(synth.code == -1, "MakeRucioRedirect: synthesize full URL when pfn empty");
+    Expect(synth.text == "root://h.example.edu:1094//dcache/store/a.root",
+           "MakeRucioRedirect: synthesize from path");
+}
+
 void Test_RucioPfnVerifyCacheKey() {
     // Disk-door PFN with site prefix: verify key must carry that path, not the LFN.
     const char* pfn =
@@ -210,6 +230,7 @@ int main() {
     Test_FormatRecordDefaults();
     Test_SynthesizePfn();
     Test_ProbeUrlHelpers();
+    Test_MakeRucioRedirect();
     Test_RucioPfnVerifyCacheKey();
     Test_DisabledWithoutEnv();
     Test_FileOutputScoped();

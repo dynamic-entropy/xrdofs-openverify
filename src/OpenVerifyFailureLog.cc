@@ -141,6 +141,34 @@ std::string OpenVerifyFailureLog::PathFromUrl(const std::string& url) {
     return bare.substr(path_start);
 }
 
+OpenVerifyFailureLog::RedirectTarget OpenVerifyFailureLog::MakeRucioRedirect(bool http_client,
+                                                                             const std::string& host,
+                                                                             int port,
+                                                                             const std::string& pfn,
+                                                                             const std::string& path) {
+    RedirectTarget out;
+    out.code = port;
+    out.text = host;
+    if (http_client || host.empty()) {
+        return out;
+    }
+
+    // Prefer the catalog PFN (already scheme-matched by Rucio list); fall back to synthesize.
+    std::string url = StripUrlQuery(pfn);
+    if (url.find("://") == std::string::npos) {
+        if (path.empty()) {
+            return out;
+        }
+        url = SynthesizePfn("root", host, port, path);
+    }
+    if (url.empty()) {
+        return out;
+    }
+    out.code = -1;
+    out.text = std::move(url);
+    return out;
+}
+
 std::string OpenVerifyFailureLog::FormatRecord(const OpenVerifyFailureRecord& rec) {
     std::ostringstream o;
     o << "openverify_failure"

@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.4
+Version:        0.2.5
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -40,6 +40,8 @@ and verifies file integrity decisions during open operations.
 
 %changelog
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.5-1
+- Rucio verify and accepted redirects use the catalog PFN path (site prefix).
+- Root clients get a full-URL redirect (SFS port -1); HTTP keeps host:port.
 - Failure log records probe URL/path actually used by XrdCl Open/Stat.
 
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.4-1

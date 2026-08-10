@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -93,6 +94,20 @@ void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const s
     err.setErrInfo(final_port, final_host.c_str());
     const std::string msg = final_host + ":" + std::to_string(final_port);
     log.Emsg(" INFO", "direct-server rewrite redirect to", msg.c_str());
+}
+
+bool ClientIsHttp(const XrdSecEntity* client) {
+    return client && client->prot[0] &&
+           (std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0);
+}
+
+// Apply Rucio gateway redirect: root clients get a full URL with the catalog PFN path
+// (SFS port -1); HTTP keeps host:port because XrdHttp appends the original resource path.
+void ApplyRucioRedirect(XrdOucErrInfo& err, const XrdSecEntity* client, const std::string& host, int port,
+                        const std::string& pfn, const std::string& path, XrdSysError& log) {
+    const auto target = OpenVerifyFailureLog::MakeRucioRedirect(ClientIsHttp(client), host, port, pfn, path);
+    err.setErrInfo(target.code, target.text.c_str());
+    log.Emsg(" INFO", "rucio redirecting to", target.text.c_str());
 }
 
 void AppendTriedHost(std::string& tried_hosts, const std::string& hostPort) {
@@ -294,28 +309,27 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     continue;
                 }
 
-                // Synthesize SFS_REDIRECT to the site gateway from the PFN.
-                error.setErrInfo(portVal, hostStr.c_str());
+                // Open/verify and (for root clients) redirect with the catalog PFN path
+                // (may include a site prefix such as /dcache/uscmsdisk/store/...), not the
+                // client LFN. Disk doors often require that prefix; redirectors typically
+                // accept the LFN alone. HTTP clients still get host:port only (XrdHttp
+                // always appends the original request path).
+                std::string verify_path = pathStr;
+                if (!cand.pfn.empty()) {
+                    const std::string pfn_path = OpenVerifyFailureLog::PathFromUrl(cand.pfn);
+                    if (!pfn_path.empty()) verify_path = pfn_path;
+                }
+
+                ApplyRucioRedirect(error, client, hostStr, portVal, cand.pfn, verify_path, m_log);
                 rc = SFS_REDIRECT;
                 ++rucio_sites_tried;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
-
-                m_log.Emsg(" INFO", "rucio redirecting to", hostPort.c_str());
 
                 if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
                     AppendTriedHost(tried_hosts, hostPort);
                     hop.Avoided("quarantine");
                     m_log.Emsg(" WARN", "skipping unhealthy rucio host:", hostPort.c_str());
                     continue;
-                }
-
-                // Open/verify with the catalog PFN path (may include a site prefix such as
-                // /dcache/uscmsdisk/store/...), not the client LFN. Disk doors often require
-                // that prefix; redirectors typically accept the LFN alone.
-                std::string verify_path = pathStr;
-                if (!cand.pfn.empty()) {
-                    const std::string pfn_path = OpenVerifyFailureLog::PathFromUrl(cand.pfn);
-                    if (!pfn_path.empty()) verify_path = pfn_path;
                 }
                 const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
                 const auto cached = m_cache.Get(key);
@@ -364,7 +378,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         if (verify_result.IsOK()) {
                             accepted = true;
                             accepted_from_rucio = true;
-                            // Keep gateway host:port already in error (no DIRECT_SERVER rewrite).
+                            // Keep Rucio gateway redirect already in error (no DIRECT_SERVER rewrite).
                             m_log.Emsg(" INFO", "openverify succeeded (rucio) for", key.c_str());
                         } else {
                             AppendTriedHost(tried_hosts, hostPort);
