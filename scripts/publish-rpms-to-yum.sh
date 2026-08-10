@@ -9,12 +9,11 @@
 #   3. Regenerate repodata with createrepo_c
 #   4. Commit and push the yum repo to GitHub (Pages serves it as the DNF repo).
 #      Same version as HEAD → amend + push --force-with-lease; version bump → new commit.
-#   5. Trigger puppet agent runs on lab cluster nodes
 #
 # Usage:
-#   ./scripts/publish-rpms-to-yum.sh [--skip-build] [--skip-push] [--skip-puppet]
+#   ./scripts/publish-rpms-to-yum.sh [--skip-build] [--skip-push]
 #
-# Prerequisites: podman, createrepo_c, git, ssh (key auth to cluster nodes)
+# Prerequisites: podman, createrepo_c, git
 
 set -euo pipefail
 
@@ -27,29 +26,12 @@ ARCH="${ARCH:-x86_64}"
 BUILDER_IMAGE="${BUILDER_IMAGE:-openverify-builder}"
 XROOTD_VERSION="${XROOTD_VERSION:-6.0.1}"
 
-SSH_USER="${SSH_USER:-root}"
-SSH_PROXY="${SSH_PROXY:-}"
-
-# Lab cluster nodes (profile::xrootd::cluster). Canary uses the same yum repo
-# via puppet separately (cms-xrd-global-test).
-NODES=(
-    xrdmetaman.cern.ch
-    xrdman-1.cern.ch
-    xrdman-2.cern.ch
-    xrdsrv-1.cern.ch
-    xrdsrv-2.cern.ch
-    xrdsrv-3.cern.ch
-    xrdsrv-4.cern.ch
-)
-
 SKIP_BUILD=0
 SKIP_PUSH=0
-SKIP_PUPPET=0
 for arg in "$@"; do
     case "$arg" in
         --skip-build)   SKIP_BUILD=1 ;;
         --skip-push)    SKIP_PUSH=1 ;;
-        --skip-puppet)  SKIP_PUPPET=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -144,34 +126,6 @@ if [[ $SKIP_PUSH -eq 0 ]]; then
     fi
 else
     echo "==> Skipping git push (--skip-push)"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 5 – Run puppet agent on lab cluster nodes
-# ---------------------------------------------------------------------------
-SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=no)
-if [[ -n "${SSH_PROXY}" ]]; then
-    SSH_OPTS+=(-J "${SSH_PROXY}")
-fi
-
-if [[ $SKIP_PUPPET -eq 0 && $SKIP_PUSH -eq 0 ]]; then
-    echo "==> Triggering puppet agent runs on cluster nodes ..."
-    sleep 10
-
-    for node in "${NODES[@]}"; do
-        echo "  -> ${node}"
-        ssh "${SSH_OPTS[@]}" "${SSH_USER}@${node}" \
-            'dnf clean metadata --disablerepo="*" --enablerepo="xrdofs-openverify" \
-             && puppet agent --onetime --no-daemonize --verbose 2>&1 | tail -20' &
-    done
-
-    echo "==> Waiting for all puppet runs to finish ..."
-    wait
-    echo "==> All puppet runs complete."
-elif [[ $SKIP_PUPPET -eq 1 ]]; then
-    echo "==> Skipping puppet runs (--skip-puppet)"
-else
-    echo "==> Skipping puppet runs because push was skipped"
 fi
 
 echo ""
