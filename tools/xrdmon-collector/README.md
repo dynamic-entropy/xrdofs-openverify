@@ -33,7 +33,17 @@ Panels live on the OpenVerify CMS ops board:
 
 ## Deploy
 
-Same as OpenVerify: `./scripts/publish-rpms-to-yum.sh`, then on the canary
-`dnf reinstall -y xrdmon-collector && systemctl restart xrdmon-collector`.
+Same release path as OpenVerify (one version, both RPMs):
+
+```bash
+./scripts/publish-rpms-to-yum.sh
+```
+
+On the canary (after yum metadata refresh / puppet):
+
+```bash
+dnf reinstall -y xrdmon-collector && systemctl restart xrdmon-collector
+```
 
 Default textfile: `/var/lib/node_exporter/textfile_collector/xrdmon.prom` (mode 0644).
+The systemd unit is shipped by the RPM (no separate install script).

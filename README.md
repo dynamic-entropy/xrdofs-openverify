@@ -19,19 +19,17 @@ sudo cmake --install build
 
 ## RPM packaging
 
-Install build dependencies (Fedora/RHEL family):
+Both packages share one version (`xrdofs-openverify.spec` / `xrdmon-collector.spec`):
 
 ```bash
-sudo dnf install -y rpm-build rpmlint cmake gcc-c++ make xrootd-server-devel libcurl-devel nlohmann-json-devel
+# Local build (needs rpmdevtools, cmake toolchain, golang, xrootd-server-devel, …)
+./build-all-rpms.sh
+
+# Normal release: build in podman, publish to the yum repo, puppet lab nodes
+./scripts/publish-rpms-to-yum.sh
 ```
 
-Build RPMs from the current git checkout:
-
-```bash
-./build-rpm.sh
-```
-
-This creates source and binary RPMs under `~/rpmbuild/SRPMS` and `~/rpmbuild/RPMS`.
+RPMs land under `~/rpmbuild/RPMS`. Lab canary/cluster hosts install from the yum repo via puppet.
 
 ## XRootD configuration
 

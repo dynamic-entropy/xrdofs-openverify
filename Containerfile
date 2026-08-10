@@ -1,9 +1,7 @@
 ARG XROOTD_VERSION=6.0.1
 FROM --platform=linux/amd64 xrootd-devel:${XROOTD_VERSION}
 
-# Collector RPM needs golang + systemd macros; install here so rebuilding
-# openverify-builder (publish-rpms-to-yum.sh) is enough without rebuilding
-# the xrootd-devel base image.
+# golang + systemd macros for xrdmon-collector RPM (build-all-rpms.sh).
 RUN dnf install -y golang systemd-rpm-macros libcurl-devel nlohmann-json-devel && dnf clean all
 
 WORKDIR /src
