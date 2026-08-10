@@ -1,5 +1,5 @@
 Name:           xrdmon-collector
-Version:        0.2.7
+Version:        0.2.8
 Release:        1%{?dist}
 Summary:        XRootD AAA redirect monitor → Prometheus textfile
 
@@ -76,6 +76,9 @@ systemctl start xrdmon-collector.service >/dev/null 2>&1 || :
 %{_unitdir}/xrdmon-collector.service
 
 %changelog
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.8-1
+- Lockstep release with xrdofs-openverify.
+
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.7-1
 - Re-enable and start the unit after install/reinstall (%%preun disables it).
 

@@ -23,6 +23,14 @@ void Test_SchemeFromProt() {
     Expect(OpenVerifyRucioSchemeFromProt(nullptr) == "root", "null -> root");
 }
 
+void Test_NormalizeScheme() {
+    Expect(OpenVerifyRucioNormalizeScheme("http") == "davs", "normalize http");
+    Expect(OpenVerifyRucioNormalizeScheme("https") == "davs", "normalize https");
+    Expect(OpenVerifyRucioNormalizeScheme("davs") == "davs", "normalize davs");
+    Expect(OpenVerifyRucioNormalizeScheme("xroot") == "root", "normalize xroot");
+    Expect(OpenVerifyRucioNormalizeScheme("root") == "root", "normalize root");
+}
+
 void Test_ParsePfnRoot() {
     std::string host;
     int port = -1;
@@ -151,15 +159,88 @@ void Test_ParseReplicasNdjson() {
     }
 }
 
+void Test_ParseReplicasHttpAliasFindsDavs() {
+    // Rucio never uses scheme "http"; wire http/https must still match davs:// PFNs.
+    const std::string body = R"([
+      {
+        "scope": "cms",
+        "name": "/store/x",
+        "pfns": {
+          "davs://dav.example:2880/store/x": {"rse": "T2_A", "type": "DISK", "priority": 1},
+          "https://alt.example:443/store/x": {"rse": "T2_B", "type": "DISK", "priority": 2},
+          "root://root.example:1094//store/x": {"rse": "T2_C", "type": "DISK", "priority": 3}
+        }
+      }
+    ])";
+    const auto via_http = OpenVerifyRucioParseReplicasJson(body, "http");
+    Expect(via_http.size() == 2, "http alias: davs+https PFNs");
+    const auto via_davs = OpenVerifyRucioParseReplicasJson(body, "davs");
+    Expect(via_davs.size() == 2, "davs: davs+https PFNs");
+    const auto via_root = OpenVerifyRucioParseReplicasJson(body, "root");
+    Expect(via_root.size() == 1 && via_root[0].host == "root.example", "root ignores davs/https");
+}
+
 void Test_ParseReplicasEmpty() {
     Expect(OpenVerifyRucioParseReplicasJson("[]", "root").empty(), "empty array");
     Expect(OpenVerifyRucioParseReplicasJson("not-json", "root").empty(), "bad json");
+}
+
+void Test_IsTapeCandidate() {
+    OpenVerifyRucioCandidate disk{.rse = "T1_FR_CCIN2P3_Disk", .type = "DISK"};
+    OpenVerifyRucioCandidate tape_type{.rse = "SOME_RSE", .type = "TAPE"};
+    OpenVerifyRucioCandidate tape_type_ci{.rse = "SOME_RSE", .type = "tape"};
+    OpenVerifyRucioCandidate tape_rse{.rse = "T1_FR_CCIN2P3_Tape"};
+    OpenVerifyRucioCandidate disk_no_type{.rse = "T1_US_FNAL_Disk"};
+    Expect(!OpenVerifyRucioIsTapeCandidate(disk), "disk type+rse");
+    Expect(OpenVerifyRucioIsTapeCandidate(tape_type), "type TAPE");
+    Expect(OpenVerifyRucioIsTapeCandidate(tape_type_ci), "type tape ci");
+    Expect(OpenVerifyRucioIsTapeCandidate(tape_rse), "rse _Tape suffix");
+    Expect(!OpenVerifyRucioIsTapeCandidate(disk_no_type), "disk rse no type");
+}
+
+void Test_ParseReplicasSkipsTape() {
+    // Same gateway host for Disk and Tape (CCIN2P3-style): only Disk must remain.
+    const std::string body = R"([
+      {
+        "scope": "cms",
+        "name": "/store/mc/file.root",
+        "pfns": {
+          "root://ccxrdcms.in2p3.fr:1094//pnfs/in2p3.fr/data/cms/data/store/mc/file.root": {
+            "rse": "T1_FR_CCIN2P3_Tape", "type": "TAPE", "priority": 1
+          },
+          "root://ccxrdcms.in2p3.fr:1094//store/mc/file.root": {
+            "rse": "T1_FR_CCIN2P3_Disk", "type": "DISK", "priority": 2
+          },
+          "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root": {
+            "rse": "T1_US_FNAL_Disk", "type": "DISK", "priority": 3
+          },
+          "root://tape-only.example:1094//store/mc/file.root": {
+            "rse": "T1_XX_Tape", "priority": 4
+          }
+        }
+      }
+    ])";
+    const auto cands = OpenVerifyRucioParseReplicasJson(body, "root");
+    Expect(cands.size() == 2, "skip tape: two disk candidates");
+    bool saw_ccin2p3_disk = false, saw_fnal = false, saw_tape = false;
+    for (const auto& c : cands) {
+        if (c.rse == "T1_FR_CCIN2P3_Disk" && c.host == "ccxrdcms.in2p3.fr" &&
+            c.pfn.find("//store/mc/") != std::string::npos) {
+            saw_ccin2p3_disk = true;
+        }
+        if (c.rse == "T1_US_FNAL_Disk") saw_fnal = true;
+        if (c.rse.find("_Tape") != std::string::npos || c.type == "TAPE") saw_tape = true;
+        if (c.pfn.find("/pnfs/") != std::string::npos) saw_tape = true;
+    }
+    Expect(saw_ccin2p3_disk && saw_fnal, "skip tape: both disk RSEs kept");
+    Expect(!saw_tape, "skip tape: no tape pfn/rse left");
 }
 
 }  // namespace
 
 int main() {
     Test_SchemeFromProt();
+    Test_NormalizeScheme();
     Test_ParsePfnRoot();
     Test_ParsePfnRootDefaultPort();
     Test_ParsePfnDavs();
@@ -167,7 +248,10 @@ int main() {
     Test_ParsePfnIpv6();
     Test_ParseReplicasJsonArray();
     Test_ParseReplicasNdjson();
+    Test_ParseReplicasHttpAliasFindsDavs();
     Test_ParseReplicasEmpty();
+    Test_IsTapeCandidate();
+    Test_ParseReplicasSkipsTape();
     Test_PrioritySelector();
     Test_RandomSelectorDeterministic();
     Test_MakeSelector();

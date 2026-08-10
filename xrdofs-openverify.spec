@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.7
+Version:        0.2.8
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.8-1
+- Skip tape RSEs in Rucio-first locate (type=TAPE / RSE *_Tape).
+- Normalize Rucio schemes: wire http/https → davs (never send http to Rucio).
+
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.7-1
 - Lockstep release with xrdmon-collector (systemd enable after reinstall).
 

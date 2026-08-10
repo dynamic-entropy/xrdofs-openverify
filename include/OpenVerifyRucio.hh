@@ -25,6 +25,7 @@ struct OpenVerifyRucioCandidate {
     int port{-1};
     std::string pfn;
     std::string rse;
+    std::string type;  // Rucio PFN type when present (DISK / TAPE)
     int priority{0};
 };
 
@@ -44,7 +45,13 @@ struct OpenVerifyRucioListResult {
 
 // Testable helpers (no network).
 std::string OpenVerifyRucioSchemeFromProt(const char* prot);
+// Map client/wire aliases to the Rucio protocol id: http/https → davs, xroot → root.
+// Rucio does not understand scheme "http"; CMS HTTP replicas are registered as davs.
+std::string OpenVerifyRucioNormalizeScheme(const std::string& scheme);
 bool OpenVerifyRucioParsePfn(const std::string& pfn, std::string& host, int& port);
+// True for tape RSEs: PFN type TAPE (case-insensitive) or RSE name ending in _Tape.
+// Tape PFNs must not be verified or redirected to (often same gateway host as Disk).
+bool OpenVerifyRucioIsTapeCandidate(const OpenVerifyRucioCandidate& c);
 std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std::string& body,
                                                                       const std::string& want_scheme);
 

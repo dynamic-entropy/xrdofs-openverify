@@ -119,9 +119,11 @@ sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
 
 When `XRD_OPENVERIFY_RUCIO=1`, OpenVerify queries CMS Rucio before cmsd.
 Soft-fails (empty / auth / timeout / error) and all-candidates-failed fall back
-to cmsd. PFN try-order is selected by `XRD_OPENVERIFY_RUCIO_SELECT`
-(`random` default; `priority`; `geoip` reserved) — subsequent PFNs are tried
-only after the current verify fails. See the **Rucio-first locate** row on
+to cmsd. Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
+name ending in `_Tape`) before try-order. PFN try-order is selected by
+`XRD_OPENVERIFY_RUCIO_SELECT` (`random` default; `priority`; `geoip` reserved)
+— subsequent PFNs are tried only after the current verify fails. See the
+**Rucio-first locate** row on
 [`openverify-cms-ops.json`](grafana/openverify-cms-ops.json).
 
 | Metric | Labels | Meaning |

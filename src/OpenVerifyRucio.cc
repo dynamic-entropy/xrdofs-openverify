@@ -1,6 +1,7 @@
 #include "OpenVerifyRucio.hh"
 #include "OpenVerifyRucioSelector.hh"
 
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -101,13 +102,30 @@ bool SplitAuthority(const std::string& authority, std::string& host, int& port, 
     return !host.empty();
 }
 
+// want_scheme is already normalized (davs|root|…). For davs, also accept https:// / http://
+// PFN keys some catalogs emit interchangeably with davs://.
+bool PfnMatchesWantScheme(const std::string& pfn, const std::string& want_scheme) {
+    if (pfn.rfind(want_scheme + "://", 0) == 0) return true;
+    if (want_scheme == "davs") {
+        return pfn.rfind("https://", 0) == 0 || pfn.rfind("http://", 0) == 0;
+    }
+    return false;
+}
+
 }  // namespace
 
 std::string OpenVerifyRucioSchemeFromProt(const char* prot) {
     if (prot && (std::strcmp(prot, "http") == 0 || std::strcmp(prot, "https") == 0)) {
-        return "davs";
+        return "davs";  // Rucio protocol id; not wire "http"/"https"
     }
     return "root";
+}
+
+std::string OpenVerifyRucioNormalizeScheme(const std::string& scheme) {
+    // Rucio protocol ids: CMS HTTP/WebDAV replicas are "davs", not "http"/"https".
+    if (scheme == "http" || scheme == "https" || scheme == "davs") return "davs";
+    if (scheme == "xroot" || scheme == "root") return "root";
+    return scheme;
 }
 
 bool OpenVerifyRucioParsePfn(const std::string& pfn, std::string& host, int& port) {
@@ -126,18 +144,42 @@ bool OpenVerifyRucioParsePfn(const std::string& pfn, std::string& host, int& por
     return SplitAuthority(authority, host, port, DefaultPortForScheme(scheme));
 }
 
+bool OpenVerifyRucioIsTapeCandidate(const OpenVerifyRucioCandidate& c) {
+    if (!c.type.empty()) {
+        static constexpr const char kTape[] = "TAPE";
+        if (c.type.size() == sizeof(kTape) - 1) {
+            bool match = true;
+            for (size_t i = 0; i < sizeof(kTape) - 1; ++i) {
+                if (std::toupper(static_cast<unsigned char>(c.type[i])) != kTape[i]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+    }
+    // CMS RSE names: T1_FR_CCIN2P3_Tape, T1_US_FNAL_Tape, …
+    static constexpr const char kTapeSuffix[] = "_Tape";
+    constexpr size_t kTapeSuffixLen = sizeof(kTapeSuffix) - 1;
+    if (c.rse.size() >= kTapeSuffixLen &&
+        c.rse.compare(c.rse.size() - kTapeSuffixLen, kTapeSuffixLen, kTapeSuffix) == 0) {
+        return true;
+    }
+    return false;
+}
+
 std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std::string& body,
                                                                       const std::string& want_scheme) {
     std::vector<OpenVerifyRucioCandidate> out;
     if (body.empty()) return out;
 
-    const std::string scheme_prefix = want_scheme + "://";
+    const std::string scheme = OpenVerifyRucioNormalizeScheme(want_scheme);
 
     auto consume_object = [&](const nlohmann::json& obj) {
         if (!obj.is_object() || !obj.contains("pfns") || !obj["pfns"].is_object()) return;
         for (auto it = obj["pfns"].begin(); it != obj["pfns"].end(); ++it) {
             const std::string pfn = it.key();
-            if (pfn.rfind(scheme_prefix, 0) != 0) continue;
+            if (!PfnMatchesWantScheme(pfn, scheme)) continue;
 
             OpenVerifyRucioCandidate c;
             c.pfn = pfn;
@@ -147,10 +189,15 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
                 if (it.value().contains("rse") && it.value()["rse"].is_string()) {
                     c.rse = it.value()["rse"].get<std::string>();
                 }
+                if (it.value().contains("type") && it.value()["type"].is_string()) {
+                    c.type = it.value()["type"].get<std::string>();
+                }
                 if (it.value().contains("priority") && it.value()["priority"].is_number_integer()) {
                     c.priority = it.value()["priority"].get<int>();
                 }
             }
+            // Never verify-open or redirect to tape replicas (same gateway as Disk is common).
+            if (OpenVerifyRucioIsTapeCandidate(c)) continue;
             out.push_back(std::move(c));
         }
     };
@@ -282,8 +329,11 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     OpenVerifyRucioListResult result;
     result.status = OpenVerifyRucioLookupResult::Error;
 
+    // Always send Rucio protocol ids (davs|root), never wire aliases like http/https.
+    const std::string rucio_scheme = OpenVerifyRucioNormalizeScheme(scheme);
+
     nlohmann::json body = {{"dids", nlohmann::json::array({{{"scope", "cms"}, {"name", lfn}}})},
-                           {"schemes", nlohmann::json::array({scheme})},
+                           {"schemes", nlohmann::json::array({rucio_scheme})},
                            {"sort", "geoip"},
                            {"domain", "wan"}};
 
@@ -350,7 +400,7 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
         return result;
     }
 
-    result.candidates = OpenVerifyRucioParseReplicasJson(response, scheme);
+    result.candidates = OpenVerifyRucioParseReplicasJson(response, rucio_scheme);
     result.status = result.candidates.empty() ? OpenVerifyRucioLookupResult::Empty : OpenVerifyRucioLookupResult::Ok;
     return result;
 }
