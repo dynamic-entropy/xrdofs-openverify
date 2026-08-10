@@ -18,23 +18,16 @@
 #include "XrdOuc/XrdOucUtils.hh"
 
 namespace {
-std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opaque, const char* ztnFilePath,
-                                         const char* gsiCertPath, const char* gsiKeyPath) {
+// Build the outbound verify URL. Do not forward the client request opaque: AAA
+// clients often send xrd.gsiusrpxy=/var/lib/condor/... (a path on the worker),
+// which would override X509_USER_PROXY on this host and cause Auth failed.
+std::string MakeXrdClVerifyUrl(const std::string& key, const char* ztnFilePath, const char* gsiCertPath,
+                               const char* gsiKeyPath) {
     // `key` format: <host>[:<port>]//<path>
     std::string url = "root://";
     url += key;
 
     bool haveQuery = false;
-    if (opaque && *opaque) {
-        url.push_back('?');
-        haveQuery = true;
-        if (*opaque == '?') {
-            url.append(opaque + 1);
-        } else {
-            url.append(opaque);
-        }
-    }
-
     auto appendCgi = [&](const char* name, const char* value) {
         if (!value || !*value) return;
         url.push_back(haveQuery ? '&' : '?');
@@ -47,7 +40,7 @@ std::string MakeXrdClUrlFromKeyAndOpaque(const std::string& key, const char* opa
 
     // Per-request token file path for XrdSecztn (see xrd.ztn / findToken in XrdSecProtocolztn).
     appendCgi("xrd.ztn", ztnFilePath);
-    // Service X.509 for verify when the client has no bearer token.
+    // Optional service X.509 when XRD_OPENVERIFY_CERT/KEY are set.
     appendCgi("xrd.gsiusrcrt", gsiCertPath);
     appendCgi("xrd.gsiusrkey", gsiKeyPath);
 
@@ -62,7 +55,7 @@ bool IsHttpProtocol(const XrdSecEntity* client) {
     return std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0;
 }
 
-std::string MakeHttpUrlFromKeyAndOpaque(const std::string& key, const char* opaque, const std::string& token) {
+std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) {
     // `key` format: <host>[:<port>]//<path>. HTTP needs a single '/' between the
     // authority and the path, so collapse the "//" separator used by the xroot form.
     std::string url = "https://";
@@ -75,16 +68,10 @@ std::string MakeHttpUrlFromKeyAndOpaque(const std::string& key, const char* opaq
         url.append(key, sep + 2, std::string::npos);
     }
 
-    bool haveQuery = false;
-    if (opaque && *opaque) {
-        url.push_back('?');
-        haveQuery = true;
-        url.append(*opaque == '?' ? opaque + 1 : opaque);
-    }
-
-    // The target XrdHttp server reads the bearer token from the authz CGI param.
+    // Do not forward client opaque (same reason as MakeXrdClVerifyUrl). Only attach
+    // a bearer we extracted ourselves.
     if (!token.empty()) {
-        url.push_back(haveQuery ? '&' : '?');
+        url.push_back('?');
         url.append("authz=");
         url.append(XrdOucUtils::UrlEncode("Bearer " + token));
     }
@@ -455,8 +442,9 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const char* gsiCert = (!useHttp && haveServiceCert) ? m_ov_cert.c_str() : nullptr;
     const char* gsiKey = (!useHttp && haveServiceCert) ? m_ov_key.c_str() : nullptr;
 
-    const std::string url = useHttp ? MakeHttpUrlFromKeyAndOpaque(key, opaque, haveToken ? token : std::string())
-                                    : MakeXrdClUrlFromKeyAndOpaque(key, opaque, ztnPath, gsiCert, gsiKey);
+    // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
+    const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
+                                    : MakeXrdClVerifyUrl(key, ztnPath, gsiCert, gsiKey);
     set_probe(url);
 
     const char* credLabel =
