@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./install-from-release.sh [VERSION]
-#   XRDMON_VERSION=0.1.0 ./install-from-release.sh
+#   XRDMON_VERSION=0.2.6 ./install-from-release.sh
 #
 # Defaults to latest xrdmon-v* release for linux/amd64 (CERN EL hosts).
 

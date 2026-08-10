@@ -15,13 +15,14 @@ if [[ ! -f "${SPEC_FILE}" ]]; then
   exit 1
 fi
 
-# Version/tarball name follow the OpenVerify package so Source0 matches.
+# Keep Version in lockstep with OpenVerify so Source0 matches.
 OV_VERSION="$(rpmspec -q --srpm --qf '%{VERSION}\n' "${OV_SPEC}" | head -1)"
 OV_NAME="$(rpmspec -q --srpm --qf '%{NAME}\n' "${OV_SPEC}" | head -1)"
 VERSION="$(rpmspec -q --srpm --qf '%{VERSION}\n' "${SPEC_FILE}" | head -1)"
 
 if [[ "${VERSION}" != "${OV_VERSION}" ]]; then
-  echo "WARNING: ${SPEC_FILE} version (${VERSION}) != ${OV_SPEC} (${OV_VERSION}); Source0 uses openverify version/tarball." >&2
+  echo "ERROR: ${SPEC_FILE} version (${VERSION}) must match ${OV_SPEC} (${OV_VERSION})" >&2
+  exit 1
 fi
 
 rpmdev-setuptree

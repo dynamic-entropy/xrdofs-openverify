@@ -1,5 +1,5 @@
 Name:           xrdmon-collector
-Version:        0.1.0
+Version:        0.2.6
 Release:        1%{?dist}
 Summary:        XRootD AAA redirect monitor → Prometheus textfile
 
@@ -72,5 +72,8 @@ EOF
 %{_unitdir}/xrdmon-collector.service
 
 %changelog
+* Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.6-1
+- Parse full root/https redirect URLs for dest host labels (avoid host="root").
+
 * Wed Jul 22 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.1.0-1
 - Initial RPM packaging for xrdmon-collector.

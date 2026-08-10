@@ -102,16 +102,67 @@ func ParseRedirPacket(buf []byte, m *Metrics) error {
 }
 
 func splitHostPath(b []byte) (host, path string) {
-	// Null-terminated "host:path" (host may be empty → local pfn).
+	// Null-terminated destination. Classic r-stream form is "host:path"
+	// (host may be empty → local pfn). OpenVerify / some stacks put a full
+	// URL ("root://host:port/path"); a naive first-':' split then yields
+	// host="root", which pollutes destination metrics.
 	n := 0
 	for n < len(b) && b[n] != 0 {
 		n++
 	}
 	s := string(b[:n])
+	if s == "" {
+		return "", ""
+	}
+
+	if i := strings.Index(s, "://"); i >= 0 {
+		rest := s[i+3:]
+		if at := strings.IndexByte(rest, '@'); at >= 0 {
+			rest = rest[at+1:]
+		}
+		hostport := rest
+		path = ""
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			hostport = rest[:slash]
+			path = rest[slash:]
+		}
+		return hostnameFromHostPort(hostport), path
+	}
+
 	if i := strings.IndexByte(s, ':'); i >= 0 {
 		return s[:i], s[i+1:]
 	}
-	return "", s
+	return s, ""
+}
+
+// hostnameFromHostPort returns the host from "host", "host:port", or "[ipv6]:port".
+func hostnameFromHostPort(hostport string) string {
+	if hostport == "" {
+		return ""
+	}
+	if hostport[0] == '[' {
+		if end := strings.IndexByte(hostport, ']'); end >= 0 {
+			return hostport[1:end]
+		}
+		return hostport
+	}
+	if i := strings.LastIndexByte(hostport, ':'); i >= 0 {
+		// Only strip when the suffix looks like a port (all digits).
+		port := hostport[i+1:]
+		if port != "" && isAllDigits(port) {
+			return hostport[:i]
+		}
+	}
+	return hostport
+}
+
+func isAllDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func isProbablyXMLReport(buf []byte) bool {

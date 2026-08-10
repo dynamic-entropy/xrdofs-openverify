@@ -187,7 +187,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval])))",
           "refId": "A",
           "editorMode": "code",
           "legendFormat": "{{host}}"
@@ -245,7 +245,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval]))",
           "refId": "A",
           "editorMode": "code",
           "instant": true,
@@ -3222,7 +3222,7 @@
   "timezone": "",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 7,
+  "version": 8,
   "weekStart": "",
   "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd errors, and locate path. Hover a panel title for a short explanation."
 }

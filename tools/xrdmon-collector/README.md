@@ -7,7 +7,7 @@ UDP collector for CMS AAA redirectors → Prometheus textfile.
 | Goal | Series |
 |------|--------|
 | Demand | `xrdmon_redir_total{opcode}` (locate, openr, …) |
-| Destinations | `xrdmon_redir_dest_total{host}`, `xrdmon_redir_dest_hosts` |
+| Destinations | `xrdmon_redir_dest_total{host}`, `xrdmon_redir_dest_hosts` (parses classic `host:path` and full `root://host…` / `https://host…` payloads; a naive `:` split would mis-label URLs as `host="root"`) |
 | Platform (xrootd) | `xrdmon_link_num\|maxn\|tot` (**xrootd only**, not cmsd; often absent on AAA redirectors) |
 | cmsd peer health | `xrdmon_cmsm_node_active{node,…}` |
 | Collector health | `xrdmon_packets_total{result}` |

@@ -68,6 +68,54 @@ func TestParseRedirPacket(t *testing.T) {
 	}
 }
 
+func TestSplitHostPathURL(t *testing.T) {
+	cases := []struct {
+		in, host, path string
+	}{
+		{"disk.example.edu:/store/data/file.root", "disk.example.edu", "/store/data/file.root"},
+		{"root://cms-xrd-transit.cern.ch:1094//store/foo", "cms-xrd-transit.cern.ch", "//store/foo"},
+		{"root://eoscms.cern.ch//eos/cms/store/foo", "eoscms.cern.ch", "//eos/cms/store/foo"},
+		{"https://ccxrdcms.in2p3.fr:1094/store/foo", "ccxrdcms.in2p3.fr", "/store/foo"},
+		{":/local/pfn", "", "/local/pfn"},
+		{"barehost", "barehost", ""},
+		{"root://[2001:db8::1]:1094/store/x", "2001:db8::1", "/store/x"},
+	}
+	for _, tc := range cases {
+		host, path := splitHostPath(append([]byte(tc.in), 0))
+		if host != tc.host || path != tc.path {
+			t.Fatalf("splitHostPath(%q) = (%q, %q); want (%q, %q)", tc.in, host, path, tc.host, tc.path)
+		}
+	}
+}
+
+func TestParseRedirPacketURLPayload(t *testing.T) {
+	// Payload is a full root URL (as OpenVerify Rucio redirects emit).
+	s := "root://cms-xrd-transit.cern.ch:1094//store/data/file.root"
+	n := len(s) + 1
+	slots := n / 8
+	if n%8 != 0 {
+		slots++
+	}
+	entry := make([]byte, (slots+1)*8)
+	entry[0] = monRedir | 0x05
+	entry[1] = byte(slots)
+	binary.BigEndian.PutUint16(entry[2:4], 1094)
+	copy(entry[8:], s)
+
+	pkt := buildRedirPacket([][]byte{entry})
+	m := NewMetrics("test", true)
+	if err := ParseRedirPacket(pkt, m); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	exp := m.BuildExposition()
+	if strings.Contains(exp, `host="root"`) {
+		t.Fatalf("URL payload must not yield host=root:\n%s", exp)
+	}
+	if !strings.Contains(exp, `host="cms-xrd-transit.cern.ch"`) {
+		t.Fatalf("missing real host in:\n%s", exp)
+	}
+}
+
 func TestParseReportXMLXrootdLinks(t *testing.T) {
 	xml := `<?xml version="1.0"?>
 <statistics tod="1" ver="5.7" src="cms-xrd-global01.cern.ch:1094" tos="0" pgm="xrootd" ins="fed" pid="1" site="T2_CH_CERN">
