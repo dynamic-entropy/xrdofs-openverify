@@ -57,6 +57,8 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 
 Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
 
+OpenVerify probes the **catalog PFN path** (including any site prefix such as `/dcache/uscmsdisk/store/...`), not the client LFN. The client redirect still targets the gateway host:port with the original request path.
+
 ## Failure log (campaign file)
 
 Set `XRD_OPENVERIFY_FAILURE_LOG` to an absolute path writable by the `xrootd` user to get one structured line per **live** `open_verify` failure (single-flight leader only). The file is a private append stream (not `XrdSysLogger`), so normal daemon/plugin INFO/WARN traffic stays on the main xrootd log. Existing daemon WARN lines and Prometheus `verify_failures_total` counters are unchanged (failure records are duplicated into this file, not moved).

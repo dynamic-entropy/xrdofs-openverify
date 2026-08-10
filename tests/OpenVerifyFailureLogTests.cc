@@ -5,6 +5,7 @@
 #include <string>
 #include <unistd.h>
 
+#include "OpenVerifyCacheKey.hh"
 #include "OpenVerifyFailureLog.hh"
 #include "XrdSys/XrdSysError.hh"
 #include "XrdSys/XrdSysLogger.hh"  // only for a throwaway daemon_log in Configure tests
@@ -118,6 +119,23 @@ void Test_ProbeUrlHelpers() {
            "PathFromUrl: https single-slash path");
 }
 
+void Test_RucioPfnVerifyCacheKey() {
+    // Disk-door PFN with site prefix: verify key must carry that path, not the LFN.
+    const char* pfn =
+        "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root";
+    const auto pfn_path = OpenVerifyFailureLog::PathFromUrl(pfn);
+    const auto key = MakeOpenVerifyCacheKey(pfn_path, "cmsdcadisk.fnal.gov", 1094);
+    Expect(key == "cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root",
+           "RucioPfnVerifyCacheKey: key uses PFN path");
+    Expect(key.find("//store/mc/file.root") == std::string::npos ||
+               key.find("dcache/uscmsdisk/store/mc/file.root") != std::string::npos,
+           "RucioPfnVerifyCacheKey: site prefix retained");
+    // LFN-only key must not collide with the PFN-path key.
+    const auto lfn_key = MakeOpenVerifyCacheKey("/store/mc/file.root", "cmsdcadisk.fnal.gov", 1094);
+    Expect(lfn_key == "cmsdcadisk.fnal.gov:1094//store/mc/file.root", "RucioPfnVerifyCacheKey: lfn key");
+    Expect(lfn_key != key, "RucioPfnVerifyCacheKey: pfn key distinct from lfn key");
+}
+
 void Test_DisabledWithoutEnv() {
     unsetenv("XRD_OPENVERIFY_FAILURE_LOG");
     XrdSysLogger logger(STDERR_FILENO, 0);
@@ -192,6 +210,7 @@ int main() {
     Test_FormatRecordDefaults();
     Test_SynthesizePfn();
     Test_ProbeUrlHelpers();
+    Test_RucioPfnVerifyCacheKey();
     Test_DisabledWithoutEnv();
     Test_FileOutputScoped();
 

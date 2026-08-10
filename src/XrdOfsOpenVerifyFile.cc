@@ -309,7 +309,15 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     continue;
                 }
 
-                const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+                // Open/verify with the catalog PFN path (may include a site prefix such as
+                // /dcache/uscmsdisk/store/...), not the client LFN. Disk doors often require
+                // that prefix; redirectors typically accept the LFN alone.
+                std::string verify_path = pathStr;
+                if (!cand.pfn.empty()) {
+                    const std::string pfn_path = OpenVerifyFailureLog::PathFromUrl(cand.pfn);
+                    if (!pfn_path.empty()) verify_path = pfn_path;
+                }
+                const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
                 const auto cached = m_cache.Get(key);
                 const char* verify_opaque = opaque;
 
