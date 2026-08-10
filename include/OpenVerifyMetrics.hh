@@ -66,7 +66,8 @@ class OpenVerifyMetrics {
     void RecordCacheHitNegative(double delay_seconds = -1);
     void RecordVerifySuccess();
     // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
-    void RecordVerifyFailure(const std::string& host, int port, const std::string& reason);
+    // source is the locate path: "rucio" or "cmsd".
+    void RecordVerifyFailure(const std::string& source, const std::string& host, int port, const std::string& reason);
     // Queue admission outcomes around main semaphore acquisition.
     void RecordQueueAdmissionAdmitted();
     void RecordQueueAdmissionFull();
@@ -156,6 +157,7 @@ class OpenVerifyMetrics {
 
    private:
     struct PerFailureMetrics {
+        std::string source_esc;
         std::string host_esc;
         std::string port_lbl;
         std::string reason_esc;
@@ -185,7 +187,8 @@ class OpenVerifyMetrics {
         std::atomic<uint64_t> sum_micros{0};
     };
 
-    PerFailureMetrics& EnsureFailure(const std::string& host, int port, const std::string& reason);
+    PerFailureMetrics& EnsureFailure(const std::string& source, const std::string& host, int port,
+                                     const std::string& reason);
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     static void ObserveHistogram(DelayHistogram& h, double seconds);
     std::string BuildExpositionBody() const;

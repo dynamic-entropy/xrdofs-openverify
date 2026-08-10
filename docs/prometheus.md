@@ -78,7 +78,7 @@ Same meanings as before:
 | `runs_total` | `result` | Actual `open_verify` after miss |
 | `queue_admissions_total` | `result` | Inflight queue gate |
 | `singleflight_requests_total` | `role` | Leader runs verify; follower waits |
-| `verify_failures_total` | `host`,`port`,`reason` | Failed verifies by target |
+| `verify_failures_total` | `source`,`host`,`port`,`reason` | Failed verifies by locate path (`rucio`\|`cmsd`) and target |
 
 `reason` includes `operation_expired`, `socket_timeout`, `auth_failed`,
 `permission_denied`, `redirect_limit`, … (see `ClassifyXrdClStatus`).

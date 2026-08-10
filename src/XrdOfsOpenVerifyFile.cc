@@ -357,7 +357,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 const std::string failure_reason = st.GetErrorMessage().empty()
                                                                        ? "openverify_failure"
                                                                        : st.GetErrorMessage();
-                                m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
+                                m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, failure_reason);
                                 m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
                                 // Leader-only: followers share the result without re-running this lambda.
@@ -499,7 +499,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     } else {
                         const std::string failure_reason = st.GetErrorMessage().empty() ? "openverify_failure"
                                                                                          : st.GetErrorMessage();
-                        m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
+                        m_metrics.RecordVerifyFailure("cmsd", hostStr, portVal, failure_reason);
                         m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                         m_cache.PutNegative(key, JitteredNegativeTTL(15));
                         // Leader-only: followers share the result without re-running this lambda.

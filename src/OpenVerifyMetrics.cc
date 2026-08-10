@@ -18,8 +18,9 @@ const char* kEnvInstance = "XRD_OPENVERIFY_METRICS_INSTANCE";
 
 std::string PortLabelForMetrics(int port) { return port >= 0 ? std::to_string(port) : "none"; }
 
-std::string FailureMapKey(const std::string& host, int port, const std::string& reason) {
-    return host + '\x1e' + PortLabelForMetrics(port) + '\x1e' + reason;
+std::string FailureMapKey(const std::string& source, const std::string& host, int port,
+                          const std::string& reason) {
+    return source + '\x1e' + host + '\x1e' + PortLabelForMetrics(port) + '\x1e' + reason;
 }
 
 std::string EscapeLabelValue(const std::string& in) {
@@ -95,15 +96,18 @@ OpenVerifyMetrics::OpenVerifyMetrics() {
     }
 }
 
-OpenVerifyMetrics::PerFailureMetrics& OpenVerifyMetrics::EnsureFailure(const std::string& host, int port,
-                                                                     const std::string& reason) {
-    const std::string key = FailureMapKey(host, port, reason);
+OpenVerifyMetrics::PerFailureMetrics& OpenVerifyMetrics::EnsureFailure(const std::string& source,
+                                                                       const std::string& host, int port,
+                                                                       const std::string& reason) {
+    const std::string src = source.empty() ? std::string("unknown") : source;
+    const std::string key = FailureMapKey(src, host, port, reason);
     const std::string pl = PortLabelForMetrics(port);
 
     std::lock_guard<std::mutex> lock(m_failure_mtx);
     std::unique_ptr<PerFailureMetrics>& slot = m_failures_by_target_reason[key];
     if (!slot) {
         slot = std::make_unique<PerFailureMetrics>();
+        slot->source_esc = EscapeLabelValue(src);
         slot->host_esc = EscapeLabelValue(host);
         slot->port_lbl = pl;
         slot->reason_esc = EscapeLabelValue(reason);
@@ -319,7 +323,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         "Wall time of one locate: Rucio list_replicas or cmsd/OFS open select (excludes verify).", "source", "rucio",
         m_locate_rtt_rucio, "cmsd", m_locate_rtt_cmsd);
 
-    body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by redirect target and reason.\n"
+    body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by locate source, "
+            "redirect target and reason.\n"
             "# TYPE xrootd_openverify_verify_failures_total counter\n";
 
     {
@@ -327,9 +332,9 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         for (const auto& kv : m_failures_by_target_reason) {
             const PerFailureMetrics* e = kv.second.get();
             if (!e) continue;
-            body << "xrootd_openverify_verify_failures_total{host=\"" << e->host_esc << "\",port=\""
-                 << e->port_lbl << "\",reason=\"" << e->reason_esc << "\"" << lbl << "} "
-                 << e->count.load(std::memory_order_relaxed) << "\n";
+            body << "xrootd_openverify_verify_failures_total{source=\"" << e->source_esc << "\",host=\""
+                 << e->host_esc << "\",port=\"" << e->port_lbl << "\",reason=\"" << e->reason_esc << "\"" << lbl
+                 << "} " << e->count.load(std::memory_order_relaxed) << "\n";
         }
     }
 
@@ -382,10 +387,11 @@ void OpenVerifyMetrics::RecordVerifySuccess() {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordVerifyFailure(const std::string& host, int port, const std::string& reason) {
+void OpenVerifyMetrics::RecordVerifyFailure(const std::string& source, const std::string& host, int port,
+                                            const std::string& reason) {
     const std::string r = reason.empty() ? std::string("unknown") : reason;
     m_verify_failure.fetch_add(1, std::memory_order_relaxed);
-    EnsureFailure(host, port, r).count.fetch_add(1, std::memory_order_relaxed);
+    EnsureFailure(source, host, port, r).count.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

@@ -78,7 +78,7 @@ If open fails at plugin init, OpenVerify warns in the main log and continues wit
 Example line:
 
 ```
-2026-08-10T12:22:02 openverify_failure source=rucio attempt=2 host=cmsdcadisk.fnal.gov port=1094 path=/store/data/file.root pfn=root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/data/file.root probe=root://cmsdcadisk.fnal.gov:1094//store/data/file.root probe_path=//store/data/file.root protocol=root stage=open reason=not_found status_code=400 err_no=3011 detail="[ERROR] Error response: no such file or directory"
+2026-08-10T12:22:02 openverify_failure source=rucio attempt=2 host=cmsdcadisk.fnal.gov port=1094 path=/store/data/file.root pfn=root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/data/file.root probe=root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/data/file.root probe_path=//dcache/uscmsdisk/store/data/file.root protocol=root stage=open reason=not_found status_code=400 err_no=3011 detail="[ERROR] Error response: no such file or directory"
 ```
 
 Fields:

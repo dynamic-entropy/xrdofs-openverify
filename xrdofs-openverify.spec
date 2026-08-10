@@ -42,6 +42,7 @@ and verifies file integrity decisions during open operations.
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.5-1
 - Rucio verify and accepted redirects use the catalog PFN path (site prefix).
 - Root clients get a full-URL redirect (SFS port -1); HTTP keeps host:port.
+- Label verify_failures_total with source=rucio|cmsd for Grafana breakdowns.
 - Failure log records probe URL/path actually used by XrdCl Open/Stat.
 
 * Mon Aug 10 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.4-1

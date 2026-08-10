@@ -729,7 +729,7 @@
     {
       "id": 16,
       "type": "timeseries",
-      "title": "Verify failures by reason",
+      "title": "Verify failures by source \u00d7 reason",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -743,8 +743,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{reason}}",
+          "expr": "sum by (source, reason) (rate(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{source}}: {{reason}}",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
