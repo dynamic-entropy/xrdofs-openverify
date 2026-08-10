@@ -379,9 +379,20 @@ bool ExtractClientBearerToken(const XrdSecEntity* client, const char* opaque, st
 }  // namespace
 
 XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
-                                                time_t timeout_seconds, std::string* final_host, int* final_port) {
+                                                time_t timeout_seconds, std::string* final_host, int* final_port,
+                                                std::string* fail_stage, std::string* protocol) {
     if (final_host) final_host->clear();
     if (final_port) *final_port = -1;
+    if (fail_stage) fail_stage->clear();
+    if (protocol) protocol->clear();
+
+    auto set_stage = [&](const char* stage) {
+        if (fail_stage) *fail_stage = stage;
+    };
+
+    // Match the client's wire protocol (http/https vs xroot) for the outbound open.
+    const bool useHttp = IsHttpProtocol(client);
+    if (protocol) *protocol = useHttp ? "http" : "root";
 
     std::string token;
     const char* tokenSource = nullptr;
@@ -412,12 +423,11 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // If the read succeeds, return true
     const auto slashPos = key.find('/');
     if (slashPos == std::string::npos || slashPos == 0) {
+        set_stage("key");
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidAddr, 0, "openverify_invalid_key"};
     }
 
-    // Match the client's wire protocol (http/https vs xroot) for the outbound open.
-    const bool useHttp = IsHttpProtocol(client);
     const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
     // xroot carries the bearer token via a per-request ztn token file; http carries
@@ -426,6 +436,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const char* ztnPath = nullptr;
     if (!useHttp && haveToken) {
         if (!tokenFile.ok()) {
+            set_stage("credential_setup");
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
             return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError, static_cast<uint32_t>(errno),
                                        "openverify_token_file_error"};
@@ -454,6 +465,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // should we use others - readable open flags instead?
     auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, timeout_seconds);
     if (!st.IsOK()) {
+        set_stage("open");
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl open failed for", url.c_str(), msg.c_str());
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
@@ -462,6 +474,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     XrdCl::StatInfo* statInfo = nullptr;
     st = f.Stat(false, statInfo);
     if (!st.IsOK() || !statInfo) {
+        set_stage("stat");
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl stat failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();
@@ -478,6 +491,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
 
     if (size == 0) {
         // Empty file: treat as failure
+        set_stage("empty_file");
         auto closeSt = f.Close();
         (void)closeSt;
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errDataError, 0, "openverify_empty_file"};
@@ -501,6 +515,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     }
 
     if (!st.IsOK()) {
+        set_stage("vector_read");
         const std::string msg = st.ToString();
         m_log.Emsg(" WARN", "openverify XrdCl vector read failed for", url.c_str(), msg.c_str());
         auto closeSt = f.Close();

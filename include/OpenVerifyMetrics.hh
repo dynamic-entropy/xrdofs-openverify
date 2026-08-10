@@ -36,6 +36,9 @@ class OpenVerifyHostReliability;
 //
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 //
+// XRD_OPENVERIFY_FAILURE_LOG: optional absolute path for a dedicated live-verify
+// failure text log (see OpenVerifyFailureLog.hh). Unset/empty disables it.
+//
 class OpenVerifyMetrics {
    public:
     // Outcome label for redirect-handling delay histogram (plugin time after OFS returns SFS_REDIRECT).

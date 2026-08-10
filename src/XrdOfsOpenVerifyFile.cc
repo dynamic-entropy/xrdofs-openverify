@@ -186,8 +186,8 @@ const char* RucioLookupResultLabel(OpenVerifyRucioLookupResult status) {
 
 OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
                                OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                               OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
-                               std::string ov_key)
+                               OpenVerifyFailureLog& failure_log, OpenVerifyRucio& rucio, bool observe,
+                               bool direct_server, std::string ov_cert, std::string ov_key)
     : XrdSfsFile(wrapF->error),
       m_wrapped(wrapF),
       m_log(log),
@@ -195,6 +195,7 @@ OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCa
       m_metrics(metrics),
       m_single_flight(single_flight),
       m_host_reliability(host_reliability),
+      m_failure_log(failure_log),
       m_rucio(rucio),
       m_observe(observe),
       m_direct_server(direct_server),
@@ -202,6 +203,29 @@ OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCa
       m_ov_key(std::move(ov_key)) {}
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
+
+void OpenVerifyFile::LogLiveVerifyFailure(const char* source, int attempt, const std::string& host, int port,
+                                          const std::string& path, const std::string& pfn,
+                                          const XrdCl::XRootDStatus& st, const std::string& fail_stage,
+                                          const std::string& protocol) {
+    if (!m_failure_log.Enabled()) return;
+
+    OpenVerifyFailureRecord rec;
+    rec.source = source ? source : "unknown";
+    rec.attempt = attempt;
+    rec.host = host;
+    rec.port = port;
+    rec.path = path;
+    rec.pfn = pfn.empty() ? OpenVerifyFailureLog::SynthesizePfn(protocol, host, port, path) : pfn;
+    rec.protocol = protocol;
+    rec.stage = fail_stage;
+    rec.reason = st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
+    rec.status_code = static_cast<int>(st.code);
+    rec.err_no = static_cast<int>(st.errNo);
+    // Status::ToString() — no URL / credentials (unlike the daemon WARN that may include the open URL).
+    rec.detail = st.ToString();
+    m_failure_log.Log(rec);
+}
 
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
                          const XrdSecEntity* client, const char* opaque) {
@@ -292,8 +316,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         const auto verify_result = m_single_flight.Run(key, [&]() {
                             std::string final_host;
                             int final_port = -1;
-                            const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(),
-                                                        &final_host, &final_port);
+                            std::string fail_stage;
+                            std::string protocol;
+                            const auto st =
+                                open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
+                                            &final_port, &fail_stage, &protocol);
                             if (st.IsOK()) {
                                 m_metrics.RecordVerifySuccess();
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -306,6 +333,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
                                 m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                                // Leader-only: followers share the result without re-running this lambda.
+                                LogLiveVerifyFailure("rucio", rucio_sites_tried, hostStr, portVal, pathStr, cand.pfn,
+                                                     st, fail_stage, protocol);
                             }
                             return st;
                         });
@@ -429,8 +459,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 const auto verify_result = m_single_flight.Run(key, [&]() {
                     std::string final_host;
                     int final_port = -1;
-                    const auto st =
-                        open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host, &final_port);
+                    std::string fail_stage;
+                    std::string protocol;
+                    const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
+                                                &final_port, &fail_stage, &protocol);
                     if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -441,6 +473,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         m_metrics.RecordVerifyFailure(hostStr, portVal, failure_reason);
                         m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                         m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                        // Leader-only: followers share the result without re-running this lambda.
+                        // cmsd has no catalog PFN — synthesize a credential-free root/https URL.
+                        LogLiveVerifyFailure("cmsd", cmsd_sites_tried, hostStr, portVal, pathStr, /*pfn=*/"", st,
+                                             fail_stage, protocol);
                     }
                     return st;
                 });

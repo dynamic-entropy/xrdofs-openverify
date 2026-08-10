@@ -15,6 +15,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/XrdOfsOpenVerifyFile.cc
     src/XrdOfsOpenVerifyFileSystem.cc
     src/OpenVerifyCache.cpp
+    src/OpenVerifyFailureLog.cc
     src/OpenVerifyHostReliability.cc
     src/OpenVerifyMetrics.cc
     src/OpenVerifySingleFlight.cc
@@ -96,3 +97,19 @@ target_link_libraries(openverify_rucio_tests
 )
 
 add_test(NAME openverify_rucio_tests COMMAND openverify_rucio_tests)
+
+add_executable(openverify_failure_log_tests
+    tests/OpenVerifyFailureLogTests.cc
+    src/OpenVerifyFailureLog.cc
+)
+
+target_include_directories(openverify_failure_log_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(openverify_failure_log_tests
+    PRIVATE
+        XRootD::XrdUtils
+)
+
+add_test(NAME openverify_failure_log_tests COMMAND openverify_failure_log_tests)

@@ -52,9 +52,49 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_ACCOUNT` | Rucio account (required when Rucio lookup is enabled) |
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
 | `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `random` (default), `priority` (Rucio priority), or `geoip` (reserved; currently same as random). Next PFNs are tried only after the current one fails verify |
+| `XRD_OPENVERIFY_FAILURE_LOG` | Absolute path for a dedicated live-verify failure log (see below). Unset/empty disables it |
 | `X509_USER_PROXY` | X.509 proxy used for Rucio `x509_proxy` auth (same default credentials path as verify) |
 
 Rucio scheme selection follows the client wire protocol: `http`/`https` → `davs`, otherwise `root`. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback.
+
+## Failure log (campaign file)
+
+Set `XRD_OPENVERIFY_FAILURE_LOG` to an absolute path writable by the `xrootd` user to get one structured line per **live** `open_verify` failure (single-flight leader only). Existing daemon WARN lines and Prometheus `verify_failures_total` counters are unchanged (duplicated into this file, not moved).
+
+Recommended path (instance-scoped, matching `xrootd@fed` / `xrootd@local`):
+
+```
+XRD_OPENVERIFY_FAILURE_LOG=/var/log/xrootd/fed/openverify-failures.log
+```
+
+If bind/open fails at plugin init, OpenVerify warns in the main log and continues without the campaign file.
+
+**Recorded:** live probe failures on the Rucio-first and cmsd paths (including empty-file failures).
+
+**Not recorded:** negative-cache hits, quarantine skips, queue full/timeout, Rucio lookup/auth soft-fails.
+
+Example line (timestamp/prefix added by `XrdSysLogger`):
+
+```
+openverify_failure source=rucio attempt=2 host=cms-xrd.example.edu port=1094 path=/store/data/file.root pfn=root://cms-xrd.example.edu:1094//store/data/file.root protocol=root stage=open reason=socket_timeout status_code=103 err_no=0 detail="[ERROR] Socket timeout"
+```
+
+Fields:
+
+| Field | Meaning |
+|-------|---------|
+| `source` | `rucio` or `cmsd` |
+| `attempt` | 1-based ordered candidate index for that source path |
+| `host` / `port` | Original gateway / cmsd next-hop (not the final data server) |
+| `path` | LFN / request path |
+| `pfn` | Rucio replica PFN as returned by catalog; for cmsd, synthesized `root://host:port//path` or `https://host:port/path` (no opaque/token) |
+| `protocol` | `root` or `http` |
+| `stage` | `key`, `credential_setup`, `open`, `stat`, `empty_file`, or `vector_read` |
+| `reason` | Stable classified reason (same vocabulary as Prometheus) |
+| `status_code` / `err_no` | XrdCl `Status::code` / `errNo` |
+| `detail` | Low-level `Status::ToString()` (no URL, opaque, token, or cert paths) |
+
+Filter failed Rucio verifications with e.g. `grep 'source=rucio'`, then group by `reason` / `stage` / `host`. Rotate with system logrotate (`create` as `xrootd:xrootd`); the plugin uses `Bind(..., lfh=0)` (no midnight rotate / fifo).
 
 ## Metrics (Prometheus)
 
