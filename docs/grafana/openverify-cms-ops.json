@@ -634,7 +634,7 @@
       "type": "stat",
       "id": 16,
       "title": "Rucio path share",
-      "description": "Of accepted opens, how many used a Rucio replica (vs falling through to cmsd). Near 0 when Rucio is off.",
+      "description": "Of verified locate accepts (rucio+cmsd), how many used a Rucio replica. Excludes static xrootd.redirect fallback (transit) — that is a successful pass-through, not a locate failure.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -651,7 +651,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_location_source_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_location_source_total{source=~\"rucio|cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
           "editorMode": "code",
           "instant": true
@@ -2134,7 +2134,7 @@
       "type": "timeseries",
       "id": 50,
       "title": "Accepted opens by locate path",
-      "description": "Where the accepted redirect came from: rucio = a verified Rucio replica; cmsd = cmsd/OFS (including after Rucio soft-fail or exhaust).",
+      "description": "Where the accepted redirect came from: rucio = verified Rucio replica; cmsd = verified cmsd/OFS site hop; xrootd = static xrootd.redirect fallback (cms-xrd-transit) passed through without verify — a successful client redirect, not an error.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"

@@ -113,3 +113,13 @@ target_link_libraries(openverify_failure_log_tests
 )
 
 add_test(NAME openverify_failure_log_tests COMMAND openverify_failure_log_tests)
+
+add_executable(openverify_static_fallback_tests
+    tests/OpenVerifyStaticFallbackTests.cc
+)
+
+target_include_directories(openverify_static_fallback_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_test(NAME openverify_static_fallback_tests COMMAND openverify_static_fallback_tests)

@@ -57,6 +57,8 @@ Rucio scheme selection follows the client wire protocol: `http`/`https` → Ruci
 
 OpenVerify probes and (for **root** clients) redirects using the **catalog PFN path** (including any site prefix such as `/dcache/uscmsdisk/store/...`), not the client LFN. Root redirects use a full URL (`SFS_REDIRECT` with port `-1`) so XrdCl rewrites the open path. **HTTP** clients still get gateway `host:port` only — XrdHttp always appends the original request path.
 
+**Static xrootd.redirect fallback:** when the wrapped OFS returns a redirect to `cms-xrd-transit.cern.ch` (CMS global `xrootd.redirect … ? /store` ENOENT rule), OpenVerify passes it through without verify, quarantine, or cache. That is a **successful** client redirect (`source=xrootd` / `fallback=transit`), not a verify error or retry exhaustion.
+
 ## Failure log (campaign file)
 
 Set `XRD_OPENVERIFY_FAILURE_LOG` to an absolute path writable by the `xrootd` user to get one structured line per **live** `open_verify` failure (single-flight leader only). The file is a private append stream (not `XrdSysLogger`), so normal daemon/plugin INFO/WARN traffic stays on the main xrootd log. Existing daemon WARN lines and Prometheus `verify_failures_total` counters are unchanged (failure records are duplicated into this file, not moved).

@@ -1,6 +1,7 @@
 #include "OpenVerifyMetrics.hh"
 
 #include "OpenVerifyHostReliability.hh"
+#include "OpenVerifyStaticFallback.hh"
 
 #include <algorithm>
 #include <cstdlib>
@@ -56,6 +57,8 @@ const char* DelayOutcomeLabel(OpenVerifyMetrics::DelayOutcome o) {
             return "queue_timeout";
         case OpenVerifyMetrics::DelayOutcome::QueueFull:
             return "queue_full";
+        case OpenVerifyMetrics::DelayOutcome::Passthrough:
+            return "passthrough";
         default:
             return "unknown";
     }
@@ -170,7 +173,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
          << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect: "
-            "rucio=verify succeeded on Nth ordered replica; cmsd=Nth redirect candidate.\n"
+            "rucio=verify succeeded on Nth ordered replica; cmsd=Nth redirect candidate; "
+            "xrootd=static xrootd.redirect fallback (no verify).\n"
             "# TYPE xrootd_openverify_accepted_total counter\n";
     {
         std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
@@ -191,7 +195,14 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         body << "xrootd_openverify_accepted_total{source=\"cmsd\",attempt=\"" << (a + 1) << "\"" << lbl << "} "
              << m_accepted_cmsd_by_attempt[a].load(std::memory_order_relaxed) << "\n";
     }
-    body << "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
+    body << "xrootd_openverify_accepted_total{source=\"xrootd\",attempt=\"1\"" << lbl << "} "
+         << m_accepted_xrootd.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_static_fallback_total Successful static xrootd.redirect "
+            "pass-throughs (no verify). Not an error — e.g. cms-xrd-transit ENOENT fallback.\n"
+            "# TYPE xrootd_openverify_static_fallback_total counter\n"
+            "xrootd_openverify_static_fallback_total{fallback=\"transit\""
+         << lbl << "} " << m_static_fallback_transit.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
             "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
             "xrootd_openverify_retry_exhausted_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
@@ -229,12 +240,16 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_rucio_cmsd_compare_overlap.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_rucio_cmsd_compare_total{result=\"catalog_disagree\""
          << lbl << "} " << m_rucio_cmsd_compare_catalog_disagree.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_location_source_total Accepted opens by locate path (rucio vs cmsd).\n"
+            "# HELP xrootd_openverify_location_source_total Accepted opens by locate path "
+            "(rucio / cmsd verify, or successful static xrootd.redirect pass-through). "
+            "source=xrootd is not an error.\n"
             "# TYPE xrootd_openverify_location_source_total counter\n"
             "xrootd_openverify_location_source_total{source=\"rucio\""
          << lbl << "} " << m_location_source_rucio.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_location_source_total{source=\"cmsd\""
-         << lbl << "} " << m_location_source_cmsd.load(std::memory_order_relaxed) << "\n";
+         << lbl << "} " << m_location_source_cmsd.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_location_source_total{source=\"xrootd\""
+         << lbl << "} " << m_location_source_xrootd.load(std::memory_order_relaxed) << "\n";
 
     body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
             "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
@@ -349,6 +364,9 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
                 "# HELP xrootd_openverify_site_verify_failures_total Per-site verify failures.\n"
                 "# TYPE xrootd_openverify_site_verify_failures_total counter\n";
         for (const auto& s : sites) {
+            // Static xrootd.redirect fallbacks are not site gateways — do not export
+            // health/failure gauges that would classify transit as an unhealthy site.
+            if (IsStaticXrootdFallbackHost(s.host)) continue;
             const std::string host_esc = EscapeLabelValue(s.host);
             const std::string port_lbl = PortLabelForMetrics(s.port);
             body << "xrootd_openverify_site_ewma_health{host=\"" << host_esc << "\",port=\"" << port_lbl << "\"" << lbl
@@ -485,9 +503,18 @@ void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& sourc
             std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
             m_accepted_rucio_by_replica[attempt] += 1;
         }
+    } else if (source == "xrootd") {
+        m_accepted_xrootd.fetch_add(1, std::memory_order_relaxed);
     } else {
         if (attempt > kMaxCmsdAcceptAttempts) attempt = kMaxCmsdAcceptAttempts;
         m_accepted_cmsd_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordStaticFallback(const std::string& fallback) {
+    if (fallback == "transit") {
+        m_static_fallback_transit.fetch_add(1, std::memory_order_relaxed);
     }
     if (!m_path.empty()) Flush();
 }
@@ -540,6 +567,8 @@ void OpenVerifyMetrics::RecordRucioCmsdCompare(const std::string& result) {
 void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
     if (source == "rucio") {
         m_location_source_rucio.fetch_add(1, std::memory_order_relaxed);
+    } else if (source == "xrootd") {
+        m_location_source_xrootd.fetch_add(1, std::memory_order_relaxed);
     } else {
         m_location_source_cmsd.fetch_add(1, std::memory_order_relaxed);
     }
@@ -593,6 +622,12 @@ void OpenVerifyMetrics::RedirectTimer::QueueRejected(const std::string& kind) {
     if (m_done) return;
     m_done = true;
     m_metrics.RecordRedirectQueueRejected(kind, ElapsedSeconds());
+}
+
+void OpenVerifyMetrics::RedirectTimer::Passthrough() {
+    if (m_done) return;
+    m_done = true;
+    m_metrics.RecordRedirectDelay(ElapsedSeconds(), DelayOutcome::Passthrough);
 }
 
 void OpenVerifyMetrics::RecordRedirectDelay(double seconds, DelayOutcome outcome) {

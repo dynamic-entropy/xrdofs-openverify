@@ -36,6 +36,9 @@ class OpenVerifyHostReliability;
 //
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 //
+// Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
+// verify and counted as location_source=xrootd / static_fallback=transit.
+//
 // XRD_OPENVERIFY_FAILURE_LOG: optional absolute path for a dedicated live-verify
 // failure text log (see OpenVerifyFailureLog.hh). Unset/empty disables it.
 //
@@ -50,6 +53,7 @@ class OpenVerifyMetrics {
         Avoided,
         QueueTimeout,  // FIFO wait hit QUEUE_TIMEOUT; open_verify never ran
         QueueFull,     // wait queue full; open_verify never ran
+        Passthrough,   // static xrootd.redirect fallback (e.g. transit); no verify
         Count
     };
 
@@ -95,12 +99,16 @@ class OpenVerifyMetrics {
     void RecordCmsdStall(int seconds);
 
     // Open accepted a verified/cached-positive redirect after `attempt` candidate
-    // sites within `source` ("rucio" or "cmsd"). Counters are separate per source.
+    // sites within `source` ("rucio", "cmsd", or "xrootd"). Counters are separate
+    // per source.
     // cmsd: which redirect candidate (1..kMaxCmsdAcceptAttempts) was accepted.
     // rucio: which ordered PFN/replica (1..kMaxRucioReplicaLabel) passed verify;
     // overflow label is "N+" (CMS files do not have dozens of replicas).
+    // xrootd: static xrootd.redirect ENOENT fallback (attempt always 1).
     // Observe: only replica/attempt 1.
     void RecordOpenAccepted(int attempt, const std::string& source);
+    // Static xrootd.redirect fallback accepted without verify (fallback=transit, …).
+    void RecordStaticFallback(const std::string& fallback);
     // Enforce mode only: cmsd retry budget fully spent with no accepted verify;
     // last redirect returned best-effort. Never recorded in observe mode.
     void RecordOpenRetryExhausted();
@@ -119,7 +127,7 @@ class OpenVerifyMetrics {
     // After rucio exhaust, cmsd accepted: was that host already in the Rucio PFN list?
     // result: overlap | catalog_disagree (diagnostic; sum equals recovered).
     void RecordRucioCmsdCompare(const std::string& result);
-    // Accepted open locate path: rucio | cmsd (rename series planned).
+    // Accepted open locate path: rucio | cmsd | xrootd (static redirect fallback).
     void RecordLocationSource(const std::string& source);
     // Wall time of one locate call: source "rucio" (list_replicas) or "cmsd" (wrapped OFS open/select).
     void RecordLocateLatency(const std::string& source, double seconds);
@@ -144,6 +152,8 @@ class OpenVerifyMetrics {
         void VerifyFinished(bool success);
         // kind: queue_timeout | queue_full (must match SingleFlight error messages without prefix).
         void QueueRejected(const std::string& kind);
+        // Static xrootd.redirect fallback: return redirect unchanged (no cache/verify).
+        void Passthrough();
 
        private:
         double ElapsedSeconds() const;
@@ -215,6 +225,8 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
     std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxCmsdAcceptAttempts]{};
+    std::atomic<uint64_t> m_accepted_xrootd{0};
+    std::atomic<uint64_t> m_static_fallback_transit{0};
     std::atomic<uint64_t> m_retry_exhausted{0};
 
     std::atomic<uint64_t> m_rucio_lookup_ok{0};
@@ -229,6 +241,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_rucio_cmsd_compare_catalog_disagree{0};
     std::atomic<uint64_t> m_location_source_rucio{0};
     std::atomic<uint64_t> m_location_source_cmsd{0};
+    std::atomic<uint64_t> m_location_source_xrootd{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
     // Leaders that entered the FIFO: wait until admit or timeout.

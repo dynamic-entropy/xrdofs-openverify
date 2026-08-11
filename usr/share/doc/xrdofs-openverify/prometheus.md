@@ -47,12 +47,13 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
 - `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
-- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`)
+- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd` \| `xrootd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`; xrootd `attempt` = `1` for static fallback)
+- `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
 - `xrootd_openverify_retry_exhausted_total`
 - `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`; `empty` = no replicas)
 - `xrootd_openverify_rucio_candidates_total`
 - `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
-- `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` — locate path, not destination site)
+- `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` \| `xrootd` — locate path / static fallback, not destination site)
 - `xrootd_openverify_locate_rtt_seconds` (histogram by `source` = `rucio` \| `cmsd`)
 
 **Appear after first event:**
@@ -133,7 +134,8 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
 | `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |
 | `rucio_cmsd_compare_total` | `result=overlap\|catalog_disagree` | Diagnostic split of recovered by hostname vs Rucio list (sum = recovered) |
-| `location_source_total` | `source=rucio\|cmsd` | Accepted open’s locate path (rucio vs cmsd; not destination site) |
+| `location_source_total` | `source=rucio\|cmsd\|xrootd` | Accepted open’s locate path (`xrootd` = successful static `xrootd.redirect` pass-through such as transit; **not an error**) |
+| `static_fallback_total` | `fallback=transit` | Successful static ENOENT redirect accepted without verify (not an error) |
 
 Primary fallthrough success signal: `recovered / exhausted` (how often cmsd
 openverify succeeds after every Rucio PFN failed). Soft-fail→cmsd is **not**
@@ -141,17 +143,19 @@ included (Rucio never produced a tryable list). Diagnostic logs
 `openverify cmsd after rucio exhaust: …` still split recovered into
 `overlap` vs `catalog_disagree`.
 
-When Rucio is enabled, cmsd-path accepts should satisfy:
+When Rucio is enabled, cmsd + static-fallback accepts should satisfy:
 
-`cmsd-path ≤ soft-fail + rucio_exhausted`
+`cmsd-path + xrootd-path ≤ soft-fail + rucio_exhausted`
 
 (`soft-fail` = `empty|auth_error|timeout|error`; usually strictly smaller when cmsd also fails).
+Static `xrootd` accepts (transit) are successful pass-throughs, not errors.
 
 ```promql
-# Share of accepts from Rucio
+# Share of verified accepts from Rucio (exclude static xrootd.redirect fallback —
+# transit pass-through is a successful accept, not a locate failure)
 sum(rate(xrootd_openverify_location_source_total{source="rucio"}[5m]))
 /
-clamp_min(sum(rate(xrootd_openverify_location_source_total[5m])), 1e-9)
+clamp_min(sum(rate(xrootd_openverify_location_source_total{source=~"rucio|cmsd"}[5m])), 1e-9)
 
 # Soft-fail (no usable list_replicas — includes empty replica list)
 sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
@@ -167,8 +171,9 @@ sum(rate(xrootd_openverify_rucio_exhausted_recovered_total[5m]))
 /
 clamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total[5m])), 1e-9)
 
-# Bound check (expect ≤ 1 when Rucio is always on)
-sum(rate(xrootd_openverify_location_source_total{source="cmsd"}[5m]))
+# Bound check (expect ≤ 1 when Rucio is always on). Include static fallback accepts
+# (source=xrootd) — those often follow empty soft-fail and are not errors.
+sum(rate(xrootd_openverify_location_source_total{source=~"cmsd|xrootd"}[5m]))
 /
 clamp_min(
   sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
@@ -232,7 +237,8 @@ On the miss path this total includes FIFO queue wait + `open_verify` RTT.
 | `redirect_delay_seconds_count` | `outcome` |
 
 `outcome` ∈ `cache_hit_positive` | `cache_hit_negative` | `verify_success` |
-`verify_failure` | `avoided` | `queue_timeout` | `queue_full`.
+`verify_failure` | `avoided` | `queue_timeout` | `queue_full` | `passthrough`
+(static `xrootd.redirect` fallback such as transit; no verify).
 
 FIFO rejects (`queue_timeout` / `queue_full`) never ran `open_verify` — they are
 **not** counted in `runs_total` or `verify_failures_total`. Do not read

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "OpenVerifyCacheKey.hh"
+#include "OpenVerifyStaticFallback.hh"
 #include "XrdOfsOpenVerify.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 
@@ -265,6 +266,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     int rucio_sites_tried = 0;
     int cmsd_sites_tried = 0;
     bool accepted_from_rucio = false;
+    bool accepted_from_xrootd = false;
     bool after_rucio_exhaust = false;
     std::unordered_set<std::string> rucio_host_index;
     std::string rucio_host_list;
@@ -455,7 +457,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         if (rc != SFS_REDIRECT) break;
 
-        ++cmsd_sites_tried;
         OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
         int port;
@@ -466,6 +467,19 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
         m_log.Emsg(" INFO", "redirecting to", hostPort.c_str());
+
+        // Static xrootd.redirect ENOENT fallback (cms-xrd-transit) — not a site gateway.
+        // Pass through without verify, quarantine, or cache; label as source=xrootd.
+        if (IsStaticXrootdFallbackHost(hostStr)) {
+            hop.Passthrough();
+            accepted = true;
+            accepted_from_xrootd = true;
+            retry = false;
+            m_log.Emsg(" INFO", "openverify passthrough static xrootd fallback", hostPort.c_str());
+            break;
+        }
+
+        ++cmsd_sites_tried;
 
         // Decide if the host should be added to the tried list
         // based on past error patterns
@@ -564,10 +578,15 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     if (accepted) {
-        const char* source = accepted_from_rucio ? "rucio" : "cmsd";
-        const int attempt = accepted_from_rucio ? rucio_sites_tried : cmsd_sites_tried;
+        const char* source =
+            accepted_from_rucio ? "rucio" : (accepted_from_xrootd ? "xrootd" : "cmsd");
+        const int attempt =
+            accepted_from_rucio ? rucio_sites_tried : (accepted_from_xrootd ? 1 : cmsd_sites_tried);
         m_metrics.RecordOpenAccepted(attempt, source);
         m_metrics.RecordLocationSource(source);
+        if (accepted_from_xrootd) {
+            m_metrics.RecordStaticFallback("transit");
+        }
         if (accepted_from_rucio) {
             rc = SFS_REDIRECT;
         }
