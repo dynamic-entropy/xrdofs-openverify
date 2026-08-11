@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "XrdCl/XrdClDefaultEnv.hh"
@@ -92,16 +93,14 @@ XrdSfsDirectory* OpenVerifyFileSystem::newDir(XrdOucErrInfo& einfo) {
 
 XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile");
-    XrdSfsFile* f = m_next_sfs->newFile(user, monid);
+    std::unique_ptr<XrdSfsFile> f(m_next_sfs->newFile(user, monid));
     if (!f) {
         m_log.Emsg(" WARN", "XrdOfsOpenVerify::newFile - underlying newFile returned null");
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    XrdSfsFile* fw =
-        new OpenVerifyFile(f, m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_failure_log, m_rucio,
-                           m_observe, m_direct_server, m_ov_cert, m_ov_key);
-    return fw;
+    return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability,
+                              m_failure_log, m_rucio, m_observe, m_direct_server, m_ov_cert, m_ov_key);
 }
 
 XrdSfsFile* OpenVerifyFileSystem::newFile(XrdOucErrInfo& einfo) {

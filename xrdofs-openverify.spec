@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.2.9
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 11 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.3.0-1
+- Fix memory leak: own wrapped OFS file with std::unique_ptr (RAII).
+
 * Tue Aug 11 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.2.9-1
 - Pass through cms-xrd-transit static xrootd.redirect without verify.
 - Label accepts as source=xrootd / fallback=transit (not cmsd).

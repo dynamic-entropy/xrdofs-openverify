@@ -200,12 +200,13 @@ const char* RucioLookupResultLabel(OpenVerifyRucioLookupResult status) {
 
 }  // namespace
 
-OpenVerifyFile::OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                               OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                               OpenVerifyFailureLog& failure_log, OpenVerifyRucio& rucio, bool observe,
-                               bool direct_server, std::string ov_cert, std::string ov_key)
-    : XrdSfsFile(wrapF->error),
-      m_wrapped(wrapF),
+OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
+                               OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
+                               OpenVerifyHostReliability& host_reliability, OpenVerifyFailureLog& failure_log,
+                               OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
+                               std::string ov_key)
+    : XrdSfsFile(*wrapF),  // share ErrInfo with the wrapped OFS file
+      m_wrapped(std::move(wrapF)),
       m_log(log),
       m_cache(cache),
       m_metrics(metrics),

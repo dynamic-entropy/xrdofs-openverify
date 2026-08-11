@@ -2,6 +2,7 @@
 #define __XRDOFSOPENVERIFY_H_
 
 #include <ctime>
+#include <memory>
 #include <string>
 
 #include "OpenVerifyCache.hh"
@@ -147,13 +148,14 @@ class OpenVerifyFile : public XrdSfsFile {
 
     int SendData(XrdSfsDio* sfDio, XrdSfsFileOffset offset, XrdSfsXferSize size) override;
 
-    OpenVerifyFile(XrdSfsFile* wrapF, XrdSysError& log, OpenVerifyCache& cache, OpenVerifyMetrics& metrics,
-                   OpenVerifySingleFlight& single_flight, OpenVerifyHostReliability& host_reliability,
-                   OpenVerifyFailureLog& failure_log, OpenVerifyRucio& rucio, bool observe, bool direct_server,
-                   std::string ov_cert, std::string ov_key);
+    OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
+                   OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
+                   OpenVerifyHostReliability& host_reliability, OpenVerifyFailureLog& failure_log,
+                   OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
+                   std::string ov_key);
     ~OpenVerifyFile();
 
-    XrdSfsFile* m_wrapped;
+    std::unique_ptr<XrdSfsFile> m_wrapped;
     XrdSysError& m_log;
     OpenVerifyCache& m_cache;
     OpenVerifyMetrics& m_metrics;
