@@ -98,6 +98,30 @@ void Test_FormatRecordDefaults() {
     Expect(line.find(" reason=openverify_failure") != std::string::npos, "FormatRecordDefaults: reason");
 }
 
+void Test_DavToHttpUrl() {
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("davs://h.example.edu:2880/store/a.root") ==
+               "https://h.example.edu:2880/store/a.root",
+           "DavToHttpUrl: davs -> https");
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("dav://h.example.edu/store/a.root") ==
+               "http://h.example.edu/store/a.root",
+           "DavToHttpUrl: dav -> http");
+    // Only the scheme changes; authority, port and path are untouched.
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("davs://h.example.edu//dcache/store/a.root") ==
+               "https://h.example.edu//dcache/store/a.root",
+           "DavToHttpUrl: keeps double slash in path");
+    // Wire schemes and non-HTTP schemes pass through untouched.
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("https://h.example.edu/store/a.root") ==
+               "https://h.example.edu/store/a.root",
+           "DavToHttpUrl: https unchanged");
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("root://h.example.edu:1094//store/a.root") ==
+               "root://h.example.edu:1094//store/a.root",
+           "DavToHttpUrl: root unchanged");
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("") == "", "DavToHttpUrl: empty unchanged");
+    // "davfoo" must not be mistaken for the dav alias.
+    Expect(OpenVerifyFailureLog::DavToHttpUrl("davfoo://h/x") == "davfoo://h/x",
+           "DavToHttpUrl: unrelated scheme with dav prefix unchanged");
+}
+
 void Test_SynthesizePfn() {
     Expect(OpenVerifyFailureLog::SynthesizePfn("root", "h.example.edu", 1094, "/store/a.root") ==
                "root://h.example.edu:1094//store/a.root",
@@ -108,6 +132,17 @@ void Test_SynthesizePfn() {
     Expect(OpenVerifyFailureLog::SynthesizePfn("root", "h.example.edu", -1, "store/a.root") ==
                "root://h.example.edu//store/a.root",
            "SynthesizePfn: no port + normalize path");
+    // dav/davs are catalog aliases, so they resolve to a wire scheme with a
+    // single slash before the path.
+    Expect(OpenVerifyFailureLog::SynthesizePfn("davs", "h.example.edu", 1094, "/store/a.root") ==
+               "https://h.example.edu:1094/store/a.root",
+           "SynthesizePfn: davs resolves to https");
+    Expect(OpenVerifyFailureLog::SynthesizePfn("dav", "h.example.edu", 1094, "/store/a.root") ==
+               "http://h.example.edu:1094/store/a.root",
+           "SynthesizePfn: dav resolves to http");
+    Expect(OpenVerifyFailureLog::SynthesizePfn("https", "h.example.edu", 1094, "/store/a.root") ==
+               "https://h.example.edu:1094/store/a.root",
+           "SynthesizePfn: https alias");
 }
 
 void Test_ProbeUrlHelpers() {
@@ -127,16 +162,33 @@ void Test_MakeRucioRedirect() {
     Expect(root.text == "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root",
            "MakeRucioRedirect: root strips query and keeps PFN path");
 
-    const auto http = OpenVerifyFailureLog::MakeRucioRedirect(true, "cmsdcadisk.fnal.gov", 1094, pfn,
+    // HTTP clients get the catalog PFN as a full URL too, so the disk-door site
+    // prefix survives instead of XrdHttp re-appending the client LFN. Rucio's
+    // davs:// becomes https:// so the Location: header is followable.
+    const char* davs_pfn = "davs://cmsdcadisk.fnal.gov:1094/dcache/uscmsdisk/store/mc/file.root?x=1";
+    const auto http = OpenVerifyFailureLog::MakeRucioRedirect(true, "cmsdcadisk.fnal.gov", 1094, davs_pfn,
                                                               "/store/mc/file.root");
-    Expect(http.code == 1094, "MakeRucioRedirect: http keeps port");
-    Expect(http.text == "cmsdcadisk.fnal.gov", "MakeRucioRedirect: http keeps host only");
+    Expect(http.code == -1, "MakeRucioRedirect: http uses full-URL code -1");
+    Expect(http.text == "https://cmsdcadisk.fnal.gov:1094/dcache/uscmsdisk/store/mc/file.root",
+           "MakeRucioRedirect: http strips query and resolves davs PFN to https");
 
     const auto synth = OpenVerifyFailureLog::MakeRucioRedirect(false, "h.example.edu", 1094, "",
                                                                "//dcache/store/a.root");
     Expect(synth.code == -1, "MakeRucioRedirect: synthesize full URL when pfn empty");
     Expect(synth.text == "root://h.example.edu:1094//dcache/store/a.root",
            "MakeRucioRedirect: synthesize from path");
+
+    // Synthesized fallback must follow the client dialect, not hardcode root://.
+    const auto synth_http = OpenVerifyFailureLog::MakeRucioRedirect(true, "h.example.edu", 1094, "",
+                                                                   "/dcache/store/a.root");
+    Expect(synth_http.code == -1, "MakeRucioRedirect: http synthesize uses code -1");
+    Expect(synth_http.text == "https://h.example.edu:1094/dcache/store/a.root",
+           "MakeRucioRedirect: http synthesize uses https wire scheme");
+
+    // No host and no path: degrade to host + port rather than emit a bogus URL.
+    const auto bare = OpenVerifyFailureLog::MakeRucioRedirect(true, "h.example.edu", 1094, "", "");
+    Expect(bare.code == 1094, "MakeRucioRedirect: falls back to port when nothing to build");
+    Expect(bare.text == "h.example.edu", "MakeRucioRedirect: falls back to host");
 }
 
 void Test_RucioPfnVerifyCacheKey() {
@@ -228,6 +280,7 @@ int main() {
     Test_FormatRecordFields();
     Test_FormatRecordCmsdVsRucio();
     Test_FormatRecordDefaults();
+    Test_DavToHttpUrl();
     Test_SynthesizePfn();
     Test_ProbeUrlHelpers();
     Test_MakeRucioRedirect();

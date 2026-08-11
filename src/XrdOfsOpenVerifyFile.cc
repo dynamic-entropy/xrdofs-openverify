@@ -102,8 +102,8 @@ bool ClientIsHttp(const XrdSecEntity* client) {
            (std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0);
 }
 
-// Apply Rucio gateway redirect: root clients get a full URL with the catalog PFN path
-// (SFS port -1); HTTP keeps host:port because XrdHttp appends the original resource path.
+// Apply Rucio gateway redirect: both dialects get a full URL with the catalog PFN path
+// (SFS port -1), so neither XrdCl nor XrdHttp re-appends the original resource path.
 void ApplyRucioRedirect(XrdOucErrInfo& err, const XrdSecEntity* client, const std::string& host, int port,
                         const std::string& pfn, const std::string& path, XrdSysError& log) {
     const auto target = OpenVerifyFailureLog::MakeRucioRedirect(ClientIsHttp(client), host, port, pfn, path);
@@ -311,11 +311,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     continue;
                 }
 
-                // Open/verify and (for root clients) redirect with the catalog PFN path
-                // (may include a site prefix such as /dcache/uscmsdisk/store/...), not the
-                // client LFN. Disk doors often require that prefix; redirectors typically
-                // accept the LFN alone. HTTP clients still get host:port only (XrdHttp
-                // always appends the original request path).
+                // Open/verify and redirect with the catalog PFN path (may include a site
+                // prefix such as /dcache/uscmsdisk/store/...), not the client LFN. Disk
+                // doors often require that prefix; redirectors typically accept the LFN
+                // alone.
                 std::string verify_path = pathStr;
                 if (!cand.pfn.empty()) {
                     const std::string pfn_path = OpenVerifyFailureLog::PathFromUrl(cand.pfn);
