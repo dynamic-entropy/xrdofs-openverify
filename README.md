@@ -56,6 +56,8 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_QUARANTINE_THRESHOLD` | Enter quarantine when EWMA is at/above this (default `0.6`) |
 | `XRD_OPENVERIFY_RECOVER_THRESHOLD` | Leave quarantine when EWMA is at/below this (default `0.4`; clamped to quarantine) |
 | `XRD_OPENVERIFY_PROBE_COOLDOWN` | Seconds between probes of a quarantined site (default `60`) |
+| `XRD_OPENVERIFY_FAILSAFE_MAX_SITES` | Unique sites entering quarantine in the fail-safe window that trip the circuit breaker (default `8`; `0` disables). While tripped, OpenVerify stops skipping sites for one window |
+| `XRD_OPENVERIFY_FAILSAFE_WINDOW` | Fail-safe detection window and hold time in seconds (default `300`) |
 | `X509_USER_PROXY` | X.509 proxy used for Rucio `x509_proxy` auth (same default credentials path as verify) |
 
 Rucio scheme selection follows the client wire protocol: `http`/`https` → Rucio protocol `davs` (Rucio does not know `http`), otherwise `root`. `list_replicas` always sends the normalized Rucio scheme. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback. **Tape replicas are dropped** before try-order (PFN `type=TAPE` or RSE name ending in `_Tape`) so OpenVerify never verify-opens or redirects to tape — Disk and Tape often share a gateway host with different PFN paths.

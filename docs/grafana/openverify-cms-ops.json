@@ -478,7 +478,7 @@
       "type": "stat",
       "id": 13,
       "title": "Unhealthy sites",
-      "description": "How many sites currently score as unhealthy (EWMA quarantine). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
+      "description": "How many sites currently score as unhealthy (EWMA quarantine). Zero while the fail-safe is tripped (mass-quarantine circuit breaker released them). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2623,6 +2623,78 @@
       "panels": []
     },
     {
+      "type": "stat",
+      "id": 62,
+      "title": "Quarantine fail-safe",
+      "description": "1 means too many unique sites entered quarantine in a short window, so OpenVerify stopped skipping sites (likely a plugin/config fault, not a multi-site outage). Hold lasts FAILSAFE_WINDOW seconds, then quarantine can resume.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 144
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(xrootd_openverify_failsafe_active{xrootd_instance=~\"$instance\"}) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "off",
+                  "index": 0
+                },
+                "1": {
+                  "text": "TRIPPED",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
       "type": "timeseries",
       "id": 60,
       "title": "Site health score (higher = worse)",
@@ -2633,8 +2705,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
-        "x": 0,
+        "w": 18,
+        "x": 6,
         "y": 144
       },
       "targets": [

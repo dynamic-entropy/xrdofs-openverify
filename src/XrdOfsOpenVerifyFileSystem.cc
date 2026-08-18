@@ -76,6 +76,7 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
     m_rucio.LogConfig();
     const std::string health_cfg = m_host_reliability.ConfigSummary();
     m_log.Emsg(" INFO", health_cfg.c_str());
+    m_host_reliability.SetEventLog([this](const char* msg) { m_log.Emsg(" WARN", msg); });
     Configure();
     m_metrics.SetSiteSource(&m_host_reliability);
     m_cache.StartExpiryThread();

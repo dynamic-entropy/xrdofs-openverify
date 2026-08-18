@@ -61,11 +61,12 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
 - `xrootd_openverify_host_busy_total` — first per-host inflight-cap reject (`host`, `port`)
 - `xrootd_openverify_site_*` — first per-site verify success/failure
+- `xrootd_openverify_failsafe_active` / `failsafe_trips_total` / `failsafe_recent_sites` — exported with site gauges (mass-quarantine circuit breaker)
 
 Optional label **`xrootd_instance`** when `XRD_OPENVERIFY_METRICS_INSTANCE` is set.
 
 Use **`rate()`** / **`increase()`** on counters; gauges (`site_ewma_health`,
-`site_healthy`) are instantaneous.
+`site_healthy`, `failsafe_active`, `failsafe_recent_sites`) are instantaneous.
 
 ---
 
@@ -295,12 +296,20 @@ Exported from `OpenVerifyHostReliability` on each metrics flush:
 | `site_healthy` | gauge | `1` if not quarantined, else `0` |
 | `site_verify_successes_total` | counter | Per-site verify successes |
 | `site_verify_failures_total` | counter | Per-site verify failures |
+| `failsafe_active` | gauge | `1` if the mass-quarantine circuit breaker is open (site skip disabled) |
+| `failsafe_trips_total` | counter | Times the circuit breaker opened |
+| `failsafe_recent_sites` | gauge | Unique sites that entered quarantine in the fail-safe window |
 
 Labels: `host`, `port` (`none` if no port), optional `xrootd_instance`.
+Fail-safe series have only the optional instance label.
 
 Quarantine/recovery rates are env-tunable (`XRD_OPENVERIFY_EWMA_ALPHA_FAIL` /
 `XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS`, thresholds, `XRD_OPENVERIFY_PROBE_COOLDOWN`);
-see `OpenVerifyHostReliability.hh`. The Grafana site-health panel is fixed to
+see `OpenVerifyHostReliability.hh`. If `XRD_OPENVERIFY_FAILSAFE_MAX_SITES` unique
+sites enter quarantine within `XRD_OPENVERIFY_FAILSAFE_WINDOW` seconds (defaults
+8 / 300s; `0` sites disables), OpenVerify trips a circuit breaker: currently
+quarantined sites are released, new quarantines are blocked, and `AvoidSite`
+returns false until the hold expires. The Grafana site-health panel is fixed to
 0–1 so scores below the 0.6 quarantine line are not auto-scaled into peaks.
 
 ---
@@ -337,6 +346,11 @@ sum by (reason) (rate(xrootd_openverify_redirects_avoided_total[5m]))
 # Unhealthy sites
 count(xrootd_openverify_site_healthy == 0) or vector(0)
 
+# Quarantine fail-safe (1 = OpenVerify stopped skipping sites)
+xrootd_openverify_failsafe_active
+xrootd_openverify_failsafe_recent_sites
+increase(xrootd_openverify_failsafe_trips_total[1h])
+
 # Worst site scores
 topk(10, xrootd_openverify_site_ewma_health)
 
@@ -371,5 +385,7 @@ In observe:
 - `site_healthy` / EWMA still update from verify outcomes, but quarantine does
   not change the client redirect path — treat “Unhealthy sites” as a forecast
   signal, not “bad redirects saved”
+- Fail-safe still trips from those forecast quarantines (`failsafe_active`);
+  clients are already not skipped in observe
 - Miss-path delay outcomes include `queue_timeout` / `queue_full` / `host_busy`
   when the FIFO or per-host cap rejects before verify

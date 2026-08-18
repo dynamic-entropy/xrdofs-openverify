@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -16,6 +17,9 @@
 // XRD_OPENVERIFY_QUARANTINE_THRESHOLD     enter quarantine at/above this (default 0.6)
 // XRD_OPENVERIFY_RECOVER_THRESHOLD        leave quarantine at/below this (default 0.4)
 // XRD_OPENVERIFY_PROBE_COOLDOWN           seconds between probes while quarantined (default 60)
+// XRD_OPENVERIFY_FAILSAFE_MAX_SITES       unique sites quarantined in the window that trips
+//                                         the circuit breaker (default 8; 0 disables)
+// XRD_OPENVERIFY_FAILSAFE_WINDOW          fail-safe window/hold seconds (default 300)
 class OpenVerifyHostReliability {
    public:
     struct SiteSnapshot {
@@ -27,6 +31,14 @@ class OpenVerifyHostReliability {
         uint64_t failures{0};
     };
 
+    struct FailSafeSnapshot {
+        bool active{false};
+        uint64_t trips{0};
+        uint64_t recent_sites{0};
+        uint64_t max_sites{8};
+        std::chrono::seconds window{300};
+    };
+
     struct Config {
         double ewma_alpha_fail{0.05};
         double ewma_alpha_success{0.10};
@@ -34,13 +46,24 @@ class OpenVerifyHostReliability {
         double quarantine_threshold{0.6};
         double recover_threshold{0.4};
         std::chrono::seconds probe_cooldown{60};
+        uint64_t failsafe_max_sites{8};
+        std::chrono::seconds failsafe_window{300};
     };
 
+    using Clock = std::function<std::chrono::steady_clock::time_point()>;
+    using EventLog = std::function<void(const char* msg)>;
+
     OpenVerifyHostReliability();
+    explicit OpenVerifyHostReliability(Config cfg);
+    OpenVerifyHostReliability(Config cfg, Clock clock);
     OpenVerifyHostReliability(const OpenVerifyHostReliability&) = delete;
     OpenVerifyHostReliability& operator=(const OpenVerifyHostReliability&) = delete;
 
+    // Optional WARN-line logger (set once at plugin init). Used for fail-safe trip/clear.
+    void SetEventLog(EventLog log);
+
     // Skip the site while quarantined, except for one probe per cooldown window.
+    // Always false while the mass-quarantine fail-safe is active.
     bool AvoidSite(const std::string& host, int port);
 
     void RecordVerifySuccess(const std::string& host, int port);
@@ -48,6 +71,7 @@ class OpenVerifyHostReliability {
 
     // Thread-safe copy of current per-site scores for metrics export.
     std::vector<SiteSnapshot> Snapshot() const;
+    FailSafeSnapshot GetFailSafeSnapshot() const;
 
     Config GetConfig() const;
     std::string ConfigSummary() const;
@@ -64,10 +88,16 @@ class OpenVerifyHostReliability {
         int port{-1};
     };
 
-    explicit OpenVerifyHostReliability(Config cfg);
     static Config LoadConfigFromEnv();
     static std::string HostPortKey(const std::string& host, int port);
-    void UpdateHealthState(HostStats& stats);
+    std::chrono::steady_clock::time_point Now() const;
+
+    void UpdateHealthState(HostStats& stats, std::chrono::steady_clock::time_point now);
+    void NoteQuarantineEntry(const HostStats& stats, std::chrono::steady_clock::time_point now);
+    void ReleaseAllQuarantines();
+    // Prune the window, trip or clear the fail-safe. Returns a log line on transition.
+    std::string EvaluateFailSafe(std::chrono::steady_clock::time_point now);
+    void EmitFailSafeLog(const std::string& msg, const EventLog& log) const;
 
     // Separate alphas: smaller fail alpha slows quarantine; larger success alpha
     // speeds recovery. Invalid env values fall back to the defaults above.
@@ -78,7 +108,16 @@ class OpenVerifyHostReliability {
     const double m_quarantine_threshold;
     const double m_recover_threshold;
     const std::chrono::seconds m_probe_cooldown;
+    const uint64_t m_failsafe_max_sites;
+    const std::chrono::seconds m_failsafe_window;
+    const Clock m_clock;
 
     mutable std::mutex m_mtx;
+    EventLog m_event_log;
     std::unordered_map<std::string, HostStats> m_hoststat_map;
+    // host:port → time the site last entered quarantine (unique sites in the window).
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_recent_quarantines;
+    bool m_failsafe_active{false};
+    std::chrono::steady_clock::time_point m_failsafe_until{};
+    uint64_t m_failsafe_trips{0};
 };

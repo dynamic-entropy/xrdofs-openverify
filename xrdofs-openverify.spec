@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.5
+Version:        0.4.6
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.6-1
+- Mass-quarantine fail-safe: stop skipping sites if N unique sites enter quarantine in window T.
+
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.5-1
 - Env-tunable EWMA quarantine (alpha, thresholds, probe cooldown).
 - Grafana site-health panel fixed to 0–1 with quarantine threshold lines.

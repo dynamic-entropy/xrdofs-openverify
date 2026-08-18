@@ -373,6 +373,22 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
     }
 
     if (m_sites) {
+        const auto fs = m_sites->GetFailSafeSnapshot();
+        body << "# HELP xrootd_openverify_failsafe_active 1 if mass-quarantine circuit breaker is open "
+                "(site skip disabled).\n"
+                "# TYPE xrootd_openverify_failsafe_active gauge\n"
+                "xrootd_openverify_failsafe_active"
+             << lbl << " " << (fs.active ? 1 : 0) << "\n"
+             << "# HELP xrootd_openverify_failsafe_trips_total Times the mass-quarantine circuit breaker opened.\n"
+                "# TYPE xrootd_openverify_failsafe_trips_total counter\n"
+                "xrootd_openverify_failsafe_trips_total"
+             << lbl << " " << fs.trips << "\n"
+             << "# HELP xrootd_openverify_failsafe_recent_sites Unique sites that entered quarantine in the "
+                "fail-safe window.\n"
+                "# TYPE xrootd_openverify_failsafe_recent_sites gauge\n"
+                "xrootd_openverify_failsafe_recent_sites"
+             << lbl << " " << fs.recent_sites << "\n";
+
         const auto sites = m_sites->Snapshot();
         body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"
                 "# TYPE xrootd_openverify_site_ewma_health gauge\n"

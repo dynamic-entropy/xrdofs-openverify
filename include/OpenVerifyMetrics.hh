@@ -46,7 +46,9 @@ class OpenVerifyHostReliability;
 // Site EWMA quarantine (see OpenVerifyHostReliability.hh): XRD_OPENVERIFY_EWMA_ALPHA_FAIL
 // (default 0.05), XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS (0.10), XRD_OPENVERIFY_MIN_ATTEMPTS (20),
 // XRD_OPENVERIFY_QUARANTINE_THRESHOLD (0.6), XRD_OPENVERIFY_RECOVER_THRESHOLD (0.4),
-// XRD_OPENVERIFY_PROBE_COOLDOWN seconds (60).
+// XRD_OPENVERIFY_PROBE_COOLDOWN seconds (60). Mass-quarantine fail-safe:
+// XRD_OPENVERIFY_FAILSAFE_MAX_SITES (default 8; 0 disables), XRD_OPENVERIFY_FAILSAFE_WINDOW
+// seconds (300).
 //
 class OpenVerifyMetrics {
    public:
