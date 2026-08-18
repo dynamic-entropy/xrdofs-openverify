@@ -16,6 +16,7 @@
 #include "XrdCl/XrdClXRootDResponses.hh"
 #include "XrdOfsOpenVerify.hh"
 #include "XrdOuc/XrdOucUtils.hh"
+#include "XrdSys/XrdSysError.hh"
 
 namespace {
 // Build the outbound verify URL. Do not forward the client request opaque: AAA
@@ -313,6 +314,17 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
     return "xrdcl_error";
 }
 
+void LogXrdClProbeFail(XrdSysError& log, const char* stage, const std::string& url, const XrdCl::Status& st) {
+    const std::string line = std::string("reason=") + ClassifyXrdClStatus(st) + " stage=" + stage + " url=" + url +
+                             " " + st.ToString();
+    log.Emsg(" WARN", "openverify_probe", line.c_str());
+}
+
+void LogXrdClProbeFail(XrdSysError& log, const char* stage, const std::string& url, const char* reason) {
+    const std::string line = std::string("reason=") + reason + " stage=" + stage + " url=" + url;
+    log.Emsg(" WARN", "openverify_probe", line.c_str());
+}
+
 std::string HostPortFromVerifyKey(const std::string& key) {
     const size_t sep = key.find("//");
     if (sep == std::string::npos) return key;
@@ -463,8 +475,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, timeout_seconds);
     if (!st.IsOK()) {
         set_stage("open");
-        const std::string msg = st.ToString();
-        m_log.Emsg(" WARN", "openverify XrdCl open failed for", url.c_str(), msg.c_str());
+        LogXrdClProbeFail(m_log, "open", url, st);
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
@@ -472,8 +483,11 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     st = f.Stat(false, statInfo);
     if (!st.IsOK() || !statInfo) {
         set_stage("stat");
-        const std::string msg = st.ToString();
-        m_log.Emsg(" WARN", "openverify XrdCl stat failed for", url.c_str(), msg.c_str());
+        if (st.IsOK()) {
+            LogXrdClProbeFail(m_log, "stat", url, "openverify_stat_no_info");
+        } else {
+            LogXrdClProbeFail(m_log, "stat", url, st);
+        }
         auto closeSt = f.Close();
         (void)closeSt;
         if (st.IsOK()) {
@@ -489,6 +503,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     if (size == 0) {
         // Empty file: treat as failure
         set_stage("empty_file");
+        LogXrdClProbeFail(m_log, "empty_file", url, "openverify_empty_file");
         auto closeSt = f.Close();
         (void)closeSt;
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errDataError, 0, "openverify_empty_file"};
@@ -513,8 +528,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
 
     if (!st.IsOK()) {
         set_stage("vector_read");
-        const std::string msg = st.ToString();
-        m_log.Emsg(" WARN", "openverify XrdCl vector read failed for", url.c_str(), msg.c_str());
+        LogXrdClProbeFail(m_log, "vector_read", url, st);
         auto closeSt = f.Close();
         (void)closeSt;
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};

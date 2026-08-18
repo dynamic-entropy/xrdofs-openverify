@@ -100,6 +100,26 @@ Fields:
 
 Filter failed Rucio verifications with e.g. `grep 'source=rucio'`, then group by `reason` / `stage` / `host`. Rotate with system logrotate (`copytruncate`, `create` as `xrootd:xrootd`) because the plugin keeps the file descriptor open.
 
+## Grepping xrootd.log
+
+Live probe failures also go to the campaign file above when `XRD_OPENVERIFY_FAILURE_LOG` is set. Empty Rucio lists, Rucio exhaust, negative-cache skips, and quarantine are **only** on the daemon log. After 0.4.3 those lines are one greppable record each (`zgrep` rotated `xrootd.log-*.gz`):
+
+```bash
+# Files with an empty Rucio replica list (no PFNs; cmsd fallback, not exhaust)
+grep 'openverify rucio_empty' /var/log/xrootd/fed/xrootd.log
+
+# Rucio returned PFNs but none were accepted: LFN + catalog sites + per-host error
+grep 'openverify rucio_exhausted' /var/log/xrootd/fed/xrootd.log
+#   path=/store/... rucio=[host1:1094,host2:1094] errors=host1:1094=operation_expired,host2:1094=negative_cache
+
+# Probe timeouts (Open / Stat / VectorRead of first+last byte)
+grep 'reason=operation_expired' /var/log/xrootd/fed/xrootd.log
+#   openverify_fail source=rucio host=... reason=operation_expired path=/store/... stage=open
+#   openverify_probe reason=operation_expired stage=open url=root://...
+```
+
+`errors=` on the exhaust line uses the same reason vocabulary as Prometheus (`operation_expired`, `not_found`, …) plus skip tags `tried`, `quarantine`, `host_busy`, `negative_cache`. Other Rucio lookup failures (auth/timeout/error) are `openverify rucio_lookup result=… path=…`.
+
 ## Metrics (Prometheus)
 
 Counters and example queries are documented in

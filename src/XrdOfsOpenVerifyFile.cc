@@ -226,6 +226,29 @@ const char* RucioLookupResultLabel(OpenVerifyRucioLookupResult status) {
     return "error";
 }
 
+std::string StatusReason(const XrdCl::XRootDStatus& st) {
+    const std::string& e = st.GetErrorMessage();
+    return e.empty() ? "openverify_failure" : e;
+}
+
+void AppendHostReason(std::string& notes, const std::string& hostPort, const std::string& reason) {
+    if (!notes.empty()) notes += ",";
+    notes += hostPort;
+    notes += "=";
+    notes += reason;
+}
+
+// One-line daemon record: grep openverify_fail / reason=operation_expired / path=
+void LogOpenVerifyFail(XrdSysError& log, const char* source, const std::string& hostPort, const std::string& reason,
+                       const std::string& path, const std::string& stage = {}) {
+    std::string msg = std::string("source=") + source + " host=" + hostPort + " reason=" + reason + " path=" + path;
+    if (!stage.empty()) {
+        msg += " stage=";
+        msg += stage;
+    }
+    log.Emsg(" WARN", "openverify_fail", msg.c_str());
+}
+
 }  // namespace
 
 OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
@@ -299,6 +322,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     bool after_rucio_exhaust = false;
     std::unordered_set<std::string> rucio_host_index;
     std::string rucio_host_list;
+    std::string rucio_errors;  // host:port=reason,... for the exhaust line
     const std::string pathStr = fileName ? fileName : "";
     // Client-supplied tried= (and any prior plugin injections on retries).
     const auto client_tried = ParseTriedHosts(opaque);
@@ -337,6 +361,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 if (IsInTriedList(client_tried, hostStr, portVal)) {
                     m_log.Emsg(" INFO", "skipping rucio host in client tried=:", hostPort.c_str());
                     AppendTriedHost(tried_hosts, hostPort);
+                    AppendHostReason(rucio_errors, hostPort, "tried");
                     continue;
                 }
 
@@ -358,6 +383,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
                     AppendTriedHost(tried_hosts, hostPort);
                     hop.Avoided("quarantine");
+                    AppendHostReason(rucio_errors, hostPort, "quarantine");
                     m_log.Emsg(" WARN", "skipping unhealthy rucio host:", hostPort.c_str());
                     continue;
                 }
@@ -370,6 +396,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     case OpenVerifyCache::Status::Miss: {
                         m_metrics.RecordCacheMiss();
                         m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
+                        std::string last_fail_stage;
                         const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
                             std::string final_host;
                             int final_port = -1;
@@ -385,6 +412,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 // Store DS for metrics/cache completeness; do not rewrite Rucio redirect to it.
                                 m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
                             } else {
+                                last_fail_stage = fail_stage;
                                 const std::string failure_reason = st.GetErrorMessage().empty()
                                                                        ? "openverify_failure"
                                                                        : st.GetErrorMessage();
@@ -413,10 +441,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                        key.c_str());
                         } else if (IsHostInflightBusy(verify_result)) {
                             AppendTriedHost(tried_hosts, hostPort);
+                            AppendHostReason(rucio_errors, hostPort, "host_busy");
                             m_log.Emsg(" WARN", "openverify host inflight cap; skipping (rucio)", key.c_str());
                         } else {
                             AppendTriedHost(tried_hosts, hostPort);
-                            m_log.Emsg(" WARN", "openverify failed (rucio) for", key.c_str());
+                            const std::string reason = StatusReason(verify_result);
+                            AppendHostReason(rucio_errors, hostPort, reason);
+                            LogOpenVerifyFail(m_log, "rucio", hostPort, reason, pathStr, last_fail_stage);
                         }
                         break;
                     }
@@ -429,7 +460,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     case OpenVerifyCache::Status::Negative:
                         hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
                         AppendTriedHost(tried_hosts, hostPort);
-                        m_log.Emsg(" WARN", "openverify failed (rucio cached) for", key.c_str());
+                        AppendHostReason(rucio_errors, hostPort, "negative_cache");
+                        LogOpenVerifyFail(m_log, "rucio", hostPort, "negative_cache", pathStr);
                         break;
                 }
 
@@ -439,11 +471,21 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             if (!accepted) {
                 after_rucio_exhaust = true;
                 m_metrics.RecordRucioExhausted();
-                const std::string msg = std::string("path=") + pathStr + " rucio=[" + rucio_host_list + "]";
-                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd;", msg.c_str());
+                std::string msg = std::string("path=") + pathStr + " rucio=[" + rucio_host_list + "]";
+                if (!rucio_errors.empty()) {
+                    msg += " errors=";
+                    msg += rucio_errors;
+                }
+                m_log.Emsg(" INFO", "openverify rucio_exhausted", msg.c_str());
             }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
-            m_log.Emsg(" INFO", "openverify rucio lookup soft-fail; falling back to cmsd");
+            const char* label = RucioLookupResultLabel(listed.status);
+            const std::string msg = std::string("result=") + label + " path=" + pathStr;
+            if (listed.status == OpenVerifyRucioLookupResult::Empty) {
+                m_log.Emsg(" INFO", "openverify rucio_empty", msg.c_str());
+            } else {
+                m_log.Emsg(" INFO", "openverify rucio_lookup", msg.c_str());
+            }
         }
     }
 
@@ -532,6 +574,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Miss: {
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
+                std::string last_fail_stage;
                 const auto verify_result =
                     RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
                     std::string final_host;
@@ -547,6 +590,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                         m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
                     } else {
+                        last_fail_stage = fail_stage;
                         const std::string failure_reason = st.GetErrorMessage().empty() ? "openverify_failure"
                                                                                          : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure("cmsd", hostStr, portVal, failure_reason);
@@ -587,7 +631,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     m_log.Emsg(" WARN", "openverify host inflight cap; skipping", key.c_str());
                 } else {
                     AppendTriedHost(tried_hosts, hostPort);
-                    m_log.Emsg(" WARN", "openverify failed for", key.c_str());
+                    LogOpenVerifyFail(m_log, "cmsd", hostPort, StatusReason(verify_result), pathStr, last_fail_stage);
                 }
                 break;
             }
@@ -606,7 +650,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Negative:
                 hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
                 AppendTriedHost(tried_hosts, hostPort);
-                m_log.Emsg(" WARN", "openverify failed (cached) for", key.c_str());
+                LogOpenVerifyFail(m_log, "cmsd", hostPort, "negative_cache", pathStr);
                 break;
         }
     }

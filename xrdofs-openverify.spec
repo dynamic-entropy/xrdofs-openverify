@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.1
+Version:        0.4.3
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,12 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.3-1
+- Greppable daemon lines: rucio_empty, rucio_exhausted (path + rucio=[] + errors=), openverify_fail reason=.
+
+* Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.2-1
+- Log result= and path= on rucio lookup soft-fail (empty replica list is greppable).
+
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.1-1
 - Log LFN on rucio-candidates-exhausted (path= next to rucio=[...]).
 
