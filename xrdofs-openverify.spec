@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.3.0
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.0-1
+- Queue wait defaults to twice the verify timeout; requeue queue_timeout/queue_full without tried=.
+- Cap per-host inflight at 50% of MAX_INFLIGHT; host_busy skips via tried= and is labeled in metrics.
+
 * Tue Aug 11 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.3.0-1
 - Fix memory leak: own wrapped OFS file with std::unique_ptr (RAII).
 

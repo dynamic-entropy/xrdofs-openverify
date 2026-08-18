@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdlib>
 #include <future>
 #include <iostream>
 #include <string>
@@ -21,7 +22,8 @@ void ConfigureSmallLimits(int queue_timeout_ms = 120, int verify_timeout_ms = 10
     setenv("XRD_OPENVERIFY_MAX_INFLIGHT", "1", 1);
     setenv("XRD_OPENVERIFY_MAX_WAITERS", "1", 1);
     setenv("XRD_OPENVERIFY_QUEUE_TIMEOUT_MS", std::to_string(queue_timeout_ms).c_str(), 1);
-    setenv("XRD_OPENVERIFY_VERIFY_TIMEOUT_MS", std::to_string(verify_timeout_ms).c_str(), 1);
+    setenv("XRD_OPENVERIFY_VERIFY_TIMEOUT", "5", 1);
+    (void)verify_timeout_ms;
 }
 
 void Test_WaitSlotReleasedAfterQueueTimeout() {
@@ -35,7 +37,7 @@ void Test_WaitSlotReleasedAfterQueueTimeout() {
 
     // Keep k1 in-flight so later requests must queue behind it.
     auto leader = std::async(std::launch::async, [&]() {
-        return sf.Run("k1", [&]() {
+        return sf.Run("k1", "h1", 1094, [&]() {
             release_signal.wait();
             return XrdCl::XRootDStatus{};
         });
@@ -44,7 +46,7 @@ void Test_WaitSlotReleasedAfterQueueTimeout() {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     auto waiter1 = std::async(std::launch::async, [&]() {
-        return sf.Run("k2", [&]() { return XrdCl::XRootDStatus{}; });
+        return sf.Run("k2", "h2", 1094, [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto r1 = waiter1.get();
     // k2 should wait for in-flight capacity and eventually hit queue timeout.
@@ -52,7 +54,7 @@ void Test_WaitSlotReleasedAfterQueueTimeout() {
            "first waiter should timeout while waiting for in-flight slot");
 
     auto waiter2 = std::async(std::launch::async, [&]() {
-        return sf.Run("k3", [&]() { return XrdCl::XRootDStatus{}; });
+        return sf.Run("k3", "h3", 1094, [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto r2 = waiter2.get();
     // If waiter bookkeeping is correct, k3 can also occupy the wait slot and timeout.
@@ -78,7 +80,7 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
 
     // k1 starts first and holds the in-flight slot.
     auto leader = std::async(std::launch::async, [&]() {
-        return sf.Run("k1", [&]() {
+        return sf.Run("k1", "h1", 1094, [&]() {
             leader_signal.wait();
             return XrdCl::XRootDStatus{};
         });
@@ -88,7 +90,7 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
 
     // k2 should initially be a waiter, then become in-flight after k1 releases.
     auto second = std::async(std::launch::async, [&]() {
-        return sf.Run("k2", [&]() {
+        return sf.Run("k2", "h2", 1094, [&]() {
             second_signal.wait();
             return XrdCl::XRootDStatus{};
         });
@@ -100,7 +102,7 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
 
     // k3 arrives while k2 is in-flight; it should be able to wait (not queue_full) then timeout.
     auto third = std::async(std::launch::async, [&]() {
-        return sf.Run("k3", [&]() { return XrdCl::XRootDStatus{}; });
+        return sf.Run("k3", "h3", 1094, [&]() { return XrdCl::XRootDStatus{}; });
     });
     const auto t = third.get();
     Expect(!t.IsOK() && t.GetErrorMessage() == "openverify_queue_timeout",
@@ -114,11 +116,56 @@ void Test_WaitSlotReleasedOnWaitToInFlightTransition() {
     Expect(r2.IsOK(), "second should succeed after becoming in-flight");
 }
 
+void Test_HostInflightCapRejectsBusyAndAllowsOtherHost() {
+    setenv("XRD_OPENVERIFY_MAX_INFLIGHT", "4", 1);
+    setenv("XRD_OPENVERIFY_MAX_WAITERS", "8", 1);
+    setenv("XRD_OPENVERIFY_QUEUE_TIMEOUT_MS", "2000", 1);
+    unsetenv("XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST");  // default 50% of 4 → 2
+    OpenVerifyMetrics metrics;
+    OpenVerifySingleFlight sf(metrics);
+
+    std::promise<void> release;
+    std::shared_future<void> release_signal(release.get_future());
+
+    auto a1 = std::async(std::launch::async, [&]() {
+        return sf.Run("a1", "siteA", 1094, [&]() {
+            release_signal.wait();
+            return XrdCl::XRootDStatus{};
+        });
+    });
+    auto a2 = std::async(std::launch::async, [&]() {
+        return sf.Run("a2", "siteA", 1094, [&]() {
+            release_signal.wait();
+            return XrdCl::XRootDStatus{};
+        });
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    auto a3 = std::async(std::launch::async, [&]() {
+        return sf.Run("a3", "siteA", 1094, [&]() { return XrdCl::XRootDStatus{}; });
+    });
+    const auto r3 = a3.get();
+    Expect(!r3.IsOK() && r3.GetErrorMessage() == "openverify_host_busy",
+           "third probe to siteA should hit per-host inflight cap");
+
+    auto b1 = std::async(std::launch::async, [&]() {
+        return sf.Run("b1", "siteB", 1094, [&]() { return XrdCl::XRootDStatus{}; });
+    });
+    const auto rb = b1.get();
+    Expect(rb.IsOK(), "siteB should still get a global slot while siteA is at its cap");
+
+    release.set_value();
+    Expect(a1.get().IsOK(), "siteA leader 1 should succeed");
+    Expect(a2.get().IsOK(), "siteA leader 2 should succeed");
+}
+
 }  // namespace
 
 int main() {
     Test_WaitSlotReleasedAfterQueueTimeout();
     Test_WaitSlotReleasedOnWaitToInFlightTransition();
+    Test_HostInflightCapRejectsBusyAndAllowsOtherHost();
 
     if (g_failures) {
         std::cerr << g_failures << " test(s) failed.\n";

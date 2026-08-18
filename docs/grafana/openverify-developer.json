@@ -376,7 +376,7 @@
         "colorMode": "value",
         "graphMode": "area"
       },
-      "description": "Leaders rejected by FIFO before open_verify (queue_timeout + queue_full)."
+      "description": "Leaders rejected by the global FIFO before open_verify (queue_timeout + queue_full). host_busy is a separate per-site cap (see Host inflight busy)."
     },
     {
       "id": 10,
@@ -585,7 +585,7 @@
           "mode": "multi"
         }
       },
-      "description": "Leaders: admitted / queue_timeout / queue_full. queue_timeout rate is the capacity signal; admitted wait mean omitted (usually ~0)."
+      "description": "Leaders: admitted / queue_timeout / queue_full / host_busy. queue_timeout is global FIFO wait; host_busy is the per-site 50% inflight cap."
     },
     {
       "id": 15,
@@ -778,6 +778,59 @@
         }
       },
       "description": "Failure-type breakdown for actual open_verify runs (not FIFO rejects)."
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Host inflight busy by site",
+      "description": "Leaders rejected because this host already held 50% of MAX_INFLIGHT. These skip via tried= (not EWMA). Distinct from queue_timeout/queue_full (global FIFO).",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (host) (rate(xrootd_openverify_host_busy_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ],
   "refresh": "30s",

@@ -426,7 +426,7 @@
       "type": "stat",
       "id": 12,
       "title": "Queue rejects / s",
-      "description": "Probes skipped because the verify queue was full or waited too long. These never ran a live open.",
+      "description": "Global FIFO: queue full or waited too long. These requeue once and do not add the site to tried=. Per-site inflight cap is host_busy (see Per-site inflight busy).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -858,7 +858,7 @@
       "type": "timeseries",
       "id": 22,
       "title": "Verify queue",
-      "description": "admitted = got a probe slot; queue_timeout / queue_full = skipped (no live open).",
+      "description": "admitted = got a probe slot; queue_timeout / queue_full = global FIFO (requeued, not tried=); host_busy = this site already at 50% of MAX_INFLIGHT (skipped via tried=).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2903,7 +2903,7 @@
       "type": "timeseries",
       "id": 73,
       "title": "Avoided redirects by reason",
-      "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered. Flat near 0 when avoidance is not active.",
+      "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered; host_busy = site already at 50% of MAX_INFLIGHT. Flat near 0 when avoidance is not active.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2924,6 +2924,66 @@
           "refId": "A",
           "editorMode": "code",
           "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 74,
+      "title": "Per-site inflight busy",
+      "description": "This host already held 50% of MAX_INFLIGHT probe slots, so OpenVerify skipped it via tried= (not EWMA quarantine). Use the Site filter. Distinct from Verify queue timeout/full (global FIFO).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 175
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host, port) (rate(xrootd_openverify_host_busy_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{host}}:{{port}}"
         }
       ],
       "fieldConfig": {
@@ -3083,9 +3143,9 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\"}, host)",
+        "definition": "label_values({__name__=~\"xrootd_openverify_(verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
         "query": {
-          "query": "label_values(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\"}, host)",
+          "query": "label_values({__name__=~\"xrootd_openverify_(verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

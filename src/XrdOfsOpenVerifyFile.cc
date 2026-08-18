@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -8,6 +9,7 @@
 
 #include "OpenVerifyCacheKey.hh"
 #include "OpenVerifyStaticFallback.hh"
+#include "OpenVerifyTimeout.hh"
 #include "XrdOfsOpenVerify.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 
@@ -70,19 +72,45 @@ bool ShouldBypassOpenVerify(const XrdSfsFileOpenMode openMode) {
     return writeAccess || createOrTruncate;
 }
 
-time_t OpenVerifyTimeoutSeconds() {
-    const char* p = std::getenv("XRD_OPENVERIFY_VERIFY_TIMEOUT");
-    if (!p || !*p) return 5;
-    const long long v = std::strtoll(p, nullptr, 10);
-    return v > 0 ? static_cast<time_t>(v) : static_cast<time_t>(5);
-}
-
 // Returns base_s ± (fraction * base_s)
 std::chrono::seconds JitteredNegativeTTL(int base_s, float fraction = 0.2f) {
     static thread_local std::mt19937 rng{std::random_device{}()};
     const int delta = static_cast<int>(base_s * fraction);
     std::uniform_int_distribution<int> dist(-delta, +delta);
     return std::chrono::seconds(base_s + dist(rng));
+}
+
+bool IsQueueCapacityReject(const XrdCl::XRootDStatus& st) {
+    const std::string& e = st.GetErrorMessage();
+    return e == "openverify_queue_timeout" || e == "openverify_queue_full";
+}
+
+bool IsHostInflightBusy(const XrdCl::XRootDStatus& st) {
+    return st.GetErrorMessage() == "openverify_host_busy";
+}
+
+// One extra FIFO wait on global queue_timeout / queue_full so a slow generation of
+// probes can free a slot. Does not requeue host_busy (that site is at its cap).
+XrdCl::XRootDStatus RunWithQueueRequeue(OpenVerifySingleFlight& sf, const std::string& key, const std::string& host,
+                                        int port, const std::function<XrdCl::XRootDStatus()>& fn) {
+    auto st = sf.Run(key, host, port, fn);
+    if (IsQueueCapacityReject(st)) {
+        st = sf.Run(key, host, port, fn);
+    }
+    return st;
+}
+
+void FinishVerifyHop(OpenVerifyMetrics::RedirectTimer& hop, const XrdCl::XRootDStatus& st) {
+    const std::string& err = st.GetErrorMessage();
+    if (err == "openverify_queue_timeout") {
+        hop.QueueRejected("queue_timeout");
+    } else if (err == "openverify_queue_full") {
+        hop.QueueRejected("queue_full");
+    } else if (err == "openverify_host_busy") {
+        hop.Avoided("host_busy");
+    } else {
+        hop.VerifyFinished(st.IsOK());
+    }
 }
 
 // Rewrite SFS_REDIRECT ErrInfo to the verified data server when known.
@@ -342,7 +370,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     case OpenVerifyCache::Status::Miss: {
                         m_metrics.RecordCacheMiss();
                         m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
-                        const auto verify_result = m_single_flight.Run(key, [&]() {
+                        const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
                             std::string final_host;
                             int final_port = -1;
                             std::string fail_stage;
@@ -370,19 +398,22 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             return st;
                         });
 
-                        const std::string verify_err = verify_result.GetErrorMessage();
-                        if (verify_err == "openverify_queue_timeout") {
-                            hop.QueueRejected("queue_timeout");
-                        } else if (verify_err == "openverify_queue_full") {
-                            hop.QueueRejected("queue_full");
-                        } else {
-                            hop.VerifyFinished(verify_result.IsOK());
-                        }
+                        FinishVerifyHop(hop, verify_result);
                         if (verify_result.IsOK()) {
                             accepted = true;
                             accepted_from_rucio = true;
                             // Keep Rucio gateway redirect already in error (no DIRECT_SERVER rewrite).
                             m_log.Emsg(" INFO", "openverify succeeded (rucio) for", key.c_str());
+                        } else if (IsQueueCapacityReject(verify_result)) {
+                            // Global FIFO congestion: do not tried= / EWMA / negative-cache this site.
+                            // Pass through the current Rucio redirect; attempt index stays this replica.
+                            accepted = true;
+                            accepted_from_rucio = true;
+                            m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through (rucio)",
+                                       key.c_str());
+                        } else if (IsHostInflightBusy(verify_result)) {
+                            AppendTriedHost(tried_hosts, hostPort);
+                            m_log.Emsg(" WARN", "openverify host inflight cap; skipping (rucio)", key.c_str());
                         } else {
                             AppendTriedHost(tried_hosts, hostPort);
                             m_log.Emsg(" WARN", "openverify failed (rucio) for", key.c_str());
@@ -501,7 +532,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             case OpenVerifyCache::Status::Miss: {
                 m_metrics.RecordCacheMiss();
                 m_log.Emsg(" INFO", "openverify cache miss for", key.c_str());
-                const auto verify_result = m_single_flight.Run(key, [&]() {
+                const auto verify_result =
+                    RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
                     std::string final_host;
                     int final_port = -1;
                     std::string fail_stage;
@@ -528,15 +560,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     return st;
                 });
 
-                // FIFO rejects never ran open_verify — do not label as verify_failure.
-                const std::string verify_err = verify_result.GetErrorMessage();
-                if (verify_err == "openverify_queue_timeout") {
-                    hop.QueueRejected("queue_timeout");
-                } else if (verify_err == "openverify_queue_full") {
-                    hop.QueueRejected("queue_full");
-                } else {
-                    hop.VerifyFinished(verify_result.IsOK());
-                }
+                FinishVerifyHop(hop, verify_result);
                 if (verify_result.IsOK()) {
                     accepted = true;
                     accepted_from_rucio = false;
@@ -551,6 +575,16 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         const auto after = m_cache.Get(key);
                         MaybeRewriteRedirectToFinalServer(error, true, after.final_host, after.final_port, m_log);
                     }
+                } else if (IsQueueCapacityReject(verify_result)) {
+                    // Global FIFO congestion: do not tried= / EWMA this site. Pass through
+                    // the current cmsd redirect; accepted attempt stays this cmsd hop.
+                    accepted = true;
+                    accepted_from_rucio = false;
+                    retry = false;
+                    m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through", key.c_str());
+                } else if (IsHostInflightBusy(verify_result)) {
+                    AppendTriedHost(tried_hosts, hostPort);
+                    m_log.Emsg(" WARN", "openverify host inflight cap; skipping", key.c_str());
                 } else {
                     AppendTriedHost(tried_hosts, hostPort);
                     m_log.Emsg(" WARN", "openverify failed for", key.c_str());

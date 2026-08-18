@@ -57,6 +57,8 @@ const char* DelayOutcomeLabel(OpenVerifyMetrics::DelayOutcome o) {
             return "queue_timeout";
         case OpenVerifyMetrics::DelayOutcome::QueueFull:
             return "queue_full";
+        case OpenVerifyMetrics::DelayOutcome::HostBusy:
+            return "host_busy";
         case OpenVerifyMetrics::DelayOutcome::Passthrough:
             return "passthrough";
         default:
@@ -145,6 +147,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_queue_full.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_queue_admissions_total{result=\"queue_timeout\""
          << lbl << "} " << m_queue_timeout.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_queue_admissions_total{result=\"host_busy\""
+         << lbl << "} " << m_queue_host_busy.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_singleflight_requests_total Single-flight requests split by role.\n"
             "# TYPE xrootd_openverify_singleflight_requests_total counter\n"
             "xrootd_openverify_singleflight_requests_total{role=\"leader\""
@@ -162,6 +166,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_redirects_avoided_quarantine.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_redirects_avoided_total{reason=\"negative_cache\""
          << lbl << "} " << m_redirects_avoided_negative_cache.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_redirects_avoided_total{reason=\"host_busy\""
+         << lbl << "} " << m_redirects_avoided_host_busy.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_cmsd_stalls_total cmsd SFS_STALL responses passed through to the client.\n"
             "# TYPE xrootd_openverify_cmsd_stalls_total counter\n"
             "xrootd_openverify_cmsd_stalls_total"
@@ -353,6 +359,19 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         }
     }
 
+    body << "# HELP xrootd_openverify_host_busy_total Leaders rejected because this host already "
+            "held the per-host inflight cap (default 50% of MAX_INFLIGHT).\n"
+            "# TYPE xrootd_openverify_host_busy_total counter\n";
+    {
+        std::lock_guard<std::mutex> lock(m_host_busy_mtx);
+        for (const auto& kv : m_host_busy) {
+            const PerHostBusyMetrics* e = kv.second.get();
+            if (!e) continue;
+            body << "xrootd_openverify_host_busy_total{host=\"" << e->host_esc << "\",port=\"" << e->port_lbl << "\""
+                 << lbl << "} " << e->count.load(std::memory_order_relaxed) << "\n";
+        }
+    }
+
     if (m_sites) {
         const auto sites = m_sites->Snapshot();
         body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"
@@ -428,6 +447,27 @@ void OpenVerifyMetrics::RecordQueueAdmissionTimeout() {
     if (!m_path.empty()) Flush();
 }
 
+void OpenVerifyMetrics::RecordQueueAdmissionHostBusy() {
+    m_queue_host_busy.fetch_add(1, std::memory_order_relaxed);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordHostBusy(const std::string& host, int port) {
+    const std::string key = host + '\x1e' + PortLabelForMetrics(port);
+    const std::string pl = PortLabelForMetrics(port);
+    {
+        std::lock_guard<std::mutex> lock(m_host_busy_mtx);
+        std::unique_ptr<PerHostBusyMetrics>& slot = m_host_busy[key];
+        if (!slot) {
+            slot = std::make_unique<PerHostBusyMetrics>();
+            slot->host_esc = EscapeLabelValue(host);
+            slot->port_lbl = pl;
+        }
+        slot->count.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
 void OpenVerifyMetrics::RecordQueueWait(double seconds, bool timed_out) {
     ObserveHistogram(timed_out ? m_queue_wait_timeout : m_queue_wait_admitted, seconds);
     if (!m_path.empty()) Flush();
@@ -456,10 +496,14 @@ void OpenVerifyMetrics::RecordRedirectHandled() {
 void OpenVerifyMetrics::RecordRedirectAvoided(const std::string& reason, double delay_seconds) {
     if (reason == "quarantine") {
         m_redirects_avoided_quarantine.fetch_add(1, std::memory_order_relaxed);
+        if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::Avoided);
+    } else if (reason == "host_busy") {
+        m_redirects_avoided_host_busy.fetch_add(1, std::memory_order_relaxed);
+        if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::HostBusy);
     } else {
         m_redirects_avoided_negative_cache.fetch_add(1, std::memory_order_relaxed);
+        if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::Avoided);
     }
-    if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::Avoided);
     if (!m_path.empty()) Flush();
 }
 

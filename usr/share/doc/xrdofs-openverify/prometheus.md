@@ -21,7 +21,7 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 |----------|-----|
 | Redirector instance | Which `xrootd_instance` daemon(s) |
 | Rate interval | Bin for `rate()` panels (`auto`, `1m`, `5m`, `1h`, …) |
-| Site | Multi-select `host` from `verify_failures_total` |
+| Site | Multi-select `host` from `verify_failures_total` and `host_busy_total` |
 | Error reason | Multi-select `reason` (scoped to selected sites) |
 | Delay outcome | Filter redirect-delay heatmap by outcome |
 
@@ -38,10 +38,10 @@ once a host has a verify outcome recorded).
 
 - `xrootd_openverify_cache_lookups_total` (`miss` | `hit_positive` | `hit_negative`)
 - `xrootd_openverify_runs_total` (`success` | `failure`)
-- `xrootd_openverify_queue_admissions_total` (`admitted` | `queue_full` | `queue_timeout`)
+- `xrootd_openverify_queue_admissions_total` (`admitted` | `queue_full` | `queue_timeout` | `host_busy`)
 - `xrootd_openverify_singleflight_requests_total` (`leader` | `follower`)
 - `xrootd_openverify_redirects_handled_total`
-- `xrootd_openverify_redirects_avoided_total` (`quarantine` | `negative_cache`)
+- `xrootd_openverify_redirects_avoided_total` (`quarantine` | `negative_cache` | `host_busy`)
 - `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`; total hop = queue + RTT on miss)
 - `xrootd_openverify_queue_wait_seconds` (histogram by `result` = `admitted` | `timeout`)
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
@@ -59,6 +59,7 @@ once a host has a verify outcome recorded).
 **Appear after first event:**
 
 - `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
+- `xrootd_openverify_host_busy_total` — first per-host inflight-cap reject (`host`, `port`)
 - `xrootd_openverify_site_*` — first per-site verify success/failure
 
 Optional label **`xrootd_instance`** when `XRD_OPENVERIFY_METRICS_INSTANCE` is set.
@@ -78,7 +79,8 @@ Same meanings as before:
 |--------|--------|---------|
 | `cache_lookups_total` | `result` | Cache consult on redirect |
 | `runs_total` | `result` | Actual `open_verify` after miss |
-| `queue_admissions_total` | `result` | Inflight queue gate |
+| `queue_admissions_total` | `result` | Inflight queue gate (`admitted` \| `queue_full` \| `queue_timeout` \| `host_busy`) |
+| `host_busy_total` | `host`,`port` | Leader rejected: this host already held 50% of `MAX_INFLIGHT` |
 | `singleflight_requests_total` | `role` | Leader runs verify; follower waits |
 | `verify_failures_total` | `source`,`host`,`port`,`reason` | Failed verifies by locate path (`rucio`\|`cmsd`) and target |
 
@@ -218,7 +220,17 @@ clamp_min(sum(rate(xrootd_openverify_accepted_total[5m])), 1e-9)
 | Metric | Labels | Meaning |
 |--------|--------|---------|
 | `redirects_handled_total` | (instance) | Every `SFS_REDIRECT` seen |
-| `redirects_avoided_total` | `reason=quarantine\|negative_cache` | Target skipped via `tried=` before client follow |
+| `redirects_avoided_total` | `reason=quarantine\|negative_cache\|host_busy` | Target skipped via `tried=` before client follow |
+
+`queue_timeout` / `queue_full` do **not** add the site to `tried=` and do not
+touch EWMA / negative cache; the plugin requeues once, then passes through the
+current redirect. `host_busy` **does** add the host to `tried=` (this site is
+saturating its probe cap) but still does not affect EWMA.
+
+FIFO wait defaults to **twice** `XRD_OPENVERIFY_VERIFY_TIMEOUT` (10s when the
+probe timeout is 5s). Override with `XRD_OPENVERIFY_QUEUE_TIMEOUT_MS`. Per-host
+inflight cap defaults to 50% of `XRD_OPENVERIFY_MAX_INFLIGHT` (override
+`XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST`).
 
 Avoidance rate ≈  
 `rate(redirects_avoided_total) / rate(redirects_handled_total)`.
@@ -237,11 +249,13 @@ On the miss path this total includes FIFO queue wait + `open_verify` RTT.
 | `redirect_delay_seconds_count` | `outcome` |
 
 `outcome` ∈ `cache_hit_positive` | `cache_hit_negative` | `verify_success` |
-`verify_failure` | `avoided` | `queue_timeout` | `queue_full` | `passthrough`
+`verify_failure` | `avoided` | `queue_timeout` | `queue_full` | `host_busy` |
+`passthrough`
 (static `xrootd.redirect` fallback such as transit; no verify).
 
 FIFO rejects (`queue_timeout` / `queue_full`) never ran `open_verify` — they are
-**not** counted in `runs_total` or `verify_failures_total`. Do not read
+**not** counted in `runs_total` or `verify_failures_total`. `host_busy` is also
+not a verify failure; it is a per-site inflight-cap skip (`tried=`). Do not read
 `outcome=verify_failure` delay as including capacity waits.
 
 Buckets (seconds): 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
@@ -333,6 +347,9 @@ topk(15, sum by (host, reason) (
 # cmsd stall rate (lookup delay; not attributed to a site)
 sum(rate(xrootd_openverify_cmsd_stalls_total[5m]))
 sum(rate(xrootd_openverify_cmsd_stall_seconds_total[5m]))
+
+# Per-site inflight cap (host holding 50% of MAX_INFLIGHT)
+topk(15, sum by (host) (rate(xrootd_openverify_host_busy_total[5m])))
 ```
 
 ### Observe mode
@@ -349,5 +366,5 @@ In observe:
 - `site_healthy` / EWMA still update from verify outcomes, but quarantine does
   not change the client redirect path — treat “Unhealthy sites” as a forecast
   signal, not “bad redirects saved”
-- Miss-path delay outcomes include `queue_timeout` / `queue_full` when the FIFO
-  rejects before verify
+- Miss-path delay outcomes include `queue_timeout` / `queue_full` / `host_busy`
+  when the FIFO or per-host cap rejects before verify

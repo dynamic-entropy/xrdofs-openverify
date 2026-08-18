@@ -20,7 +20,10 @@ class OpenVerifySingleFlight {
     OpenVerifySingleFlight& operator=(const OpenVerifySingleFlight&) = delete;
 
     // Runs `fn` once per key while in-flight; concurrent callers wait and receive the same result.
-    XrdCl::XRootDStatus Run(const std::string& key, const std::function<XrdCl::XRootDStatus()>& fn);
+    // `host`/`port` identify the redirect target for the per-host inflight cap
+    // (50% of XRD_OPENVERIFY_MAX_INFLIGHT by default).
+    XrdCl::XRootDStatus Run(const std::string& key, const std::string& host, int port,
+                            const std::function<XrdCl::XRootDStatus()>& fn);
 
    private:
     struct InFlight {
@@ -36,17 +39,26 @@ class OpenVerifySingleFlight {
         std::condition_variable cv;
     };
 
+    static std::string HostPortKey(const std::string& host, int port);
+    size_t HostActiveLocked(const std::string& host_key) const;
+    void IncHostLocked(const std::string& host_key);
+    void DecHostLocked(const std::string& host_key);
+    XrdCl::XRootDStatus HostBusyStatus() const;
+
     // Maximum leaders admitted to run concurrently (XRD_OPENVERIFY_MAX_INFLIGHT).
     const int m_main_limit;
+    // Max concurrent admitted leaders per host:port (default 50% of m_main_limit).
+    const int m_host_limit;
     // Maximum leaders allowed to wait in the FIFO backlog (XRD_OPENVERIFY_MAX_WAITERS).
     const int m_wait_limit;
 
-    // XRD_OPENVERIFY_QUEUE_TIMEOUT_MS
+    // Default: 2 * XRD_OPENVERIFY_VERIFY_TIMEOUT seconds (see OpenVerifyTimeout.hh).
     const std::chrono::milliseconds m_queue_timeout;
 
     std::mutex m_fifo_mutex;
     std::list<FifoWaitTag*> m_fifo;
     size_t m_active{0};
+    std::unordered_map<std::string, size_t> m_host_active;
 
     OpenVerifyMetrics& m_metrics;
 

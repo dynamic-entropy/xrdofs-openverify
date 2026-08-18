@@ -39,8 +39,9 @@ class OpenVerifyHostReliability;
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.
 //
-// XRD_OPENVERIFY_FAILURE_LOG: optional absolute path for a dedicated live-verify
-// failure text log (see OpenVerifyFailureLog.hh). Unset/empty disables it.
+// XRD_OPENVERIFY_VERIFY_TIMEOUT: outbound probe timeout in seconds (default 5).
+// FIFO wait defaults to twice that (10s); override with XRD_OPENVERIFY_QUEUE_TIMEOUT_MS.
+// XRD_OPENVERIFY_MAX_INFLIGHT / XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST (default 50% of inflight).
 //
 class OpenVerifyMetrics {
    public:
@@ -53,6 +54,7 @@ class OpenVerifyMetrics {
         Avoided,
         QueueTimeout,  // FIFO wait hit QUEUE_TIMEOUT; open_verify never ran
         QueueFull,     // wait queue full; open_verify never ran
+        HostBusy,      // host already at 50% of MAX_INFLIGHT; skipped via tried=
         Passthrough,   // static xrootd.redirect fallback (e.g. transit); no verify
         Count
     };
@@ -76,6 +78,9 @@ class OpenVerifyMetrics {
     void RecordQueueAdmissionAdmitted();
     void RecordQueueAdmissionFull();
     void RecordQueueAdmissionTimeout();
+    void RecordQueueAdmissionHostBusy();
+    // Leader rejected because this host:port already held the per-host inflight cap.
+    void RecordHostBusy(const std::string& host, int port);
     // FIFO wait before a verify slot (leaders only). timed_out=true when wait hit QUEUE_TIMEOUT.
     void RecordQueueWait(double seconds, bool timed_out);
     // Wall time inside open_verify (leaders that were admitted and ran fn).
@@ -86,7 +91,7 @@ class OpenVerifyMetrics {
 
     // One SFS_REDIRECT observed (before avoid/cache/verify decision).
     void RecordRedirectHandled();
-    // Bad redirect skipped: reason quarantine | negative_cache.
+    // Bad redirect skipped: reason quarantine | negative_cache | host_busy.
     void RecordRedirectAvoided(const std::string& reason, double delay_seconds = -1);
     // Wall time for a verify miss path after single-flight returns (counters already recorded).
     // Only for paths that reached open_verify (or shared a leader that did).
@@ -217,11 +222,13 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_queue_admitted{0};
     std::atomic<uint64_t> m_queue_full{0};
     std::atomic<uint64_t> m_queue_timeout{0};
+    std::atomic<uint64_t> m_queue_host_busy{0};
     std::atomic<uint64_t> m_singleflight_leader{0};
     std::atomic<uint64_t> m_singleflight_follower{0};
     std::atomic<uint64_t> m_redirects_handled{0};
     std::atomic<uint64_t> m_redirects_avoided_quarantine{0};
     std::atomic<uint64_t> m_redirects_avoided_negative_cache{0};
+    std::atomic<uint64_t> m_redirects_avoided_host_busy{0};
     std::atomic<uint64_t> m_cmsd_stall_events{0};
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
     std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxCmsdAcceptAttempts]{};
@@ -257,6 +264,14 @@ class OpenVerifyMetrics {
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;
+
+    struct PerHostBusyMetrics {
+        std::string host_esc;
+        std::string port_lbl;
+        std::atomic<uint64_t> count{0};
+    };
+    mutable std::mutex m_host_busy_mtx;
+    mutable std::unordered_map<std::string, std::unique_ptr<PerHostBusyMetrics>> m_host_busy;
 
     // Rucio: replica index in try-order that passed verify → count (N or kMaxRucioReplicaLabel).
     mutable std::mutex m_rucio_accept_mtx;
