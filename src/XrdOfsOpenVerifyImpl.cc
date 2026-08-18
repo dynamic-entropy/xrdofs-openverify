@@ -379,24 +379,17 @@ bool ExtractClientBearerToken(const XrdSecEntity* client, const char* opaque, st
 
 XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
                                                 time_t timeout_seconds, std::string* final_host, int* final_port,
-                                                std::string* fail_stage, std::string* protocol,
-                                                std::string* probe_url) {
+                                                std::string* fail_stage) {
     if (final_host) final_host->clear();
     if (final_port) *final_port = -1;
     if (fail_stage) fail_stage->clear();
-    if (protocol) protocol->clear();
-    if (probe_url) probe_url->clear();
 
     auto set_stage = [&](const char* stage) {
         if (fail_stage) *fail_stage = stage;
     };
-    auto set_probe = [&](const std::string& url) {
-        if (probe_url) *probe_url = OpenVerifyFailureLog::StripUrlQuery(url);
-    };
 
     // Match the client's wire protocol (http/https vs xroot) for the outbound open.
     const bool useHttp = IsHttpProtocol(client);
-    if (protocol) *protocol = useHttp ? "http" : "root";
 
     std::string token;
     const char* tokenSource = nullptr;
@@ -428,8 +421,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const auto slashPos = key.find('/');
     if (slashPos == std::string::npos || slashPos == 0) {
         set_stage("key");
-        // Best-effort probe identity before a real URL exists.
-        set_probe((useHttp ? "https://" : "root://") + key);
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidAddr, 0, "openverify_invalid_key"};
     }
@@ -443,7 +434,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     if (!useHttp && haveToken) {
         if (!tokenFile.ok()) {
             set_stage("credential_setup");
-            set_probe((useHttp ? "https://" : "root://") + key);
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
             return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError, static_cast<uint32_t>(errno),
                                        "openverify_token_file_error"};
@@ -457,7 +447,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
     const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
                                     : MakeXrdClVerifyUrl(key, ztnPath, gsiCert, gsiKey);
-    set_probe(url);
 
     const char* credLabel =
         haveToken ? "with token" : (haveServiceCert ? "with service cert" : "with default XrdCl credentials");

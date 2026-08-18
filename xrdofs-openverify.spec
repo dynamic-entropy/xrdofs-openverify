@@ -41,6 +41,7 @@ and verifies file integrity decisions during open operations.
 %changelog
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.3-1
 - Greppable daemon lines: rucio_empty, rucio_exhausted (path + rucio=[] + errors=), openverify_fail reason=.
+- Drop XRD_OPENVERIFY_FAILURE_LOG campaign file; grep xrootd.log instead.
 
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.2-1
 - Log result= and path= on rucio lookup soft-fail (empty replica list is greppable).

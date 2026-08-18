@@ -76,7 +76,6 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
     }
     m_rucio.LogConfig();
     Configure();
-    m_failure_log.Configure(m_log);
     m_metrics.SetSiteSource(&m_host_reliability);
     m_cache.StartExpiryThread();
 }
@@ -99,8 +98,8 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     m_log.Emsg(" INFO", "XrdOfsOpenVerify::newFile - wrapping with FileWrapper");
-    return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability,
-                              m_failure_log, m_rucio, m_observe, m_direct_server, m_ov_cert, m_ov_key);
+    return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_rucio,
+                              m_observe, m_direct_server, m_ov_cert, m_ov_key);
 }
 
 XrdSfsFile* OpenVerifyFileSystem::newFile(XrdOucErrInfo& einfo) {

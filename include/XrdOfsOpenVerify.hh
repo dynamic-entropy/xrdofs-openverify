@@ -6,7 +6,6 @@
 #include <string>
 
 #include "OpenVerifyCache.hh"
-#include "OpenVerifyFailureLog.hh"
 #include "OpenVerifyHostReliability.hh"
 #include "OpenVerifyMetrics.hh"
 #include "OpenVerifyRucio.hh"
@@ -87,7 +86,6 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     OpenVerifyCache m_cache;
     OpenVerifySingleFlight m_single_flight{m_metrics};
     OpenVerifyHostReliability m_host_reliability;
-    OpenVerifyFailureLog m_failure_log;
     OpenVerifyRucio m_rucio;
     const bool m_observe;
     // When true, rewrite accepted SFS_REDIRECT host/port to the verified data server
@@ -150,9 +148,8 @@ class OpenVerifyFile : public XrdSfsFile {
 
     OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
                    OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
-                   OpenVerifyHostReliability& host_reliability, OpenVerifyFailureLog& failure_log,
-                   OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
-                   std::string ov_key);
+                   OpenVerifyHostReliability& host_reliability, OpenVerifyRucio& rucio, bool observe,
+                   bool direct_server, std::string ov_cert, std::string ov_key);
     ~OpenVerifyFile();
 
     std::unique_ptr<XrdSfsFile> m_wrapped;
@@ -161,7 +158,6 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyMetrics& m_metrics;
     OpenVerifySingleFlight& m_single_flight;
     OpenVerifyHostReliability& m_host_reliability;
-    OpenVerifyFailureLog& m_failure_log;
     OpenVerifyRucio& m_rucio;
     const bool m_observe;
     const bool m_direct_server;
@@ -170,17 +166,10 @@ class OpenVerifyFile : public XrdSfsFile {
 
    private:
     // On success, optionally fills final_host/final_port with the data server XrdCl reached.
-    // On failure, optionally fills fail_stage / protocol / probe_url (credential-free) for the
-    // dedicated failure log.
+    // On failure, optionally fills fail_stage (open / stat / vector_read / …).
     XrdCl::XRootDStatus open_verify(const std::string& key, const char* opaque, const XrdSecEntity* client,
                                     time_t timeout_seconds, std::string* final_host = nullptr,
-                                    int* final_port = nullptr, std::string* fail_stage = nullptr,
-                                    std::string* protocol = nullptr, std::string* probe_url = nullptr);
-
-    void LogLiveVerifyFailure(const char* source, int attempt, const std::string& host, int port,
-                              const std::string& path, const std::string& pfn, const XrdCl::XRootDStatus& st,
-                              const std::string& fail_stage, const std::string& protocol,
-                              const std::string& probe_url);
+                                    int* final_port = nullptr, std::string* fail_stage = nullptr);
 };
 
 #endif

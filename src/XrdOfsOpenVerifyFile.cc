@@ -10,6 +10,7 @@
 #include "OpenVerifyCacheKey.hh"
 #include "OpenVerifyStaticFallback.hh"
 #include "OpenVerifyTimeout.hh"
+#include "OpenVerifyUrl.hh"
 #include "XrdOfsOpenVerify.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 
@@ -134,7 +135,7 @@ bool ClientIsHttp(const XrdSecEntity* client) {
 // (SFS port -1), so neither XrdCl nor XrdHttp re-appends the original resource path.
 void ApplyRucioRedirect(XrdOucErrInfo& err, const XrdSecEntity* client, const std::string& host, int port,
                         const std::string& pfn, const std::string& path, XrdSysError& log) {
-    const auto target = OpenVerifyFailureLog::MakeRucioRedirect(ClientIsHttp(client), host, port, pfn, path);
+    const auto target = OpenVerifyUrl::MakeRucioRedirect(ClientIsHttp(client), host, port, pfn, path);
     err.setErrInfo(target.code, target.text.c_str());
     log.Emsg(" INFO", "rucio redirecting to", target.text.c_str());
 }
@@ -253,9 +254,8 @@ void LogOpenVerifyFail(XrdSysError& log, const char* source, const std::string& 
 
 OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
                                OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
-                               OpenVerifyHostReliability& host_reliability, OpenVerifyFailureLog& failure_log,
-                               OpenVerifyRucio& rucio, bool observe, bool direct_server, std::string ov_cert,
-                               std::string ov_key)
+                               OpenVerifyHostReliability& host_reliability, OpenVerifyRucio& rucio, bool observe,
+                               bool direct_server, std::string ov_cert, std::string ov_key)
     : XrdSfsFile(*wrapF),  // share ErrInfo with the wrapped OFS file
       m_wrapped(std::move(wrapF)),
       m_log(log),
@@ -263,7 +263,6 @@ OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& l
       m_metrics(metrics),
       m_single_flight(single_flight),
       m_host_reliability(host_reliability),
-      m_failure_log(failure_log),
       m_rucio(rucio),
       m_observe(observe),
       m_direct_server(direct_server),
@@ -271,33 +270,6 @@ OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& l
       m_ov_key(std::move(ov_key)) {}
 
 OpenVerifyFile::~OpenVerifyFile() { m_log.Emsg(" INFO", "FileWrapper::~FileWrapper"); }
-
-void OpenVerifyFile::LogLiveVerifyFailure(const char* source, int attempt, const std::string& host, int port,
-                                          const std::string& path, const std::string& pfn,
-                                          const XrdCl::XRootDStatus& st, const std::string& fail_stage,
-                                          const std::string& protocol, const std::string& probe_url) {
-    if (!m_failure_log.Enabled()) return;
-
-    OpenVerifyFailureRecord rec;
-    rec.source = source ? source : "unknown";
-    rec.attempt = attempt;
-    rec.host = host;
-    rec.port = port;
-    rec.path = path;
-    rec.pfn = pfn.empty() ? OpenVerifyFailureLog::SynthesizePfn(protocol, host, port, path) : pfn;
-    rec.probe = probe_url.empty() ? OpenVerifyFailureLog::StripUrlQuery(
-                                        OpenVerifyFailureLog::SynthesizePfn(protocol, host, port, path))
-                                  : OpenVerifyFailureLog::StripUrlQuery(probe_url);
-    rec.probe_path = OpenVerifyFailureLog::PathFromUrl(rec.probe);
-    rec.protocol = protocol;
-    rec.stage = fail_stage;
-    rec.reason = st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
-    rec.status_code = static_cast<int>(st.code);
-    rec.err_no = static_cast<int>(st.errNo);
-    // Status::ToString() — no URL / credentials (unlike the daemon WARN that may include the open URL).
-    rec.detail = st.ToString();
-    m_failure_log.Log(rec);
-}
 
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
                          const XrdSecEntity* client, const char* opaque) {
@@ -371,7 +343,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 // alone.
                 std::string verify_path = pathStr;
                 if (!cand.pfn.empty()) {
-                    const std::string pfn_path = OpenVerifyFailureLog::PathFromUrl(cand.pfn);
+                    const std::string pfn_path = OpenVerifyUrl::PathFromUrl(cand.pfn);
                     if (!pfn_path.empty()) verify_path = pfn_path;
                 }
 
@@ -401,11 +373,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             std::string final_host;
                             int final_port = -1;
                             std::string fail_stage;
-                            std::string protocol;
-                            std::string probe_url;
                             const auto st =
                                 open_verify(key, opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
-                                            &final_port, &fail_stage, &protocol, &probe_url);
+                                            &final_port, &fail_stage);
                             if (st.IsOK()) {
                                 m_metrics.RecordVerifySuccess();
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -419,9 +389,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, failure_reason);
                                 m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
-                                // Leader-only: followers share the result without re-running this lambda.
-                                LogLiveVerifyFailure("rucio", rucio_sites_tried, hostStr, portVal, pathStr, cand.pfn,
-                                                     st, fail_stage, protocol, probe_url);
                             }
                             return st;
                         });
@@ -580,11 +547,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     std::string final_host;
                     int final_port = -1;
                     std::string fail_stage;
-                    std::string protocol;
-                    std::string probe_url;
                     const auto st =
                         open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host, &final_port,
-                                    &fail_stage, &protocol, &probe_url);
+                                    &fail_stage);
                     if (st.IsOK()) {
                         m_metrics.RecordVerifySuccess();
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
@@ -596,10 +561,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         m_metrics.RecordVerifyFailure("cmsd", hostStr, portVal, failure_reason);
                         m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                         m_cache.PutNegative(key, JitteredNegativeTTL(15));
-                        // Leader-only: followers share the result without re-running this lambda.
-                        // cmsd has no catalog PFN — synthesize a credential-free root/https URL.
-                        LogLiveVerifyFailure("cmsd", cmsd_sites_tried, hostStr, portVal, pathStr, /*pfn=*/"", st,
-                                             fail_stage, protocol, probe_url);
                     }
                     return st;
                 });
