@@ -2626,7 +2626,7 @@
       "type": "timeseries",
       "id": 60,
       "title": "Site health score (higher = worse)",
-      "description": "Rolling failure score per site (higher means more recent probe failures). Top 15 shown; the set can change as scores move.",
+      "description": "EWMA badness per site on a fixed 0–1 axis (0=healthy). Auto-scaling is disabled so scores well below quarantine do not look like peaks. The red line is the default quarantine threshold (0.6); healthy=0 only above that after min_attempts. Top 15 shown; the set can change as scores move.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2652,6 +2652,9 @@
       "fieldConfig": {
         "defaults": {
           "unit": "none",
+          "min": 0,
+          "max": 1,
+          "decimals": 3,
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -2660,7 +2663,27 @@
             "stacking": {
               "mode": "none",
               "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
             }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.4
+              },
+              {
+                "color": "red",
+                "value": 0.6
+              }
+            ]
           }
         },
         "overrides": []

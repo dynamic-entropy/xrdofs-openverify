@@ -50,6 +50,12 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_ACCOUNT` | Rucio account (required when Rucio lookup is enabled) |
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
 | `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `random` (default), `priority` (Rucio priority), or `geoip` (reserved; currently same as random). Next PFNs are tried only after the current one fails verify |
+| `XRD_OPENVERIFY_EWMA_ALPHA_FAIL` | Failure blend into site badness score (default `0.05`; smaller = slower quarantine) |
+| `XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS` | Success decay of site badness score (default `0.10`; larger = faster recovery) |
+| `XRD_OPENVERIFY_MIN_ATTEMPTS` | Verify samples before a site can enter or leave quarantine (default `20`) |
+| `XRD_OPENVERIFY_QUARANTINE_THRESHOLD` | Enter quarantine when EWMA is at/above this (default `0.6`) |
+| `XRD_OPENVERIFY_RECOVER_THRESHOLD` | Leave quarantine when EWMA is at/below this (default `0.4`; clamped to quarantine) |
+| `XRD_OPENVERIFY_PROBE_COOLDOWN` | Seconds between probes of a quarantined site (default `60`) |
 | `X509_USER_PROXY` | X.509 proxy used for Rucio `x509_proxy` auth (same default credentials path as verify) |
 
 Rucio scheme selection follows the client wire protocol: `http`/`https` → Rucio protocol `davs` (Rucio does not know `http`), otherwise `root`. `list_replicas` always sends the normalized Rucio scheme. Candidate try-order is pluggable (`OpenVerifyRucioSelector`); only the first chosen PFN is verified unless it fails, then the next, and so on. Client `tried=` is honoured when walking Rucio PFNs. In enforce mode every Rucio PFN is tried (no 3-cap); cmsd fallback remains capped at 3. Failed Rucio gateway candidates are accumulated into `tried=` for the cmsd fallback. **Tape replicas are dropped** before try-order (PFN `type=TAPE` or RSE name ending in `_Tape`) so OpenVerify never verify-opens or redirects to tape — Disk and Tape often share a gateway host with different PFN paths.

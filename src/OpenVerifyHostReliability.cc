@@ -1,5 +1,8 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <random>
+#include <sstream>
 
 #include "OpenVerifyHostReliability.hh"
 
@@ -34,15 +37,73 @@ std::chrono::seconds JitteredCooldown(std::chrono::seconds base) {
     return std::chrono::seconds(base_s + dist(rng));
 }
 
+// Inclusive [lo, hi]. Empty / unparsable / out of range → dflt.
+double EnvDoubleOrDefault(const char* name, double dflt, double lo, double hi) {
+    const char* p = std::getenv(name);
+    if (!p || !*p) return dflt;
+    char* end = nullptr;
+    const double v = std::strtod(p, &end);
+    if (end == p || *end != '\0' || !std::isfinite(v) || v < lo || v > hi) return dflt;
+    return v;
+}
+
+// Exclusive of lo, inclusive of hi — used for alphas where 0 would freeze EWMA.
+double EnvAlphaOrDefault(const char* name, double dflt, double lo, double hi) {
+    const char* p = std::getenv(name);
+    if (!p || !*p) return dflt;
+    char* end = nullptr;
+    const double v = std::strtod(p, &end);
+    if (end == p || *end != '\0' || !std::isfinite(v) || v <= lo || v > hi) return dflt;
+    return v;
+}
+
+long EnvLongOrDefault(const char* name, long dflt, long lo) {
+    const char* p = std::getenv(name);
+    if (!p || !*p) return dflt;
+    char* end = nullptr;
+    const long v = std::strtol(p, &end, 10);
+    if (end == p || *end != '\0' || v < lo) return dflt;
+    return v;
+}
+
 }  // namespace
 
-OpenVerifyHostReliability::OpenVerifyHostReliability()
-    : m_ewma_alpha_fail(0.05),
-      m_ewma_alpha_success(0.10),
-      m_min_attempts(20),
-      m_quarantine_threshold(0.6),
-      m_recover_threshold(0.4),
-      m_probe_cooldown(std::chrono::seconds(60)) {}
+OpenVerifyHostReliability::Config OpenVerifyHostReliability::LoadConfigFromEnv() {
+    Config cfg;
+    cfg.ewma_alpha_fail = EnvAlphaOrDefault("XRD_OPENVERIFY_EWMA_ALPHA_FAIL", 0.05, 0.0, 1.0);
+    cfg.ewma_alpha_success = EnvAlphaOrDefault("XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS", 0.10, 0.0, 1.0);
+    cfg.min_attempts = static_cast<uint64_t>(EnvLongOrDefault("XRD_OPENVERIFY_MIN_ATTEMPTS", 20, 1));
+    cfg.quarantine_threshold = EnvDoubleOrDefault("XRD_OPENVERIFY_QUARANTINE_THRESHOLD", 0.6, 0.0, 1.0);
+    cfg.recover_threshold = EnvDoubleOrDefault("XRD_OPENVERIFY_RECOVER_THRESHOLD", 0.4, 0.0, 1.0);
+    if (cfg.recover_threshold > cfg.quarantine_threshold) {
+        cfg.recover_threshold = cfg.quarantine_threshold;
+    }
+    cfg.probe_cooldown = std::chrono::seconds(EnvLongOrDefault("XRD_OPENVERIFY_PROBE_COOLDOWN", 60, 1));
+    return cfg;
+}
+
+OpenVerifyHostReliability::OpenVerifyHostReliability() : OpenVerifyHostReliability(LoadConfigFromEnv()) {}
+
+OpenVerifyHostReliability::OpenVerifyHostReliability(Config cfg)
+    : m_ewma_alpha_fail(cfg.ewma_alpha_fail),
+      m_ewma_alpha_success(cfg.ewma_alpha_success),
+      m_min_attempts(cfg.min_attempts),
+      m_quarantine_threshold(cfg.quarantine_threshold),
+      m_recover_threshold(cfg.recover_threshold),
+      m_probe_cooldown(cfg.probe_cooldown) {}
+
+OpenVerifyHostReliability::Config OpenVerifyHostReliability::GetConfig() const {
+    return Config{m_ewma_alpha_fail,     m_ewma_alpha_success,    m_min_attempts,
+                  m_quarantine_threshold, m_recover_threshold,     m_probe_cooldown};
+}
+
+std::string OpenVerifyHostReliability::ConfigSummary() const {
+    std::ostringstream os;
+    os << "openverify site health alpha_fail=" << m_ewma_alpha_fail << " alpha_success=" << m_ewma_alpha_success
+       << " min_attempts=" << m_min_attempts << " quarantine=" << m_quarantine_threshold
+       << " recover=" << m_recover_threshold << " probe_cooldown_s=" << m_probe_cooldown.count();
+    return os.str();
+}
 
 std::string OpenVerifyHostReliability::HostPortKey(const std::string& host, int port) {
     return host + ":" + std::to_string(port);

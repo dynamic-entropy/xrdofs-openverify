@@ -298,6 +298,11 @@ Exported from `OpenVerifyHostReliability` on each metrics flush:
 
 Labels: `host`, `port` (`none` if no port), optional `xrootd_instance`.
 
+Quarantine/recovery rates are env-tunable (`XRD_OPENVERIFY_EWMA_ALPHA_FAIL` /
+`XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS`, thresholds, `XRD_OPENVERIFY_PROBE_COOLDOWN`);
+see `OpenVerifyHostReliability.hh`. The Grafana site-health panel is fixed to
+0–1 so scores below the 0.6 quarantine line are not auto-scaled into peaks.
+
 ---
 
 ## Example PromQL

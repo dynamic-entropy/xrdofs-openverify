@@ -43,6 +43,11 @@ class OpenVerifyHostReliability;
 // FIFO wait defaults to twice that (10s); override with XRD_OPENVERIFY_QUEUE_TIMEOUT_MS.
 // XRD_OPENVERIFY_MAX_INFLIGHT / XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST (default 50% of inflight).
 //
+// Site EWMA quarantine (see OpenVerifyHostReliability.hh): XRD_OPENVERIFY_EWMA_ALPHA_FAIL
+// (default 0.05), XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS (0.10), XRD_OPENVERIFY_MIN_ATTEMPTS (20),
+// XRD_OPENVERIFY_QUARANTINE_THRESHOLD (0.6), XRD_OPENVERIFY_RECOVER_THRESHOLD (0.4),
+// XRD_OPENVERIFY_PROBE_COOLDOWN seconds (60).
+//
 class OpenVerifyMetrics {
    public:
     // Outcome label for redirect-handling delay histogram (plugin time after OFS returns SFS_REDIRECT).
