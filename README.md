@@ -49,6 +49,7 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_AUTH_URL` | Rucio auth base URL (default `https://cms-rucio-auth.cern.ch`) |
 | `XRD_OPENVERIFY_RUCIO_ACCOUNT` | Rucio account (required when Rucio lookup is enabled) |
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
+| `XRD_OPENVERIFY_VERIFY_TIMEOUT` | Outbound XrdCl Open/Stat/VectorRead probe timeout in seconds (default `15`). FIFO wait defaults to twice this |
 | `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `random` (default), `priority` (Rucio priority), or `geoip` (reserved; currently same as random). Next PFNs are tried only after the current one fails verify |
 | `XRD_OPENVERIFY_EWMA_ALPHA_FAIL` | Failure blend into site badness score (default `0.05`; smaller = slower quarantine) |
 | `XRD_OPENVERIFY_EWMA_ALPHA_SUCCESS` | Success decay of site badness score (default `0.10`; larger = faster recovery) |

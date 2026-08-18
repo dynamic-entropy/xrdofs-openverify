@@ -2623,17 +2623,17 @@
       "panels": []
     },
     {
-      "type": "stat",
+      "type": "timeseries",
       "id": 62,
-      "title": "Quarantine fail-safe",
-      "description": "1 means too many unique sites entered quarantine in a short window, so OpenVerify stopped skipping sites (likely a plugin/config fault, not a multi-site outage). Hold lasts FAILSAFE_WINDOW seconds, then quarantine can resume.",
+      "title": "Quarantine burst (fail-safe)",
+      "description": "How close OpenVerify is to the mass-quarantine circuit breaker. 'entered quarantine in window' is unique sites that crossed into quarantine during FAILSAFE_WINDOW (default 5m). The dashed line is the trip threshold (default 8). 'currently quarantined' is sites OpenVerify is skipping now. If the window count hits the threshold, fail-safe trips (red bars, right axis): those sites are released and skip is disabled until the hold expires.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
+        "w": 24,
         "x": 0,
         "y": 144
       },
@@ -2643,55 +2643,144 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(xrootd_openverify_failsafe_active{xrootd_instance=~\"$instance\"}) or vector(0)",
+          "expr": "max(xrootd_openverify_failsafe_recent_sites{xrootd_instance=~\"$instance\"}) or vector(0)",
           "refId": "A",
           "editorMode": "code",
-          "instant": true
+          "legendFormat": "entered quarantine in window"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\"} == 0) or vector(0)",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "currently quarantined"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(xrootd_openverify_failsafe_max_sites{xrootd_instance=~\"$instance\"}) or vector(8)",
+          "refId": "C",
+          "editorMode": "code",
+          "legendFormat": "fail-safe threshold"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(xrootd_openverify_failsafe_active{xrootd_instance=~\"$instance\"}) or vector(0)",
+          "refId": "D",
+          "editorMode": "code",
+          "legendFormat": "fail-safe tripped"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "none",
           "decimals": 0,
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "off",
-                  "index": 0
-                },
-                "1": {
-                  "text": "TRIPPED",
-                  "index": 1
-                }
-              }
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
             }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail-safe threshold"
+            },
+            "properties": [
               {
-                "color": "green",
-                "value": null
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
               },
               {
-                "color": "red",
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail-safe tripped"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
                 "value": 1
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 40
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-red"
+                }
               }
             ]
           }
-        },
-        "overrides": []
+        ]
       },
       "options": {
-        "reduceOptions": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
           "calcs": [
-            "lastNotNull"
-          ]
+            "lastNotNull",
+            "max"
+          ],
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
         },
-        "colorMode": "background",
-        "graphMode": "none"
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -2705,9 +2794,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 18,
-        "x": 6,
-        "y": 144
+        "w": 24,
+        "x": 0,
+        "y": 152
       },
       "targets": [
         {
@@ -2790,7 +2879,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 160
       },
       "targets": [
         {
@@ -2885,7 +2974,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 162
+        "y": 170
       },
       "collapsed": false,
       "panels": []
@@ -2903,7 +2992,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 163
+        "y": 171
       },
       "targets": [
         {
@@ -2955,7 +3044,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 163
+        "y": 171
       },
       "targets": [
         {
@@ -3007,7 +3096,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 167
+        "y": 175
       },
       "targets": [
         {
@@ -3067,7 +3156,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 183
       },
       "targets": [
         {
@@ -3312,7 +3401,7 @@
   "timezone": "",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 9,
+  "version": 10,
   "weekStart": "",
   "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd destinations/errors, and locate path. Hover a panel title for a short explanation."
 }

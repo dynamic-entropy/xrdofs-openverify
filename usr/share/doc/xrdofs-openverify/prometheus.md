@@ -61,7 +61,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
 - `xrootd_openverify_host_busy_total` — first per-host inflight-cap reject (`host`, `port`)
 - `xrootd_openverify_site_*` — first per-site verify success/failure
-- `xrootd_openverify_failsafe_active` / `failsafe_trips_total` / `failsafe_recent_sites` — exported with site gauges (mass-quarantine circuit breaker)
+- `xrootd_openverify_failsafe_active` / `failsafe_trips_total` / `failsafe_recent_sites` / `failsafe_max_sites` — exported with site gauges (mass-quarantine circuit breaker)
 
 Optional label **`xrootd_instance`** when `XRD_OPENVERIFY_METRICS_INSTANCE` is set.
 
@@ -228,8 +228,8 @@ touch EWMA / negative cache; the plugin requeues once, then passes through the
 current redirect. `host_busy` **does** add the host to `tried=` (this site is
 saturating its probe cap) but still does not affect EWMA.
 
-FIFO wait defaults to **twice** `XRD_OPENVERIFY_VERIFY_TIMEOUT` (10s when the
-probe timeout is 5s). Override with `XRD_OPENVERIFY_QUEUE_TIMEOUT_MS`. Per-host
+FIFO wait defaults to **twice** `XRD_OPENVERIFY_VERIFY_TIMEOUT` (30s when the
+probe timeout is 15s). Override with `XRD_OPENVERIFY_QUEUE_TIMEOUT_MS`. Per-host
 inflight cap defaults to 50% of `XRD_OPENVERIFY_MAX_INFLIGHT` (override
 `XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST`).
 
@@ -299,6 +299,7 @@ Exported from `OpenVerifyHostReliability` on each metrics flush:
 | `failsafe_active` | gauge | `1` if the mass-quarantine circuit breaker is open (site skip disabled) |
 | `failsafe_trips_total` | counter | Times the circuit breaker opened |
 | `failsafe_recent_sites` | gauge | Unique sites that entered quarantine in the fail-safe window |
+| `failsafe_max_sites` | gauge | Configured trip threshold (`0` disables) |
 
 Labels: `host`, `port` (`none` if no port), optional `xrootd_instance`.
 Fail-safe series have only the optional instance label.

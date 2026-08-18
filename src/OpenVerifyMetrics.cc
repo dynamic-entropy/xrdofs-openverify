@@ -387,7 +387,12 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
                 "fail-safe window.\n"
                 "# TYPE xrootd_openverify_failsafe_recent_sites gauge\n"
                 "xrootd_openverify_failsafe_recent_sites"
-             << lbl << " " << fs.recent_sites << "\n";
+             << lbl << " " << fs.recent_sites << "\n"
+             << "# HELP xrootd_openverify_failsafe_max_sites Unique sites in the window that trip the fail-safe "
+                "(0 disables).\n"
+                "# TYPE xrootd_openverify_failsafe_max_sites gauge\n"
+                "xrootd_openverify_failsafe_max_sites"
+             << lbl << " " << fs.max_sites << "\n";
 
         const auto sites = m_sites->Snapshot();
         body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"

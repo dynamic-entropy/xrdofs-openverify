@@ -39,8 +39,8 @@ class OpenVerifyHostReliability;
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.
 //
-// XRD_OPENVERIFY_VERIFY_TIMEOUT: outbound probe timeout in seconds (default 5).
-// FIFO wait defaults to twice that (10s); override with XRD_OPENVERIFY_QUEUE_TIMEOUT_MS.
+// XRD_OPENVERIFY_VERIFY_TIMEOUT: outbound probe timeout in seconds (default 15).
+// FIFO wait defaults to twice that (30s); override with XRD_OPENVERIFY_QUEUE_TIMEOUT_MS.
 // XRD_OPENVERIFY_MAX_INFLIGHT / XRD_OPENVERIFY_MAX_INFLIGHT_PER_HOST (default 50% of inflight).
 //
 // Site EWMA quarantine (see OpenVerifyHostReliability.hh): XRD_OPENVERIFY_EWMA_ALPHA_FAIL
