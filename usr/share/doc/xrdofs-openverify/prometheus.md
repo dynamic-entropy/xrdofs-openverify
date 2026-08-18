@@ -310,8 +310,7 @@ see `OpenVerifyHostReliability.hh`. If `XRD_OPENVERIFY_FAILSAFE_MAX_SITES` uniqu
 sites enter quarantine within `XRD_OPENVERIFY_FAILSAFE_WINDOW` seconds (defaults
 8 / 300s; `0` sites disables), OpenVerify trips a circuit breaker: currently
 quarantined sites are released, new quarantines are blocked, and `AvoidSite`
-returns false until the hold expires. The Grafana site-health panel is fixed to
-0–1 so scores below the 0.6 quarantine line are not auto-scaled into peaks.
+returns false until the hold expires.
 
 ---
 

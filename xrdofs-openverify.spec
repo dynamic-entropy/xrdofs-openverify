@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.7
+Version:        0.4.8
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.8-1
+- Fix fail-safe Prometheus samples (missing braces) so node_exporter accepts the textfile again.
+
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.7-1
 - Raise default XRD_OPENVERIFY_VERIFY_TIMEOUT from 5s to 15s.
 

@@ -184,14 +184,10 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "# TYPE xrootd_openverify_accepted_total counter\n";
     {
         std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
-        std::vector<int> replicas;
-        replicas.reserve(m_accepted_rucio_by_replica.size());
-        for (const auto& kv : m_accepted_rucio_by_replica) replicas.push_back(kv.first);
-        std::sort(replicas.begin(), replicas.end());
-        for (int a : replicas) {
-            const bool overflow = (a >= kMaxRucioReplicaLabel);
+        for (int a = 1; a <= kMaxRucioReplicaLabel; ++a) {
             const auto it = m_accepted_rucio_by_replica.find(a);
             const uint64_t n = (it != m_accepted_rucio_by_replica.end()) ? it->second : 0;
+            const bool overflow = (a >= kMaxRucioReplicaLabel);
             // Label still "attempt" for scrape compatibility; means replica index for rucio.
             body << "xrootd_openverify_accepted_total{source=\"rucio\",attempt=\"" << a
                  << (overflow ? "+" : "") << "\"" << lbl << "} " << n << "\n";
@@ -374,25 +370,27 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
 
     if (m_sites) {
         const auto fs = m_sites->GetFailSafeSnapshot();
+        const std::string inst =
+            m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}");
         body << "# HELP xrootd_openverify_failsafe_active 1 if mass-quarantine circuit breaker is open "
                 "(site skip disabled).\n"
                 "# TYPE xrootd_openverify_failsafe_active gauge\n"
                 "xrootd_openverify_failsafe_active"
-             << lbl << " " << (fs.active ? 1 : 0) << "\n"
+             << inst << " " << (fs.active ? 1 : 0) << "\n"
              << "# HELP xrootd_openverify_failsafe_trips_total Times the mass-quarantine circuit breaker opened.\n"
                 "# TYPE xrootd_openverify_failsafe_trips_total counter\n"
                 "xrootd_openverify_failsafe_trips_total"
-             << lbl << " " << fs.trips << "\n"
+             << inst << " " << fs.trips << "\n"
              << "# HELP xrootd_openverify_failsafe_recent_sites Unique sites that entered quarantine in the "
                 "fail-safe window.\n"
                 "# TYPE xrootd_openverify_failsafe_recent_sites gauge\n"
                 "xrootd_openverify_failsafe_recent_sites"
-             << lbl << " " << fs.recent_sites << "\n"
+             << inst << " " << fs.recent_sites << "\n"
              << "# HELP xrootd_openverify_failsafe_max_sites Unique sites in the window that trip the fail-safe "
                 "(0 disables).\n"
                 "# TYPE xrootd_openverify_failsafe_max_sites gauge\n"
                 "xrootd_openverify_failsafe_max_sites"
-             << lbl << " " << fs.max_sites << "\n";
+             << inst << " " << fs.max_sites << "\n";
 
         const auto sites = m_sites->Snapshot();
         body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"
