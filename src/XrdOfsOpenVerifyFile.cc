@@ -439,8 +439,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             if (!accepted) {
                 after_rucio_exhaust = true;
                 m_metrics.RecordRucioExhausted();
-                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd; rucio=[",
-                           rucio_host_list.c_str(), "]");
+                const std::string msg = std::string("path=") + pathStr + " rucio=[" + rucio_host_list + "]";
+                m_log.Emsg(" INFO", "openverify rucio candidates exhausted; falling back to cmsd;", msg.c_str());
             }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
             m_log.Emsg(" INFO", "openverify rucio lookup soft-fail; falling back to cmsd");
