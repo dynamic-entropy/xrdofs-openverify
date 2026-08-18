@@ -142,9 +142,7 @@ bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) 
     return true;
 }
 
-bool IsHexDigit(char c) {
-    return std::isxdigit(static_cast<unsigned char>(c)) != 0;
-}
+bool IsHexDigit(char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; }
 
 int HexValue(char c) {
     const unsigned char uc = static_cast<unsigned char>(c);
@@ -305,7 +303,7 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
     }
     // Server-returned protocol errors: errNo holds the kXR_* code.
     if (st.code == XrdCl::errErrorResponse) {
-        if (st.errNo == kXR_NotFound)      return "not_found";
+        if (st.errNo == kXR_NotFound) return "not_found";
         if (st.errNo == kXR_NotAuthorized) return "permission_denied";
     }
     const auto& m = XrdClCodeToReason();
@@ -315,8 +313,8 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
 }
 
 void LogXrdClProbeFail(XrdSysError& log, const char* stage, const std::string& url, const XrdCl::Status& st) {
-    const std::string line = std::string("reason=") + ClassifyXrdClStatus(st) + " stage=" + stage + " url=" + url +
-                             " " + st.ToString();
+    const std::string line =
+        std::string("reason=") + ClassifyXrdClStatus(st) + " stage=" + stage + " url=" + url + " " + st.ToString();
     log.Emsg(" WARN", "openverify_probe", line.c_str());
 }
 
@@ -392,27 +390,16 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const bool useHttp = IsHttpProtocol(client);
 
     std::string token;
-    const char* tokenSource = nullptr;
-    ExtractClientBearerToken(client, opaque, token, &tokenSource);
+    ExtractClientBearerToken(client, opaque, token, nullptr);
     const bool haveToken = !token.empty();
+    const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
     const std::string hostPort = HostPortFromVerifyKey(key);
     const std::string path = PathFromVerifyKey(key);
 
-    if (haveToken) {
-        const std::string tokenMsg = std::string("openverify: client bearer token from ") +
-                                     (tokenSource ? tokenSource : "unknown") + " len=" +
-                                     std::to_string(token.size());
-        m_log.Emsg("DEBUG", tokenMsg.c_str());
-    } else {
-        m_log.Emsg("DEBUG", "openverify: no bearer token in client creds or opaque");
-    }
-
-    const std::string verifyMsg = std::string("openverify: verifying ") + path + " on " + hostPort +
-                                  (haveToken ? " with token"
-                                             : (!m_ov_cert.empty() && !m_ov_key.empty()
-                                                    ? " with service cert"
-                                                    : " with default XrdCl credentials"));
+    const char* credLabel =
+        haveToken ? "with token" : (haveServiceCert ? "with service cert" : "with default XrdCl credentials");
+    const std::string verifyMsg = std::string("openverify: verifying ") + path + " on " + hostPort + " " + credLabel;
     m_log.Emsg(" INFO", verifyMsg.c_str());
 
     // Use XrdCl to open the file and read the first and last byte
@@ -424,8 +411,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidAddr, 0, "openverify_invalid_key"};
     }
-
-    const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
     // xroot carries the bearer token via a per-request ztn token file; http carries
     // it as an authz CGI parameter, so only the xroot path needs the temp file.
@@ -447,17 +432,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
     const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
                                     : MakeXrdClVerifyUrl(key, ztnPath, gsiCert, gsiKey);
-
-    const char* credLabel =
-        haveToken ? "with token" : (haveServiceCert ? "with service cert" : "with default XrdCl credentials");
-    if (!haveToken && !haveServiceCert) {
-        m_log.Emsg("DEBUG",
-                   "openverify: no bearer token and XRD_OPENVERIFY_CERT/KEY unset; outbound open uses default XrdCl "
-                   "credentials (X509_USER_PROXY etc.) if any");
-    }
-    const std::string outboundMsg = std::string("openverify: outbound ") + (useHttp ? "https" : "root") + " open to " +
-                                    hostPort + path + " " + credLabel;
-    m_log.Emsg("DEBUG", outboundMsg.c_str());
 
     XrdCl::File f;
     // should we use others - readable open flags instead?
@@ -529,10 +503,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         if (ExtractFinalDataServer(f, dsHost, dsPort)) {
             if (final_host) *final_host = dsHost;
             if (final_port) *final_port = dsPort;
-            const std::string dsMsg = "openverify: data server " + dsHost + ":" + std::to_string(dsPort);
-            m_log.Emsg("DEBUG", dsMsg.c_str());
-        } else {
-            m_log.Emsg("DEBUG", "openverify: DataServer property unavailable after verify");
         }
     }
 

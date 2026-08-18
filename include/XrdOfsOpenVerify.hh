@@ -150,7 +150,6 @@ class OpenVerifyFile : public XrdSfsFile {
                    OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
                    OpenVerifyHostReliability& host_reliability, OpenVerifyRucio& rucio, bool observe,
                    bool direct_server, std::string ov_cert, std::string ov_key);
-    ~OpenVerifyFile();
 
     std::unique_ptr<XrdSfsFile> m_wrapped;
     XrdSysError& m_log;

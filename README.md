@@ -60,7 +60,7 @@ OpenVerify probes and redirects using the **catalog PFN path** (including any si
 
 ## Grepping xrootd.log
 
-Failures, empty Rucio lists, exhaust, and skips are one greppable record each on the daemon log (`zgrep` rotated `xrootd.log-*.gz`):
+Failures, empty Rucio lists, exhaust, stalls, and skips are one greppable record each on the daemon log (`zgrep` rotated `xrootd.log-*.gz`):
 
 ```bash
 # Files with an empty Rucio replica list (no PFNs; cmsd fallback, not exhaust)
@@ -74,9 +74,19 @@ grep 'openverify rucio_exhausted' /var/log/xrootd/fed/xrootd.log
 grep 'reason=operation_expired' /var/log/xrootd/fed/xrootd.log
 #   openverify_fail source=rucio host=... reason=operation_expired path=/store/... stage=open
 #   openverify_probe reason=operation_expired stage=open url=root://...
+
+# cmsd locate stall (client wait; includes path)
+grep 'openverify cmsd stall' /var/log/xrootd/fed/xrootd.log
+#   path=/store/... sec=5
+
+# cmsd locate returned an error instead of a redirect
+grep 'openverify cmsd_error' /var/log/xrootd/fed/xrootd.log
+
+# cmsd retry budget spent with no accepted site (enforce mode)
+grep 'openverify cmsd_exhausted' /var/log/xrootd/fed/xrootd.log
 ```
 
-`errors=` on the exhaust line uses the same reason vocabulary as Prometheus (`operation_expired`, `not_found`, …) plus skip tags `tried`, `quarantine`, `host_busy`, `negative_cache`. Other Rucio lookup failures (auth/timeout/error) are `openverify rucio_lookup result=… path=…`.
+`errors=` on the exhaust line uses the same reason vocabulary as Prometheus (`operation_expired`, `not_found`, …) plus skip tags `tried`, `quarantine`, `host_busy`, `negative_cache`. Other Rucio lookup failures (auth/timeout/error) are `openverify rucio_lookup result=… path=…`. Successful accepts are `openverify succeeded` (and `openverify: verifying` marks the start of a probe).
 
 ## Metrics (Prometheus)
 

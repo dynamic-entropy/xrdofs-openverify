@@ -1,13 +1,14 @@
 #include "OpenVerifyRucio.hh"
-#include "OpenVerifyRucioSelector.hh"
+
+#include <curl/curl.h>
 
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
-#include <curl/curl.h>
-#include <nlohmann/json.hpp>
+#include "OpenVerifyRucioSelector.hh"
 
 namespace {
 
@@ -169,7 +170,7 @@ bool OpenVerifyRucioIsTapeCandidate(const OpenVerifyRucioCandidate& c) {
 }
 
 std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std::string& body,
-                                                                      const std::string& want_scheme) {
+                                                                       const std::string& want_scheme) {
     std::vector<OpenVerifyRucioCandidate> out;
     if (body.empty()) return out;
 
@@ -343,7 +344,7 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
 
     CURL* curl = curl_easy_init();
     if (!curl) {
-        m_log.Emsg(" WARN", "openverify rucio list: curl_easy_init failed");
+        m_log.Emsg(" WARN", "openverify rucio list: curl_easy_init failed", lfn.c_str());
         return result;
     }
 
@@ -375,18 +376,21 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
 
     if (rc == CURLE_OPERATION_TIMEDOUT) {
         result.status = OpenVerifyRucioLookupResult::Timeout;
-        m_log.Emsg(" WARN", "openverify rucio list_replicas timed out");
+        const std::string msg = std::string("openverify rucio list_replicas timed out path=") + lfn;
+        m_log.Emsg(" WARN", msg.c_str());
         return result;
     }
     if (rc != CURLE_OK) {
-        const std::string msg = std::string("openverify rucio list_replicas curl error: ") + curl_easy_strerror(rc);
+        const std::string msg =
+            std::string("openverify rucio list_replicas curl error: ") + curl_easy_strerror(rc) + " path=" + lfn;
         m_log.Emsg(" WARN", msg.c_str());
         result.status = OpenVerifyRucioLookupResult::Error;
         return result;
     }
     if (http_code == 401 || http_code == 403) {
         result.status = OpenVerifyRucioLookupResult::AuthError;
-        m_log.Emsg(" WARN", "openverify rucio list_replicas auth rejected");
+        const std::string msg = std::string("openverify rucio list_replicas auth rejected path=") + lfn;
+        m_log.Emsg(" WARN", msg.c_str());
         return result;
     }
     if (http_code == 404) {
@@ -394,7 +398,8 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
         return result;
     }
     if (http_code != 200) {
-        const std::string msg = std::string("openverify rucio list_replicas http=") + std::to_string(http_code);
+        const std::string msg =
+            std::string("openverify rucio list_replicas http=") + std::to_string(http_code) + " path=" + lfn;
         m_log.Emsg(" WARN", msg.c_str());
         result.status = OpenVerifyRucioLookupResult::Error;
         return result;

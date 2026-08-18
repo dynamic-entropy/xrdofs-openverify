@@ -118,3 +118,13 @@ target_include_directories(openverify_static_fallback_tests
 )
 
 add_test(NAME openverify_static_fallback_tests COMMAND openverify_static_fallback_tests)
+
+add_executable(openverify_tried_tests
+    tests/OpenVerifyTriedTests.cc
+)
+
+target_include_directories(openverify_tried_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_test(NAME openverify_tried_tests COMMAND openverify_tried_tests)
