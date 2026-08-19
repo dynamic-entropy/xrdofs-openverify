@@ -221,6 +221,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_rucio_lookup_timeout.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_rucio_lookups_total{result=\"error\""
          << lbl << "} " << m_rucio_lookup_error.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_lookups_total{result=\"skipped\""
+         << lbl << "} " << m_rucio_lookup_skipped.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_rucio_candidates_total PFN candidates returned by successful Rucio lookups.\n"
             "# TYPE xrootd_openverify_rucio_candidates_total counter\n"
             "xrootd_openverify_rucio_candidates_total"
@@ -596,6 +598,8 @@ void OpenVerifyMetrics::RecordRucioLookup(const std::string& result) {
         m_rucio_lookup_auth_error.fetch_add(1, std::memory_order_relaxed);
     } else if (result == "timeout") {
         m_rucio_lookup_timeout.fetch_add(1, std::memory_order_relaxed);
+    } else if (result == "skipped") {
+        m_rucio_lookup_skipped.fetch_add(1, std::memory_order_relaxed);
     } else {
         m_rucio_lookup_error.fetch_add(1, std::memory_order_relaxed);
     }

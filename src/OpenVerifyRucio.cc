@@ -103,6 +103,25 @@ bool SplitAuthority(const std::string& authority, std::string& host, int& port, 
     return !host.empty();
 }
 
+std::string TrimCopy(const std::string& s) {
+    size_t a = 0;
+    size_t b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return s.substr(a, b - a);
+}
+
+// Collapse leading slashes to one; drop a trailing slash except for "/".
+std::string NormalizeLfnPrefix(const std::string& raw) {
+    const std::string t = TrimCopy(raw);
+    if (t.empty()) return {};
+    size_t start = 0;
+    while (start < t.size() && t[start] == '/') ++start;
+    std::string out = "/" + t.substr(start);
+    while (out.size() > 1 && out.back() == '/') out.pop_back();
+    return out;
+}
+
 // want_scheme is already normalized (davs|root|…). For davs, also accept https:// / http://
 // PFN keys some catalogs emit interchangeably with davs://.
 bool PfnMatchesWantScheme(const std::string& pfn, const std::string& want_scheme) {
@@ -229,6 +248,37 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
     return out;
 }
 
+std::vector<std::string> OpenVerifyRucioParseIgnorePrefixes(const std::string& spec) {
+    std::vector<std::string> out;
+    std::string cur;
+    auto flush = [&]() {
+        const std::string p = NormalizeLfnPrefix(cur);
+        if (p.size() > 1) out.push_back(p);  // ignore empty / "/"
+        cur.clear();
+    };
+    for (char c : spec) {
+        if (c == ',') {
+            flush();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    flush();
+    return out;
+}
+
+bool OpenVerifyRucioShouldIgnoreLfn(const std::string& lfn, const std::vector<std::string>& prefixes) {
+    if (prefixes.empty() || lfn.empty()) return false;
+    const std::string n = NormalizeLfnPrefix(lfn);
+    if (n.size() <= 1) return false;
+    for (const auto& p : prefixes) {
+        if (p.empty()) continue;
+        if (n == p) return true;
+        if (n.size() > p.size() && n.compare(0, p.size(), p) == 0 && n[p.size()] == '/') return true;
+    }
+    return false;
+}
+
 OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     m_enabled = EnvFlagEnabled("XRD_OPENVERIFY_RUCIO");
     m_rucio_url = EnvOrDefault("XRD_OPENVERIFY_RUCIO_URL", kDefaultRucioUrl);
@@ -237,6 +287,7 @@ OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     while (!m_auth_url.empty() && m_auth_url.back() == '/') m_auth_url.pop_back();
     m_account = EnvOrDefault("XRD_OPENVERIFY_RUCIO_ACCOUNT", "");
     m_timeout_s = EnvLongOrDefault("XRD_OPENVERIFY_RUCIO_TIMEOUT", 10);
+    m_ignore_prefixes = OpenVerifyRucioParseIgnorePrefixes(EnvOrDefault("XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX", ""));
     m_selector = OpenVerifyRucioMakeSelector(OpenVerifyRucioSelectorNameFromEnv());
 }
 
@@ -251,8 +302,16 @@ void OpenVerifyRucio::LogConfig() {
         return;
     }
     const char* select = (m_selector) ? m_selector->Name() : "random";
-    const std::string msg = std::string("openverify rucio enabled url=") + m_rucio_url + " auth=" + m_auth_url +
-                            " account=" + m_account + " select=" + select;
+    std::string ignore;
+    for (size_t i = 0; i < m_ignore_prefixes.size(); ++i) {
+        if (i) ignore += ",";
+        ignore += m_ignore_prefixes[i];
+    }
+    std::string msg = std::string("openverify rucio enabled url=") + m_rucio_url + " auth=" + m_auth_url +
+                      " account=" + m_account + " select=" + select;
+    if (!ignore.empty()) {
+        msg += " ignore_prefix=" + ignore;
+    }
     m_log.Emsg(" INFO", msg.c_str());
 }
 
@@ -415,6 +474,10 @@ OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, 
     OpenVerifyRucioListResult result;
     if (!m_enabled) {
         result.status = OpenVerifyRucioLookupResult::Disabled;
+        return result;
+    }
+    if (OpenVerifyRucioShouldIgnoreLfn(lfn, m_ignore_prefixes)) {
+        result.status = OpenVerifyRucioLookupResult::Skipped;
         return result;
     }
     if (lfn.empty() || scheme.empty()) {

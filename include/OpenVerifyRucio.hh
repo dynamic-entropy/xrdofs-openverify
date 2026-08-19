@@ -12,13 +12,16 @@ class OpenVerifyRucioSelector;
 
 // Feature-flagged CMS Rucio replica lookup for OpenVerify.
 //
-// XRD_OPENVERIFY_RUCIO=1          enable Rucio-first locate
-// XRD_OPENVERIFY_RUCIO_URL        default https://cms-rucio.cern.ch
-// XRD_OPENVERIFY_RUCIO_AUTH_URL   default https://cms-rucio-auth.cern.ch
-// XRD_OPENVERIFY_RUCIO_ACCOUNT    required when enabled
-// XRD_OPENVERIFY_RUCIO_TIMEOUT    HTTP timeout seconds (default 10)
-// XRD_OPENVERIFY_RUCIO_SELECT     try-order: random (default) | priority | geoip
-// X509_USER_PROXY                 proxy for /auth/x509_proxy
+// XRD_OPENVERIFY_RUCIO=1               enable Rucio-first locate
+// XRD_OPENVERIFY_RUCIO_URL             default https://cms-rucio.cern.ch
+// XRD_OPENVERIFY_RUCIO_AUTH_URL        default https://cms-rucio-auth.cern.ch
+// XRD_OPENVERIFY_RUCIO_ACCOUNT         required when enabled
+// XRD_OPENVERIFY_RUCIO_TIMEOUT         HTTP timeout seconds (default 10)
+// XRD_OPENVERIFY_RUCIO_SELECT          try-order: random (default) | priority | geoip
+// XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX   comma-separated LFN prefixes to skip (no list_replicas);
+//                                      fall through to cmsd. CMS user files are not in Rucio:
+//                                      /store/user
+// X509_USER_PROXY                      proxy for /auth/x509_proxy
 //
 struct OpenVerifyRucioCandidate {
     std::string host;
@@ -36,6 +39,7 @@ enum class OpenVerifyRucioLookupResult {
     Timeout,
     Error,
     Disabled,
+    Skipped,  // LFN matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX; no REST call
 };
 
 struct OpenVerifyRucioListResult {
@@ -54,6 +58,11 @@ bool OpenVerifyRucioParsePfn(const std::string& pfn, std::string& host, int& por
 bool OpenVerifyRucioIsTapeCandidate(const OpenVerifyRucioCandidate& c);
 std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std::string& body,
                                                                       const std::string& want_scheme);
+// Comma-separated LFN prefixes from XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX.
+std::vector<std::string> OpenVerifyRucioParseIgnorePrefixes(const std::string& spec);
+// True when the LFN is under one of the ignore prefixes (path-component match after
+// collapsing leading slashes). `/store/user` matches `/store/user/a` but not `/store/userdata`.
+bool OpenVerifyRucioShouldIgnoreLfn(const std::string& lfn, const std::vector<std::string>& prefixes);
 
 class OpenVerifyRucio {
    public:
@@ -69,7 +78,7 @@ class OpenVerifyRucio {
     void LogConfig();
 
     // List site-gateway candidates for LFN. Soft-fails (Empty/AuthError/Timeout/Error)
-    // so the caller can fall back to cmsd.
+    // and Skipped (ignore-prefix) so the caller can fall back to cmsd.
     OpenVerifyRucioListResult ListReplicas(const std::string& lfn, const std::string& scheme,
                                            const std::string& client_ip);
 
@@ -84,6 +93,7 @@ class OpenVerifyRucio {
     std::string m_auth_url;
     std::string m_account;
     long m_timeout_s{10};
+    std::vector<std::string> m_ignore_prefixes;
     std::unique_ptr<OpenVerifyRucioSelector> m_selector;
 
     std::mutex m_token_mtx;

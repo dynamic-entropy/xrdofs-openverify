@@ -153,6 +153,8 @@ const char* RucioLookupResultLabel(OpenVerifyRucioLookupResult status) {
             return "error";
         case OpenVerifyRucioLookupResult::Disabled:
             return "error";
+        case OpenVerifyRucioLookupResult::Skipped:
+            return "skipped";
     }
     return "error";
 }
@@ -242,8 +244,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const auto rucio_t0 = std::chrono::steady_clock::now();
         const auto listed = m_rucio.ListReplicas(pathStr, scheme, client_ip);
         if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
-            const double rucio_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - rucio_t0).count();
-            m_metrics.RecordLocateLatency("rucio", rucio_s);
+            if (listed.status != OpenVerifyRucioLookupResult::Skipped) {
+                const double rucio_s =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - rucio_t0).count();
+                m_metrics.RecordLocateLatency("rucio", rucio_s);
+            }
             m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status));
         }
         if (listed.status == OpenVerifyRucioLookupResult::Ok) {
@@ -376,6 +381,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             const std::string msg = std::string("result=") + label + " path=" + pathStr;
             if (listed.status == OpenVerifyRucioLookupResult::Empty) {
                 m_log.Emsg(" INFO", "openverify rucio_empty", msg.c_str());
+            } else if (listed.status == OpenVerifyRucioLookupResult::Skipped) {
+                m_log.Emsg(" INFO", "openverify rucio_skipped", msg.c_str());
             } else {
                 m_log.Emsg(" INFO", "openverify rucio_lookup", msg.c_str());
             }

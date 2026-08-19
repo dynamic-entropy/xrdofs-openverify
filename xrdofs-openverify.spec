@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.8
+Version:        0.4.9
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Wed Aug 19 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.9-1
+- Skip Rucio lookups for LFN prefixes (XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX; CMS /store/user).
+
 * Tue Aug 18 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.8-1
 - Fix fail-safe Prometheus samples (missing braces) so node_exporter accepts the textfile again.
 

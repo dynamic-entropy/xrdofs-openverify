@@ -2194,7 +2194,7 @@
       "type": "timeseries",
       "id": 51,
       "title": "Rucio lookups",
-      "description": "ok = Rucio returned at least one replica; empty / auth_error / timeout / error = soft-fail to cmsd (no Rucio probe).",
+      "description": "ok = Rucio returned at least one replica; empty / auth_error / timeout / error = soft-fail to cmsd (no Rucio probe); skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"

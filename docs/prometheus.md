@@ -50,7 +50,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd` \| `xrootd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`; xrootd `attempt` = `1` for static fallback)
 - `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
 - `xrootd_openverify_retry_exhausted_total`
-- `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error`; `empty` = no replicas)
+- `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error` \| `skipped`; `empty` = no replicas; `skipped` = ignore-prefix)
 - `xrootd_openverify_rucio_candidates_total`
 - `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
 - `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` \| `xrootd` — locate path / static fallback, not destination site)
@@ -123,7 +123,8 @@ sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
 
 When `XRD_OPENVERIFY_RUCIO=1`, OpenVerify queries CMS Rucio before cmsd.
 Soft-fails (empty / auth / timeout / error) and all-candidates-failed fall back
-to cmsd. Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
+to cmsd. LFNs matching `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX` skip the REST call
+(`result=skipped`) and also fall through to cmsd. Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
 name ending in `_Tape`) before try-order. PFN try-order is selected by
 `XRD_OPENVERIFY_RUCIO_SELECT` (`random` default; `priority`; `geoip` reserved)
 — subsequent PFNs are tried only after the current verify fails. See the
@@ -132,7 +133,7 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error` | `list_replicas` outcome; `empty` = no replicas (soft-fail) |
+| `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error\|skipped` | `list_replicas` outcome; `empty` = no replicas (soft-fail); `skipped` = ignore-prefix (no REST call) |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
 | `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
 | `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |

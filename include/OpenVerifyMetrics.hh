@@ -125,8 +125,9 @@ class OpenVerifyMetrics {
     // last redirect returned best-effort. Never recorded in observe mode.
     void RecordOpenRetryExhausted();
 
-    // Rucio list_replicas outcome: ok | empty | auth_error | timeout | error.
+    // Rucio list_replicas outcome: ok | empty | auth_error | timeout | error | skipped.
     // empty = no replicas (soft-fail to cmsd); auth/timeout/error also soft-fail.
+    // skipped = LFN matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call).
     void RecordRucioLookup(const std::string& result);
     // Number of PFN candidates returned by a successful Rucio lookup.
     void RecordRucioCandidates(size_t count);
@@ -248,6 +249,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_rucio_lookup_auth_error{0};
     std::atomic<uint64_t> m_rucio_lookup_timeout{0};
     std::atomic<uint64_t> m_rucio_lookup_error{0};
+    std::atomic<uint64_t> m_rucio_lookup_skipped{0};
     std::atomic<uint64_t> m_rucio_candidates{0};
     std::atomic<uint64_t> m_rucio_exhausted{0};
     std::atomic<uint64_t> m_rucio_exhausted_recovered{0};

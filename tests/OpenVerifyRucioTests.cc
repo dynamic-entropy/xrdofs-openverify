@@ -236,6 +236,33 @@ void Test_ParseReplicasSkipsTape() {
     Expect(!saw_tape, "skip tape: no tape pfn/rse left");
 }
 
+void Test_ParseIgnorePrefixes() {
+    Expect(OpenVerifyRucioParseIgnorePrefixes("").empty(), "empty spec");
+    Expect(OpenVerifyRucioParseIgnorePrefixes("   ").empty(), "whitespace spec");
+    const auto one = OpenVerifyRucioParseIgnorePrefixes("/store/user");
+    Expect(one.size() == 1 && one[0] == "/store/user", "single prefix");
+    const auto slashy = OpenVerifyRucioParseIgnorePrefixes("//store/user/");
+    Expect(slashy.size() == 1 && slashy[0] == "/store/user", "collapse slashes");
+    const auto many = OpenVerifyRucioParseIgnorePrefixes(" /store/user , /store/temp/ ");
+    Expect(many.size() == 2, "two prefixes");
+    if (many.size() == 2) {
+        Expect(many[0] == "/store/user" && many[1] == "/store/temp", "trimmed prefixes");
+    }
+}
+
+void Test_ShouldIgnoreLfn() {
+    const auto prefixes = OpenVerifyRucioParseIgnorePrefixes("/store/user");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/store/user/rchauhan/a.root", prefixes), "user file");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/store/user", prefixes), "exact prefix");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("//store/user/foo", prefixes), "double leading slash");
+    Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/userdata/a.root", prefixes), "not userdata");
+    Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/mc/file.root", prefixes), "not mc");
+    Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/user", {}), "no prefixes configured");
+    Expect(!OpenVerifyRucioShouldIgnoreLfn("", prefixes), "empty lfn");
+    const auto multi = OpenVerifyRucioParseIgnorePrefixes("/store/user,/store/temp");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/store/temp/x.root", multi), "second prefix");
+}
+
 }  // namespace
 
 int main() {
@@ -252,6 +279,8 @@ int main() {
     Test_ParseReplicasEmpty();
     Test_IsTapeCandidate();
     Test_ParseReplicasSkipsTape();
+    Test_ParseIgnorePrefixes();
+    Test_ShouldIgnoreLfn();
     Test_PrioritySelector();
     Test_RandomSelectorDeterministic();
     Test_MakeSelector();
