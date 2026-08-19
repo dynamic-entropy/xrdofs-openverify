@@ -223,6 +223,17 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_rucio_lookup_error.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_rucio_lookups_total{result=\"skipped\""
          << lbl << "} " << m_rucio_lookup_skipped.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_list_cache_total Rucio list_replicas LRU lookups (lfn+scheme).\n"
+            "# TYPE xrootd_openverify_rucio_list_cache_total counter\n"
+            "xrootd_openverify_rucio_list_cache_total{result=\"hit\""
+         << lbl << "} " << m_rucio_list_cache_hit.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_list_cache_total{result=\"miss\""
+         << lbl << "} " << m_rucio_list_cache_miss.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_list_cache_entries Current Rucio list_replicas LRU occupancy.\n"
+            "# TYPE xrootd_openverify_rucio_list_cache_entries gauge\n"
+            "xrootd_openverify_rucio_list_cache_entries"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_list_cache_entries.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_rucio_candidates_total PFN candidates returned by successful Rucio lookups.\n"
             "# TYPE xrootd_openverify_rucio_candidates_total counter\n"
             "xrootd_openverify_rucio_candidates_total"
@@ -603,6 +614,20 @@ void OpenVerifyMetrics::RecordRucioLookup(const std::string& result) {
     } else {
         m_rucio_lookup_error.fetch_add(1, std::memory_order_relaxed);
     }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioListCache(const std::string& result) {
+    if (result == "hit") {
+        m_rucio_list_cache_hit.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_rucio_list_cache_miss.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::SetRucioListCacheEntries(std::size_t n) {
+    m_rucio_list_cache_entries.store(static_cast<uint64_t>(n), std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

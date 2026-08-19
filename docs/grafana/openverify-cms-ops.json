@@ -2194,7 +2194,7 @@
       "type": "timeseries",
       "id": 51,
       "title": "Rucio lookups",
-      "description": "ok = Rucio returned at least one replica; empty / auth_error / timeout / error = soft-fail to cmsd (no Rucio probe); skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call).",
+      "description": "ok = Rucio returned at least one replica; empty / auth_error / timeout / error = soft-fail to cmsd (no Rucio probe); skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call). cache hit/miss is the (lfn, scheme) list_replicas LRU.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2215,6 +2215,16 @@
           "refId": "A",
           "editorMode": "code",
           "legendFormat": "{{result}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (result) (rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "cache {{result}}"
         }
       ],
       "fieldConfig": {

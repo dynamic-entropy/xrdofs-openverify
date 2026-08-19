@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#include "OpenVerifyRucioListCache.hh"
 #include "OpenVerifyRucioSelector.hh"
 
 namespace {
@@ -289,6 +290,7 @@ OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     m_timeout_s = EnvLongOrDefault("XRD_OPENVERIFY_RUCIO_TIMEOUT", 10);
     m_ignore_prefixes = OpenVerifyRucioParseIgnorePrefixes(EnvOrDefault("XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX", ""));
     m_selector = OpenVerifyRucioMakeSelector(OpenVerifyRucioSelectorNameFromEnv());
+    m_list_cache = std::make_unique<OpenVerifyRucioListCache>(OpenVerifyRucioListCacheConfig::FromEnv());
 }
 
 OpenVerifyRucio::~OpenVerifyRucio() = default;
@@ -311,6 +313,12 @@ void OpenVerifyRucio::LogConfig() {
                       " account=" + m_account + " select=" + select;
     if (!ignore.empty()) {
         msg += " ignore_prefix=" + ignore;
+    }
+    if (m_list_cache && m_list_cache->Enabled()) {
+        msg += " list_cache_ttl=" + std::to_string(m_list_cache->Ttl().count()) +
+               " list_cache_size=" + std::to_string(m_list_cache->MaxEntries());
+    } else {
+        msg += " list_cache=off";
     }
     m_log.Emsg(" INFO", msg.c_str());
 }
@@ -469,6 +477,14 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     return result;
 }
 
+void OpenVerifyRucio::ApplySelector(OpenVerifyRucioListResult& result, const std::string& client_ip) const {
+    if (result.status == OpenVerifyRucioLookupResult::Ok && m_selector && !result.candidates.empty()) {
+        OpenVerifyRucioSelectContext ctx;
+        ctx.client_ip = client_ip;
+        m_selector->Order(result.candidates, ctx);
+    }
+}
+
 OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, const std::string& scheme,
                                                         const std::string& client_ip) {
     OpenVerifyRucioListResult result;
@@ -487,6 +503,17 @@ OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, 
     if (m_account.empty()) {
         result.status = OpenVerifyRucioLookupResult::AuthError;
         return result;
+    }
+
+    if (m_list_cache && m_list_cache->Enabled()) {
+        const auto cached = m_list_cache->Get(lfn, scheme);
+        if (cached.hit) {
+            result.status = cached.status;
+            result.candidates = cached.candidates;
+            result.from_cache = true;
+            ApplySelector(result, client_ip);
+            return result;
+        }
     }
 
     if (!EnsureAuthToken(false)) {
@@ -510,10 +537,18 @@ OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, 
             result = DoListReplicas(lfn, scheme, client_ip, token);
         }
     }
-    if (result.status == OpenVerifyRucioLookupResult::Ok && m_selector && !result.candidates.empty()) {
-        OpenVerifyRucioSelectContext ctx;
-        ctx.client_ip = client_ip;
-        m_selector->Order(result.candidates, ctx);
+    if (m_list_cache &&
+        (result.status == OpenVerifyRucioLookupResult::Ok || result.status == OpenVerifyRucioLookupResult::Empty)) {
+        m_list_cache->Put(lfn, scheme, result.status, result.candidates);
     }
+    ApplySelector(result, client_ip);
     return result;
+}
+
+std::size_t OpenVerifyRucio::ListCacheSize() const {
+    return (m_list_cache) ? m_list_cache->Size() : 0;
+}
+
+bool OpenVerifyRucio::ListCacheEnabled() const {
+    return m_list_cache && m_list_cache->Enabled();
 }

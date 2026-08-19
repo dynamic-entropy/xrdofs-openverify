@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -35,6 +36,7 @@ class OpenVerifyHostReliability;
 // redirects always use the site gateway from the PFN.
 //
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
+// XRD_OPENVERIFY_RUCIO_CACHE_TTL / XRD_OPENVERIFY_RUCIO_CACHE_SIZE: list_replicas LRU.
 //
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.
@@ -129,6 +131,9 @@ class OpenVerifyMetrics {
     // empty = no replicas (soft-fail to cmsd); auth/timeout/error also soft-fail.
     // skipped = LFN matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call).
     void RecordRucioLookup(const std::string& result);
+    // list_replicas LRU: hit | miss (not recorded for disabled/skipped).
+    void RecordRucioListCache(const std::string& result);
+    void SetRucioListCacheEntries(std::size_t n);
     // Number of PFN candidates returned by a successful Rucio lookup.
     void RecordRucioCandidates(size_t count);
     // Lookup was ok (PFNs returned) but none accepted; fall through to cmsd.
@@ -250,6 +255,9 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_rucio_lookup_timeout{0};
     std::atomic<uint64_t> m_rucio_lookup_error{0};
     std::atomic<uint64_t> m_rucio_lookup_skipped{0};
+    std::atomic<uint64_t> m_rucio_list_cache_hit{0};
+    std::atomic<uint64_t> m_rucio_list_cache_miss{0};
+    std::atomic<uint64_t> m_rucio_list_cache_entries{0};
     std::atomic<uint64_t> m_rucio_candidates{0};
     std::atomic<uint64_t> m_rucio_exhausted{0};
     std::atomic<uint64_t> m_rucio_exhausted_recovered{0};

@@ -245,9 +245,19 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const auto listed = m_rucio.ListReplicas(pathStr, scheme, client_ip);
         if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
             if (listed.status != OpenVerifyRucioLookupResult::Skipped) {
-                const double rucio_s =
-                    std::chrono::duration<double>(std::chrono::steady_clock::now() - rucio_t0).count();
-                m_metrics.RecordLocateLatency("rucio", rucio_s);
+                if (m_rucio.ListCacheEnabled()) {
+                    if (listed.from_cache) {
+                        m_metrics.RecordRucioListCache("hit");
+                    } else {
+                        m_metrics.RecordRucioListCache("miss");
+                    }
+                    m_metrics.SetRucioListCacheEntries(m_rucio.ListCacheSize());
+                }
+                if (!listed.from_cache) {
+                    const double rucio_s =
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - rucio_t0).count();
+                    m_metrics.RecordLocateLatency("rucio", rucio_s);
+                }
             }
             m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status));
         }

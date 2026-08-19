@@ -51,6 +51,8 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
 - `xrootd_openverify_retry_exhausted_total`
 - `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error` \| `skipped`; `empty` = no replicas; `skipped` = ignore-prefix)
+- `xrootd_openverify_rucio_list_cache_total` (`result` = `hit` \| `miss` — `(lfn, scheme)` LRU; not recorded for disabled/skipped)
+- `xrootd_openverify_rucio_list_cache_entries` (gauge: current LRU occupancy)
 - `xrootd_openverify_rucio_candidates_total`
 - `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
 - `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` \| `xrootd` — locate path / static fallback, not destination site)
@@ -134,6 +136,8 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | Metric | Labels | Meaning |
 |--------|--------|---------|
 | `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error\|skipped` | `list_replicas` outcome; `empty` = no replicas (soft-fail); `skipped` = ignore-prefix (no REST call) |
+| `rucio_list_cache_total` | `result=hit\|miss` | LRU of `(lfn, scheme)` → PFN list (TTL `XRD_OPENVERIFY_RUCIO_CACHE_TTL`) |
+| `rucio_list_cache_entries` | (instance) | Current LRU occupancy |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
 | `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
 | `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |

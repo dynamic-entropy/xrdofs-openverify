@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -21,6 +22,8 @@ class OpenVerifyRucioSelector;
 // XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX   comma-separated LFN prefixes to skip (no list_replicas);
 //                                      fall through to cmsd. CMS user files are not in Rucio:
 //                                      /store/user
+// XRD_OPENVERIFY_RUCIO_CACHE_TTL       list_replicas LRU TTL seconds (default 60; 0 disables)
+// XRD_OPENVERIFY_RUCIO_CACHE_SIZE      max (lfn, scheme) entries (default 8192; 0 disables)
 // X509_USER_PROXY                      proxy for /auth/x509_proxy
 //
 struct OpenVerifyRucioCandidate {
@@ -45,7 +48,10 @@ enum class OpenVerifyRucioLookupResult {
 struct OpenVerifyRucioListResult {
     OpenVerifyRucioLookupResult status{OpenVerifyRucioLookupResult::Disabled};
     std::vector<OpenVerifyRucioCandidate> candidates;
+    bool from_cache{false};
 };
+
+class OpenVerifyRucioListCache;
 
 // Testable helpers (no network).
 std::string OpenVerifyRucioSchemeFromProt(const char* prot);
@@ -82,10 +88,14 @@ class OpenVerifyRucio {
     OpenVerifyRucioListResult ListReplicas(const std::string& lfn, const std::string& scheme,
                                            const std::string& client_ip);
 
+    std::size_t ListCacheSize() const;
+    bool ListCacheEnabled() const;
+
    private:
     bool EnsureAuthToken(bool force_refresh);
     OpenVerifyRucioListResult DoListReplicas(const std::string& lfn, const std::string& scheme,
                                              const std::string& client_ip, const std::string& token);
+    void ApplySelector(OpenVerifyRucioListResult& result, const std::string& client_ip) const;
 
     XrdSysError& m_log;
     bool m_enabled{false};
@@ -95,6 +105,7 @@ class OpenVerifyRucio {
     long m_timeout_s{10};
     std::vector<std::string> m_ignore_prefixes;
     std::unique_ptr<OpenVerifyRucioSelector> m_selector;
+    std::unique_ptr<OpenVerifyRucioListCache> m_list_cache;
 
     std::mutex m_token_mtx;
     std::string m_token;
