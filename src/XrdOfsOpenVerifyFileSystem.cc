@@ -74,6 +74,7 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
                    "verified data-server host:port (cmsd path only; unsafe for EOS FST)");
     }
     m_rucio.LogConfig();
+    m_rucio.SetMetrics(&m_metrics);
     const std::string health_cfg = m_host_reliability.ConfigSummary();
     m_log.Emsg(" INFO", health_cfg.c_str());
     m_host_reliability.SetEventLog([this](const char* msg) { m_log.Emsg(" WARN", msg); });

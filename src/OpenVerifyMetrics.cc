@@ -264,7 +264,46 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_location_source_total{source=\"cmsd\""
          << lbl << "} " << m_location_source_cmsd.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_location_source_total{source=\"xrootd\""
-         << lbl << "} " << m_location_source_xrootd.load(std::memory_order_relaxed) << "\n";
+         << lbl << "} " << m_location_source_xrootd.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_tcp_total Rucio HTTP transfers by TCP reuse "
+            "(CURLINFO_NUM_CONNECTS: reused=0 new connections, new>=1).\n"
+            "# TYPE xrootd_openverify_rucio_curl_tcp_total counter\n"
+            "xrootd_openverify_rucio_curl_tcp_total{result=\"reused\""
+         << lbl << "} " << m_rucio_curl_tcp_reused.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_curl_tcp_total{result=\"new\""
+         << lbl << "} " << m_rucio_curl_tcp_new.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_handle_total Rucio transfers by libcurl easy-handle reuse "
+            "(reused=from idle pool, new=curl_easy_init under load).\n"
+            "# TYPE xrootd_openverify_rucio_curl_handle_total counter\n"
+            "xrootd_openverify_rucio_curl_handle_total{result=\"reused\""
+         << lbl << "} " << m_rucio_curl_handle_reused.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_rucio_curl_handle_total{result=\"new\""
+         << lbl << "} " << m_rucio_curl_handle_new.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_pool_handles Current libcurl easy handles in the Rucio pool.\n"
+            "# TYPE xrootd_openverify_rucio_curl_pool_handles gauge\n"
+            "xrootd_openverify_rucio_curl_pool_handles"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_curl_pool_handles.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_pool_idle Idle easy handles in the Rucio pool.\n"
+            "# TYPE xrootd_openverify_rucio_curl_pool_idle gauge\n"
+            "xrootd_openverify_rucio_curl_pool_idle"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_curl_pool_idle.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_pool_inflight Checked-out easy handles in the Rucio pool.\n"
+            "# TYPE xrootd_openverify_rucio_curl_pool_inflight gauge\n"
+            "xrootd_openverify_rucio_curl_pool_inflight"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_curl_pool_inflight.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_pool_grows_total Times the Rucio curl pool created a handle above warm min.\n"
+            "# TYPE xrootd_openverify_rucio_curl_pool_grows_total counter\n"
+            "xrootd_openverify_rucio_curl_pool_grows_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_curl_pool_grows.load(std::memory_order_relaxed) << "\n"
+            "# HELP xrootd_openverify_rucio_curl_pool_shrinks_total Times the Rucio curl pool destroyed an idle extra handle.\n"
+            "# TYPE xrootd_openverify_rucio_curl_pool_shrinks_total counter\n"
+            "xrootd_openverify_rucio_curl_pool_shrinks_total"
+         << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
+         << m_rucio_curl_pool_shrinks.load(std::memory_order_relaxed) << "\n";
 
     body << "# HELP xrootd_openverify_redirect_delay_seconds OpenVerify handling time per redirect target "
             "(queue wait + verify RTT for miss path).\n"
@@ -651,6 +690,30 @@ void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
 void OpenVerifyMetrics::RecordLocateLatency(const std::string& source, double seconds) {
     if (seconds < 0 || source != "rucio") return;
     ObserveHistogram(m_locate_rtt_rucio, seconds);
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordRucioCurlTransfer(bool handle_reused, bool tcp_reused) {
+    if (handle_reused) {
+        m_rucio_curl_handle_reused.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_rucio_curl_handle_new.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (tcp_reused) {
+        m_rucio_curl_tcp_reused.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        m_rucio_curl_tcp_new.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::SetRucioCurlPool(std::size_t handles, std::size_t idle, std::size_t inflight,
+                                         std::uint64_t grows, std::uint64_t shrinks) {
+    m_rucio_curl_pool_handles.store(static_cast<uint64_t>(handles), std::memory_order_relaxed);
+    m_rucio_curl_pool_idle.store(static_cast<uint64_t>(idle), std::memory_order_relaxed);
+    m_rucio_curl_pool_inflight.store(static_cast<uint64_t>(inflight), std::memory_order_relaxed);
+    m_rucio_curl_pool_grows.store(grows, std::memory_order_relaxed);
+    m_rucio_curl_pool_shrinks.store(shrinks, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

@@ -1907,7 +1907,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 107
       },
@@ -1951,16 +1951,16 @@
     {
       "type": "stat",
       "id": 54,
-      "title": "Rucio list_replicas p50 / p95 / p99",
-      "description": "Percentiles of cache-miss list_replicas wall time (Acquire + optional auth + POST). Not the site probe. Cache hits and ignore-prefix skips are excluded.",
+      "title": "Rucio list cache hit ratio",
+      "description": "Share of list_replicas lookups served from the (lfn, scheme) LRU. Hits skip REST; misses proceed to auth/POST and then appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
-        "w": 16,
-        "x": 8,
+        "w": 6,
+        "x": 6,
         "y": 107
       },
       "targets": [
@@ -1969,44 +1969,30 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "expr": "(sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": "p50",
-          "instant": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "p95",
-          "instant": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
-          "refId": "C",
-          "editorMode": "code",
-          "legendFormat": "p99",
-          "instant": true
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "percentunit",
+          "decimals": 3,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "red",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.3
+              },
+              {
+                "color": "green",
+                "value": 0.6
               }
             ]
           }
@@ -2017,11 +2003,107 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
+          ],
+          "fields": "",
+          "values": false
         },
         "colorMode": "value",
         "graphMode": "area",
-        "textMode": "value_and_name"
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 121,
+      "title": "Rucio list cache hits / s",
+      "description": "LRU hits \u2014 no REST call. Does not appear in Rucio lookups (REST).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 107
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 122,
+      "title": "Rucio list cache misses / s",
+      "description": "LRU misses \u2014 each miss becomes one Rucio lookups (REST) outcome (ok/empty/\u2026).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 107
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"miss\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
       }
     },
     {
@@ -2087,8 +2169,8 @@
     {
       "type": "timeseries",
       "id": 51,
-      "title": "Rucio lookups",
-      "description": "ok = Rucio returned at least one replica; empty / auth_error / timeout / error = soft-fail to cmsd (no Rucio probe); skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call). cache hit/miss is the (lfn, scheme) list_replicas LRU.",
+      "title": "Rucio lookups (REST)",
+      "description": "REST list_replicas outcomes after a cache miss (or with cache disabled). ok = replicas returned; empty / auth_error / timeout / error = soft-fail to cmsd; skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call). Cache hit/miss are separate panels \u2014 a miss then contributes one of these results.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2109,16 +2191,6 @@
           "refId": "A",
           "editorMode": "code",
           "legendFormat": "{{result}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (result) (rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "cache {{result}}"
         }
       ],
       "fieldConfig": {
@@ -2302,7 +2374,7 @@
       "type": "timeseries",
       "id": 68,
       "title": "Rucio list_replicas p50 / p95 / p99",
-      "description": "Cache-miss list_replicas wall time percentiles. p99 rising toward 10s usually means REST timeout or pool wait at max.",
+      "description": "Timeseries of cache-miss list_replicas wall time (Acquire + optional auth + POST). Not the site probe. Cache hits are not included.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2383,12 +2455,513 @@
     },
     {
       "type": "row",
-      "title": "Site health",
+      "title": "Rucio curl pool",
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 135
+      }
+    },
+    {
+      "type": "stat",
+      "id": 113,
+      "title": "TCP reuse ratio",
+      "description": "Share of Rucio HTTP transfers with CURLINFO_NUM_CONNECTS==0 (keep-alive). Low under load means Rucio/proxy closes connections or idle > MAXAGE_CONN.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 136
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "(sum(rate(xrootd_openverify_rucio_curl_tcp_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 114,
+      "title": "Easy-handle reuse ratio",
+      "description": "Share of transfers that reused an idle pooled CURL* (vs curl_easy_init under load). Warm min should keep this high once the pool is filled.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 136
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "(sum(rate(xrootd_openverify_rucio_curl_handle_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 115,
+      "title": "Pool handles (now)",
+      "description": "Current easy handles in the elastic pool (between POOL_MIN and POOL_MAX).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 136
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 116,
+      "title": "Pool inflight (now)",
+      "description": "Checked-out easy handles currently in a Rucio auth/list transfer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 136
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 117,
+      "title": "TCP connection reuse",
+      "description": "reused = CURLINFO_NUM_CONNECTS==0; new = opened a TCP(+TLS) connection for this transfer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 140
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 118,
+      "title": "Easy-handle reuse",
+      "description": "reused = Acquire returned an idle pooled handle; new = pool grew with curl_easy_init.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 140
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 119,
+      "title": "Curl pool size",
+      "description": "handles = total easies; idle = available; inflight = checked out. Should rise with concurrent list_replicas, then fall after idle TTL (~15s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 148
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "handles"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(xrootd_openverify_rucio_curl_pool_idle{xrootd_instance=~\"$instance\"})",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "idle"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
+          "refId": "C",
+          "editorMode": "code",
+          "legendFormat": "inflight"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 120,
+      "title": "Curl pool grow / shrink",
+      "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink \u2192 stuck at high size or max.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 148
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_grows_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "grows / s"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_shrinks_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "shrinks / s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Site health",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 156
       },
       "collapsed": false,
       "panels": []
@@ -2406,7 +2979,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 136
+        "y": 157
       },
       "targets": [
         {
@@ -2567,7 +3140,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 165
       },
       "targets": [
         {
@@ -2652,7 +3225,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 173
       },
       "targets": [
         {
@@ -2747,7 +3320,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 162
+        "y": 183
       },
       "collapsed": false,
       "panels": []
@@ -2765,7 +3338,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 163
+        "y": 184
       },
       "targets": [
         {
@@ -2817,7 +3390,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 163
+        "y": 184
       },
       "targets": [
         {
@@ -2869,7 +3442,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 167
+        "y": 188
       },
       "targets": [
         {
@@ -2929,7 +3502,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 196
       },
       "targets": [
         {
@@ -3174,7 +3747,7 @@
   "timezone": "",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 12,
+  "version": 14,
   "weekStart": "",
-  "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd destinations/errors, and locate path. Hover a panel title for a short explanation."
+  "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd destinations/errors, and locate path. Hover a panel title for a short explanation. Includes Rucio libcurl pool reuse and size panels."
 }

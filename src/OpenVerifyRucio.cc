@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#include "OpenVerifyMetrics.hh"
 #include "OpenVerifyRucioCurlPool.hh"
 #include "OpenVerifyRucioListCache.hh"
 #include "OpenVerifyRucioSelector.hh"
@@ -331,6 +332,20 @@ void OpenVerifyRucio::LogConfig() {
     m_log.Emsg(" INFO", msg.c_str());
 }
 
+void OpenVerifyRucio::ObserveCurl(const OpenVerifyRucioCurlPool::Handle& handle) {
+    if (!m_metrics || !handle) return;
+
+    long num_connects = -1;
+    curl_easy_getinfo(handle.get(), CURLINFO_NUM_CONNECTS, &num_connects);
+    // NUM_CONNECTS == 0 means libcurl reused an existing TCP connection.
+    m_metrics->RecordRucioCurlTransfer(handle.Reused(), num_connects == 0);
+
+    if (m_curl_pool) {
+        const auto s = m_curl_pool->GetStats();
+        m_metrics->SetRucioCurlPool(s.handles, s.idle, s.inflight, s.grows, s.shrinks);
+    }
+}
+
 bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
     std::lock_guard<std::mutex> lock(m_token_mtx);
     const auto now = std::chrono::steady_clock::now();
@@ -381,6 +396,7 @@ bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     const CURLcode rc = curl_easy_perform(curl);
+    ObserveCurl(handle);
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_slist_free_all(headers);
@@ -456,6 +472,7 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     const CURLcode rc = curl_easy_perform(curl);
+    ObserveCurl(handle);
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_slist_free_all(headers);

@@ -56,15 +56,18 @@ OpenVerifyRucioCurlPoolConfig OpenVerifyRucioCurlPoolConfig::FromEnv() {
     return cfg;
 }
 
-OpenVerifyRucioCurlPool::Handle::Handle(OpenVerifyRucioCurlPool* pool, CURL* easy) : m_pool(pool), m_easy(easy) {}
+OpenVerifyRucioCurlPool::Handle::Handle(OpenVerifyRucioCurlPool* pool, CURL* easy, bool reused)
+    : m_pool(pool), m_easy(easy), m_reused(reused) {}
 
 OpenVerifyRucioCurlPool::Handle::~Handle() {
     if (m_pool && m_easy) m_pool->Release(m_easy);
 }
 
-OpenVerifyRucioCurlPool::Handle::Handle(Handle&& other) noexcept : m_pool(other.m_pool), m_easy(other.m_easy) {
+OpenVerifyRucioCurlPool::Handle::Handle(Handle&& other) noexcept
+    : m_pool(other.m_pool), m_easy(other.m_easy), m_reused(other.m_reused) {
     other.m_pool = nullptr;
     other.m_easy = nullptr;
+    other.m_reused = false;
 }
 
 OpenVerifyRucioCurlPool::Handle& OpenVerifyRucioCurlPool::Handle::operator=(Handle&& other) noexcept {
@@ -72,8 +75,10 @@ OpenVerifyRucioCurlPool::Handle& OpenVerifyRucioCurlPool::Handle::operator=(Hand
         if (m_pool && m_easy) m_pool->Release(m_easy);
         m_pool = other.m_pool;
         m_easy = other.m_easy;
+        m_reused = other.m_reused;
         other.m_pool = nullptr;
         other.m_easy = nullptr;
+        other.m_reused = false;
     }
     return *this;
 }
@@ -158,6 +163,7 @@ void OpenVerifyRucioCurlPool::ShrinkIdleLocked(std::chrono::steady_clock::time_p
         CURL* easy = oldest.easy;
         m_idle.pop_front();
         --m_created;
+        ++m_shrinks;
         DestroyEasy(easy);
     }
 }
@@ -180,6 +186,7 @@ OpenVerifyRucioCurlPool::Handle OpenVerifyRucioCurlPool::Acquire() {
         } else if (m_created < m_max) {
             ++m_created;
             ++m_checked_out;
+            ++m_grows;
             grew = true;
         } else {
             return {};
@@ -192,16 +199,17 @@ OpenVerifyRucioCurlPool::Handle OpenVerifyRucioCurlPool::Acquire() {
             std::lock_guard<std::mutex> lock(m_mu);
             if (m_created > 0) --m_created;
             if (m_checked_out > 0) --m_checked_out;
+            if (m_grows > 0) --m_grows;
             m_cv.notify_all();
             return {};
         }
         ApplyPooledOptions(easy);
-        return Handle(this, easy);
+        return Handle(this, easy, /*reused=*/false);
     }
 
     curl_easy_reset(easy);
     ApplyPooledOptions(easy);
-    return Handle(this, easy);
+    return Handle(this, easy, /*reused=*/true);
 }
 
 void OpenVerifyRucioCurlPool::Release(CURL* easy) {
@@ -211,6 +219,7 @@ void OpenVerifyRucioCurlPool::Release(CURL* easy) {
     const auto now = std::chrono::steady_clock::now();
     if (m_created > m_min && m_shrink_idle.count() == 0) {
         --m_created;
+        ++m_shrinks;
         lock.unlock();
         DestroyEasy(easy);
         m_cv.notify_all();
@@ -229,6 +238,22 @@ std::size_t OpenVerifyRucioCurlPool::Size() const {
 std::size_t OpenVerifyRucioCurlPool::IdleCount() const {
     std::lock_guard<std::mutex> lock(m_mu);
     return m_idle.size();
+}
+
+std::size_t OpenVerifyRucioCurlPool::InflightCount() const {
+    std::lock_guard<std::mutex> lock(m_mu);
+    return m_checked_out;
+}
+
+OpenVerifyRucioCurlPool::Stats OpenVerifyRucioCurlPool::GetStats() const {
+    std::lock_guard<std::mutex> lock(m_mu);
+    Stats s;
+    s.handles = m_created;
+    s.idle = m_idle.size();
+    s.inflight = m_checked_out;
+    s.grows = m_grows;
+    s.shrinks = m_shrinks;
+    return s;
 }
 
 void OpenVerifyRucioCurlPool::ShareLock(CURL* /*handle*/, curl_lock_data data, curl_lock_access /*access*/,

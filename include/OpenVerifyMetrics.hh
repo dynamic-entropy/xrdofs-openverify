@@ -150,6 +150,11 @@ class OpenVerifyMetrics {
     void RecordLocationSource(const std::string& source);
     // Wall time of one Rucio list_replicas (cache miss).
     void RecordLocateLatency(const std::string& source, double seconds);
+    // After one Rucio HTTP transfer: easy-handle reuse + TCP reuse (CURLINFO_NUM_CONNECTS==0).
+    void RecordRucioCurlTransfer(bool handle_reused, bool tcp_reused);
+    // Curl pool snapshot (gauges + lifetime grow/shrink counters).
+    void SetRucioCurlPool(std::size_t handles, std::size_t idle, std::size_t inflight, std::uint64_t grows,
+                          std::uint64_t shrinks);
 
     // cmsd / wrapped-OFS candidate budget (enforce).
     static constexpr int kMaxCmsdAcceptAttempts = 3;
@@ -256,6 +261,15 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_location_source_rucio{0};
     std::atomic<uint64_t> m_location_source_cmsd{0};
     std::atomic<uint64_t> m_location_source_xrootd{0};
+    std::atomic<uint64_t> m_rucio_curl_tcp_reused{0};
+    std::atomic<uint64_t> m_rucio_curl_tcp_new{0};
+    std::atomic<uint64_t> m_rucio_curl_handle_reused{0};
+    std::atomic<uint64_t> m_rucio_curl_handle_new{0};
+    std::atomic<uint64_t> m_rucio_curl_pool_handles{0};
+    std::atomic<uint64_t> m_rucio_curl_pool_idle{0};
+    std::atomic<uint64_t> m_rucio_curl_pool_inflight{0};
+    std::atomic<uint64_t> m_rucio_curl_pool_grows{0};
+    std::atomic<uint64_t> m_rucio_curl_pool_shrinks{0};
 
     DelayHistogram m_delay[static_cast<int>(DelayOutcome::Count)];
     // Leaders that entered the FIFO: wait until admit or timeout.

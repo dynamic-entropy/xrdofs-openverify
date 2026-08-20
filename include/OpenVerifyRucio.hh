@@ -9,6 +9,8 @@
 
 #include "XrdSys/XrdSysError.hh"
 
+#include "OpenVerifyRucioCurlPool.hh"
+
 class OpenVerifyRucioSelector;
 
 // Feature-flagged CMS Rucio replica lookup for OpenVerify.
@@ -55,7 +57,7 @@ struct OpenVerifyRucioListResult {
 };
 
 class OpenVerifyRucioListCache;
-class OpenVerifyRucioCurlPool;
+class OpenVerifyMetrics;
 
 // Testable helpers (no network).
 std::string OpenVerifyRucioSchemeFromProt(const char* prot);
@@ -84,6 +86,9 @@ class OpenVerifyRucio {
 
     bool Enabled() const { return m_enabled; }
 
+    // Optional Prometheus counters for curl TCP / easy-handle reuse.
+    void SetMetrics(OpenVerifyMetrics* metrics) { m_metrics = metrics; }
+
     // Call after XrdSysError logger is attached.
     void LogConfig();
 
@@ -100,8 +105,11 @@ class OpenVerifyRucio {
     OpenVerifyRucioListResult DoListReplicas(const std::string& lfn, const std::string& scheme,
                                              const std::string& client_ip, const std::string& token);
     void ApplySelector(OpenVerifyRucioListResult& result, const std::string& client_ip) const;
+    // After curl_easy_perform: TCP/handle reuse + pool size snapshot.
+    void ObserveCurl(const OpenVerifyRucioCurlPool::Handle& handle);
 
     XrdSysError& m_log;
+    OpenVerifyMetrics* m_metrics{nullptr};
     bool m_enabled{false};
     std::string m_rucio_url;
     std::string m_auth_url;

@@ -29,6 +29,7 @@ Sections:
 
 - **Rucio / cmsd verify errors** — live probe failures by `source` (Site / Error reason filters)
 - **How opens were located** — Rucio soft-fail, exhaust recovery context, accept path / attempt
+- **Rucio curl pool** — TCP/easy-handle reuse ratios, pool handles/idle/inflight, grow vs shrink rates
 
 New series appear after deploying a build that includes latency / avoid / site
 export, and after at least one redirect has been handled (site gauges appear
@@ -54,6 +55,10 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_rucio_list_cache_entries` (gauge: current LRU occupancy)
 - `xrootd_openverify_rucio_candidates_total`
 - `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
+- `xrootd_openverify_rucio_curl_tcp_total` (`result` = `reused` \| `new` — `CURLINFO_NUM_CONNECTS`)
+- `xrootd_openverify_rucio_curl_handle_total` (`result` = `reused` \| `new` — idle pool vs new easy)
+- `xrootd_openverify_rucio_curl_pool_handles` / `_idle` / `_inflight` (gauges)
+- `xrootd_openverify_rucio_curl_pool_grows_total` / `_shrinks_total`
 - `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` \| `xrootd` — locate path / static fallback, not destination site)
 - `xrootd_openverify_locate_rtt_seconds` (histogram `source=rucio` — cache-miss list_replicas)
 
@@ -132,9 +137,35 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | `rucio_exhausted_total` | (instance) | Lookup `ok` but no PFN accepted (verify/cache/quarantine/`tried=`); fall through to cmsd |
 | `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |
 | `rucio_cmsd_compare_total` | `result=overlap\|catalog_disagree` | Diagnostic split of recovered by hostname vs Rucio list (sum = recovered) |
+| `rucio_curl_tcp_total` | `result=reused\|new` | After each Rucio HTTP transfer: `CURLINFO_NUM_CONNECTS==0` (TCP reuse) vs new connect |
+| `rucio_curl_handle_total` | `result=reused\|new` | Easy handle from idle pool vs freshly `curl_easy_init` (pool growth) |
+| `rucio_curl_pool_handles` | (instance) | Current easy handles in the pool (warm min … max) |
+| `rucio_curl_pool_idle` | (instance) | Idle handles waiting for Acquire |
+| `rucio_curl_pool_inflight` | (instance) | Checked-out handles (in a transfer) |
+| `rucio_curl_pool_grows_total` | (instance) | Demand-driven creates above warm min |
+| `rucio_curl_pool_shrinks_total` | (instance) | Idle extras destroyed (15s TTL / shrink) |
 | `location_source_total` | `source=rucio\|cmsd\|xrootd` | Accepted open’s locate path (`xrootd` = successful static `xrootd.redirect` pass-through such as transit; **not an error**) |
 | `locate_rtt_seconds` | `source=rucio` | Cache-miss `list_replicas` wall time (Acquire + optional auth + POST). Not cmsd select; stall wait is `cmsd_stalls_total` |
 | `static_fallback_total` | `fallback=transit` | Successful static ENOENT redirect accepted without verify (not an error) |
+
+```promql
+# TCP keep-alive working? (want reused >> new under steady load)
+sum(rate(xrootd_openverify_rucio_curl_tcp_total{result="reused"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_rucio_curl_tcp_total[5m])), 1e-9)
+
+# Easy-handle pool hit rate (new only when growing past warm min)
+sum(rate(xrootd_openverify_rucio_curl_handle_total{result="reused"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_rucio_curl_handle_total[5m])), 1e-9)
+
+# Pool shape under load (handles should rise with inflight, then fall after idle TTL)
+max(xrootd_openverify_rucio_curl_pool_handles)
+max(xrootd_openverify_rucio_curl_pool_inflight)
+max(xrootd_openverify_rucio_curl_pool_idle)
+rate(xrootd_openverify_rucio_curl_pool_grows_total[5m])
+rate(xrootd_openverify_rucio_curl_pool_shrinks_total[5m])
+```
 
 Primary fallthrough success signal: `recovered / exhausted` (how often cmsd
 openverify succeeds after every Rucio PFN failed). Soft-fail→cmsd is **not**

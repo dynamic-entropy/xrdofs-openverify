@@ -81,10 +81,12 @@ void Test_AcquireReleaseAndReuse() {
     {
         auto a = pool.Acquire();
         Expect(static_cast<bool>(a), "acquire a");
+        Expect(a.Reused(), "warm handle is reused");
         Expect(pool.IdleCount() == 1, "one idle after first acquire");
         first = a.get();
         auto b = pool.Acquire();
         Expect(static_cast<bool>(b), "acquire b");
+        Expect(b.Reused(), "second warm handle is reused");
         Expect(a.get() != b.get(), "handles are distinct");
         Expect(pool.IdleCount() == 0, "none idle when both checked out");
         second = b.get();
@@ -93,6 +95,7 @@ void Test_AcquireReleaseAndReuse() {
 
     auto c = pool.Acquire();
     Expect(static_cast<bool>(c), "reacquire after release");
+    Expect(c.Reused(), "reacquire marks reused");
     Expect(c.get() == first || c.get() == second, "reuses a pooled easy handle");
 }
 
@@ -101,14 +104,19 @@ void Test_GrowsWithDemand() {
     Expect(pool.Size() == 2, "grow: start at min");
     auto a = pool.Acquire();
     auto b = pool.Acquire();
+    Expect(a.Reused() && b.Reused(), "grow: min handles reused");
     Expect(pool.IdleCount() == 0, "grow: min checked out");
     auto c = pool.Acquire();
     Expect(static_cast<bool>(c), "grow: third acquire succeeds");
+    Expect(!c.Reused(), "grow: new handle under load");
     Expect(pool.Size() == 3, "grow: created 3");
+    Expect(pool.GetStats().grows == 1, "grow: one demand-driven create");
     Expect(pool.IdleCount() == 0, "grow: all in use");
     c = {};
     Expect(pool.Size() == 3, "grow: extra kept while idle TTL not elapsed");
     Expect(pool.IdleCount() == 1, "grow: extra returned to idle");
+    auto d = pool.Acquire();
+    Expect(d.Reused(), "grow: extra later reused from idle");
 }
 
 void Test_ShrinksIdleExtras() {
@@ -117,9 +125,11 @@ void Test_ShrinksIdleExtras() {
     held.reserve(5);
     for (int i = 0; i < 5; ++i) held.push_back(pool.Acquire());
     Expect(pool.Size() == 5, "shrink: grew to 5");
+    Expect(pool.GetStats().grows == 3, "shrink: grew 3 above min");
     held.clear();
     Expect(pool.Size() == 2, "shrink: extras destroyed immediately (TTL 0)");
     Expect(pool.IdleCount() == 2, "shrink: min remain idle");
+    Expect(pool.GetStats().shrinks == 3, "shrink: destroyed 3 extras");
 }
 
 void Test_ConcurrentCheckout() {

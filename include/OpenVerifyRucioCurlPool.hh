@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 
@@ -32,7 +33,7 @@ class OpenVerifyRucioCurlPool {
     class Handle {
        public:
         Handle() = default;
-        Handle(OpenVerifyRucioCurlPool* pool, CURL* easy);
+        Handle(OpenVerifyRucioCurlPool* pool, CURL* easy, bool reused);
         ~Handle();
 
         Handle(Handle&& other) noexcept;
@@ -43,10 +44,13 @@ class OpenVerifyRucioCurlPool {
 
         CURL* get() const { return m_easy; }
         explicit operator bool() const { return m_easy != nullptr; }
+        // True when this CURL* came from the idle pool (not freshly curl_easy_init'd).
+        bool Reused() const { return m_reused; }
 
        private:
         OpenVerifyRucioCurlPool* m_pool{nullptr};
         CURL* m_easy{nullptr};
+        bool m_reused{false};
     };
 
     explicit OpenVerifyRucioCurlPool(OpenVerifyRucioCurlPoolConfig cfg);
@@ -63,6 +67,17 @@ class OpenVerifyRucioCurlPool {
     std::size_t MaxSize() const { return m_max; }
     std::size_t Size() const;
     std::size_t IdleCount() const;
+    std::size_t InflightCount() const;
+
+    // Instantaneous size + lifetime grow/shrink counts (for Prometheus gauges/counters).
+    struct Stats {
+        std::size_t handles{0};
+        std::size_t idle{0};
+        std::size_t inflight{0};
+        std::uint64_t grows{0};
+        std::uint64_t shrinks{0};
+    };
+    Stats GetStats() const;
 
    private:
     void InitShareAndWarm();
@@ -90,5 +105,7 @@ class OpenVerifyRucioCurlPool {
     std::deque<IdleSlot> m_idle;  // back = newest (Acquire); front = oldest (shrink)
     std::size_t m_created{0};
     std::size_t m_checked_out{0};
+    std::uint64_t m_grows{0};
+    std::uint64_t m_shrinks{0};
     bool m_stopping{false};
 };

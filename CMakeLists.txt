@@ -87,6 +87,8 @@ add_executable(openverify_rucio_tests
     src/OpenVerifyRucioSelector.cc
     src/OpenVerifyRucioListCache.cc
     src/OpenVerifyRucioCurlPool.cc
+    src/OpenVerifyMetrics.cc
+    src/OpenVerifyHostReliability.cc
 )
 
 target_include_directories(openverify_rucio_tests
@@ -98,6 +100,7 @@ target_link_libraries(openverify_rucio_tests
         CURL::libcurl
         nlohmann_json::nlohmann_json
         XRootD::XrdUtils
+        XRootD::XrdCl
 )
 
 add_test(NAME openverify_rucio_tests COMMAND openverify_rucio_tests)
@@ -108,6 +111,8 @@ add_executable(openverify_rucio_listcache_tests
     src/OpenVerifyRucio.cc
     src/OpenVerifyRucioSelector.cc
     src/OpenVerifyRucioCurlPool.cc
+    src/OpenVerifyMetrics.cc
+    src/OpenVerifyHostReliability.cc
 )
 
 target_include_directories(openverify_rucio_listcache_tests
@@ -119,6 +124,7 @@ target_link_libraries(openverify_rucio_listcache_tests
         CURL::libcurl
         nlohmann_json::nlohmann_json
         XRootD::XrdUtils
+        XRootD::XrdCl
 )
 
 add_test(NAME openverify_rucio_listcache_tests COMMAND openverify_rucio_listcache_tests)
