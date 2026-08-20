@@ -259,8 +259,11 @@ void Test_ShouldIgnoreLfn() {
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/mc/file.root", prefixes), "not mc");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/user", {}), "no prefixes configured");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("", prefixes), "empty lfn");
-    const auto multi = OpenVerifyRucioParseIgnorePrefixes("/store/user,/store/temp");
+    const auto multi = OpenVerifyRucioParseIgnorePrefixes("/store/user,/store/temp,/tmp");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/store/temp/x.root", multi), "second prefix");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/tmp/xrootd-testfile.global", multi), "tmp testfile");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/tmp", multi), "exact tmp");
+    Expect(!OpenVerifyRucioShouldIgnoreLfn("/tmpdir/x", multi), "not tmpdir");
 }
 
 }  // namespace

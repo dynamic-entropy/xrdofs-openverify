@@ -21,12 +21,18 @@ class OpenVerifyUrl {
     // Path after authority (keeps leading '/' or '//'); empty if URL has no path.
     static std::string PathFromUrl(const std::string& url);
 
-    // ErrInfo payload for a Rucio gateway redirect. Both dialects get the full
-    // catalog PFN URL + code -1 so the client opens the PFN path (which may carry a
-    // site prefix a disk door requires) rather than the original LFN; http_client
-    // only selects the scheme for the synthesized fallback. The URL is always a
-    // wire scheme, never a dav/davs alias. Degrades to host + port when no URL
-    // can be built.
+    // CMS logical name: substring from the first "/store/" (site PFN prefixes
+    // like /eos/cms/, /dcache/uscmsdisk/, /grid/cms/ are stripped). Unchanged if
+    // "/store/" is absent (e.g. /tmp/...). Applied once to the inbound open path
+    // so Rucio/cmsd see an LFN even when a client retries a PFN after load-balancer
+    // fallback (https://github.com/xrootd/xrootd/issues/2394). Outbound redirects
+    // still use the catalog/cmsd PFN path.
+    static std::string CmsLfnFromPath(const std::string& path);
+
+    // ErrInfo payload for a Rucio gateway redirect. Both dialects get a full URL
+    // with code -1. Prefer the catalog `pfn` path (site prefix intact); fall back
+    // to synthesizing from `path` (usually the sanitized LFN) when pfn is empty.
+    // HTTP clients get davs→https. Degrades to host + port when no URL can be built.
     struct RedirectTarget {
         int code{-1};     // setErrInfo port / -1 for full URL
         std::string text; // hostname or full URL

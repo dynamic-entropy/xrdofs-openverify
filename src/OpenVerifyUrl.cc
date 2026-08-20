@@ -50,6 +50,13 @@ std::string OpenVerifyUrl::PathFromUrl(const std::string& url) {
     return bare.substr(path_start);
 }
 
+std::string OpenVerifyUrl::CmsLfnFromPath(const std::string& path) {
+    if (path.empty()) return path;
+    const auto pos = path.find("/store/");
+    if (pos == std::string::npos) return path;
+    return path.substr(pos);
+}
+
 OpenVerifyUrl::RedirectTarget OpenVerifyUrl::MakeRucioRedirect(bool http_client, const std::string& host, int port,
                                                                const std::string& pfn, const std::string& path) {
     RedirectTarget out;
@@ -59,17 +66,17 @@ OpenVerifyUrl::RedirectTarget OpenVerifyUrl::MakeRucioRedirect(bool http_client,
         return out;
     }
 
-    // Prefer the catalog PFN (already scheme-matched by Rucio list); fall back to synthesize.
-    // Rucio hands back davs:// for the CMS WebDAV replicas, which is a catalog
-    // protocol id and not something a Location: header may carry, so translate
-    // it to its wire scheme before it leaves the plugin.
-    std::string url = DavToHttpUrl(StripUrlQuery(pfn));
-    if (url.find("://") == std::string::npos) {
-        if (path.empty()) {
-            return out;
-        }
-        url = SynthesizePfn(http_client ? "davs" : "root", host, port, path);
+    // Prefer the catalog PFN path (may include a site prefix). Do not strip to LFN
+    // here — inbound sanitization is separate (CmsLfnFromPath at open).
+    std::string redirect_path = PathFromUrl(StripUrlQuery(pfn));
+    if (redirect_path.empty()) {
+        redirect_path = path;
     }
+    if (redirect_path.empty()) {
+        return out;
+    }
+
+    std::string url = SynthesizePfn(http_client ? "davs" : "root", host, port, redirect_path);
     if (url.empty()) {
         return out;
     }

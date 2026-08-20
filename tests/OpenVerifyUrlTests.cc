@@ -71,7 +71,22 @@ void Test_ProbeUrlHelpers() {
            "PathFromUrl: https single-slash path");
 }
 
+void Test_CmsLfnFromPath() {
+    Expect(OpenVerifyUrl::CmsLfnFromPath("/eos/cms/store/data/a.root") == "/store/data/a.root",
+           "CmsLfnFromPath: strips /eos/cms");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("//eos/cms//store/data/a.root") == "/store/data/a.root",
+           "CmsLfnFromPath: strips double-slash EOS prefix");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("/dcache/uscmsdisk/store/mc/file.root") == "/store/mc/file.root",
+           "CmsLfnFromPath: strips dcache prefix");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("/store/user/x.root") == "/store/user/x.root",
+           "CmsLfnFromPath: LFN unchanged");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("/tmp/xrootd-testfile.global") == "/tmp/xrootd-testfile.global",
+           "CmsLfnFromPath: non-store path unchanged");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("") == "", "CmsLfnFromPath: empty");
+}
+
 void Test_MakeRucioRedirect() {
+    // Redirect carries the catalog PFN path; inbound LFN sanitization is separate.
     const char* pfn = "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root?x=1";
     const auto root = OpenVerifyUrl::MakeRucioRedirect(false, "cmsdcadisk.fnal.gov", 1094, pfn,
                                                       "/store/mc/file.root");
@@ -79,9 +94,6 @@ void Test_MakeRucioRedirect() {
     Expect(root.text == "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root",
            "MakeRucioRedirect: root strips query and keeps PFN path");
 
-    // HTTP clients get the catalog PFN as a full URL too, so the disk-door site
-    // prefix survives instead of XrdHttp re-appending the client LFN. Rucio's
-    // davs:// becomes https:// so the Location: header is followable.
     const char* davs_pfn = "davs://cmsdcadisk.fnal.gov:1094/dcache/uscmsdisk/store/mc/file.root?x=1";
     const auto http = OpenVerifyUrl::MakeRucioRedirect(true, "cmsdcadisk.fnal.gov", 1094, davs_pfn,
                                                       "/store/mc/file.root");
@@ -90,36 +102,30 @@ void Test_MakeRucioRedirect() {
            "MakeRucioRedirect: http strips query and resolves davs PFN to https");
 
     const auto synth = OpenVerifyUrl::MakeRucioRedirect(false, "h.example.edu", 1094, "",
-                                                       "//dcache/store/a.root");
+                                                       "/store/a.root");
     Expect(synth.code == -1, "MakeRucioRedirect: synthesize full URL when pfn empty");
-    Expect(synth.text == "root://h.example.edu:1094//dcache/store/a.root",
-           "MakeRucioRedirect: synthesize from path");
+    Expect(synth.text == "root://h.example.edu:1094//store/a.root",
+           "MakeRucioRedirect: synthesize from path fallback");
 
-    // Synthesized fallback must follow the client dialect, not hardcode root://.
     const auto synth_http = OpenVerifyUrl::MakeRucioRedirect(true, "h.example.edu", 1094, "",
-                                                           "/dcache/store/a.root");
+                                                           "/store/a.root");
     Expect(synth_http.code == -1, "MakeRucioRedirect: http synthesize uses code -1");
-    Expect(synth_http.text == "https://h.example.edu:1094/dcache/store/a.root",
+    Expect(synth_http.text == "https://h.example.edu:1094/store/a.root",
            "MakeRucioRedirect: http synthesize uses https wire scheme");
 
-    // No host and no path: degrade to host + port rather than emit a bogus URL.
     const auto bare = OpenVerifyUrl::MakeRucioRedirect(true, "h.example.edu", 1094, "", "");
     Expect(bare.code == 1094, "MakeRucioRedirect: falls back to port when nothing to build");
     Expect(bare.text == "h.example.edu", "MakeRucioRedirect: falls back to host");
 }
 
 void Test_RucioPfnVerifyCacheKey() {
-    // Disk-door PFN with site prefix: verify key must carry that path, not the LFN.
+    // Disk-door PFN with site prefix: verify key carries that path, not the LFN.
     const char* pfn =
         "root://cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root";
     const auto pfn_path = OpenVerifyUrl::PathFromUrl(pfn);
     const auto key = MakeOpenVerifyCacheKey(pfn_path, "cmsdcadisk.fnal.gov", 1094);
     Expect(key == "cmsdcadisk.fnal.gov:1094//dcache/uscmsdisk/store/mc/file.root",
            "RucioPfnVerifyCacheKey: key uses PFN path");
-    Expect(key.find("//store/mc/file.root") == std::string::npos ||
-               key.find("dcache/uscmsdisk/store/mc/file.root") != std::string::npos,
-           "RucioPfnVerifyCacheKey: site prefix retained");
-    // LFN-only key must not collide with the PFN-path key.
     const auto lfn_key = MakeOpenVerifyCacheKey("/store/mc/file.root", "cmsdcadisk.fnal.gov", 1094);
     Expect(lfn_key == "cmsdcadisk.fnal.gov:1094//store/mc/file.root", "RucioPfnVerifyCacheKey: lfn key");
     Expect(lfn_key != key, "RucioPfnVerifyCacheKey: pfn key distinct from lfn key");
@@ -131,6 +137,7 @@ int main() {
     Test_DavToHttpUrl();
     Test_SynthesizePfn();
     Test_ProbeUrlHelpers();
+    Test_CmsLfnFromPath();
     Test_MakeRucioRedirect();
     Test_RucioPfnVerifyCacheKey();
 

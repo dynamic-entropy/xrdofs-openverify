@@ -21,7 +21,7 @@ class OpenVerifyRucioSelector;
 // XRD_OPENVERIFY_RUCIO_SELECT          try-order: random (default) | priority | geoip
 // XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX   comma-separated LFN prefixes to skip (no list_replicas);
 //                                      fall through to cmsd. CMS user files are not in Rucio:
-//                                      /store/user
+//                                      /store/user,/tmp
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL       list_replicas LRU TTL seconds (default 60; 0 disables)
 // XRD_OPENVERIFY_RUCIO_CACHE_SIZE      max (lfn, scheme) entries (default 8192; 0 disables)
 // XRD_OPENVERIFY_RUCIO_POOL_MIN        warm libcurl easy handles (default 50)

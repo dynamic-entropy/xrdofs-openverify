@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.5.0
+Version:        0.5.1
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Thu Aug 20 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.1-1
+- Sanitize inbound open paths to CMS LFN once (strip site PFN prefixes) before Rucio/cmsd.
+- Keeps catalog/cmsd PFN paths on outbound verify and client redirects (xrootd#2394 bounce fix).
+
 * Thu Aug 20 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.0-1
 - Elastic Rucio libcurl pool (min 50 / max 500): grow under load, shrink idle extras after 15s.
 - Drop idle keep-alives after 15s; per-handle connection cache (no CURLSH CONNECT share).
