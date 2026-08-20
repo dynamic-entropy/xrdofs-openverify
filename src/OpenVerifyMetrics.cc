@@ -266,29 +266,6 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_location_source_total{source=\"xrootd\""
          << lbl << "} " << m_location_source_xrootd.load(std::memory_order_relaxed) << "\n";
 
-    body << "# HELP xrootd_openverify_cmsd_stall_seconds Histogram of individual cmsd stall durations.\n"
-            "# TYPE xrootd_openverify_cmsd_stall_seconds histogram\n";
-    {
-        const StallHistogram& h = m_cmsd_stall_hist;
-        uint64_t cumulative = 0;
-        for (size_t b = 0; b < StallHistogram::kBucketCount; ++b) {
-            cumulative += h.buckets[b].load(std::memory_order_relaxed);
-            body << "xrootd_openverify_cmsd_stall_seconds_bucket{le=\"";
-            if (b < StallHistogram::kBoundCount) {
-                body << StallHistogram::kBounds[b];
-            } else {
-                body << "+Inf";
-            }
-            body << "\"" << lbl << "} " << cumulative << "\n";
-        }
-        const double sum_s = static_cast<double>(h.sum_micros.load(std::memory_order_relaxed)) / 1e6;
-        const std::string inst =
-            m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}");
-        body << "xrootd_openverify_cmsd_stall_seconds_sum" << inst << " " << sum_s << "\n"
-             << "xrootd_openverify_cmsd_stall_seconds_count" << inst << " "
-             << h.count.load(std::memory_order_relaxed) << "\n";
-    }
-
     body << "# HELP xrootd_openverify_redirect_delay_seconds OpenVerify handling time per redirect target "
             "(queue wait + verify RTT for miss path).\n"
             "# TYPE xrootd_openverify_redirect_delay_seconds histogram\n";
@@ -556,18 +533,6 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     if (seconds <= 0) return;
     m_cmsd_stall_events.fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_seconds_sum.fetch_add(static_cast<uint64_t>(seconds), std::memory_order_relaxed);
-
-    const double stall_s = static_cast<double>(seconds);
-    size_t bucket = StallHistogram::kBoundCount;  // +Inf
-    for (size_t i = 0; i < StallHistogram::kBoundCount; ++i) {
-        if (stall_s <= StallHistogram::kBounds[i]) {
-            bucket = i;
-            break;
-        }
-    }
-    m_cmsd_stall_hist.buckets[bucket].fetch_add(1, std::memory_order_relaxed);
-    m_cmsd_stall_hist.count.fetch_add(1, std::memory_order_relaxed);
-    m_cmsd_stall_hist.sum_micros.fetch_add(static_cast<uint64_t>(stall_s * 1e6), std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

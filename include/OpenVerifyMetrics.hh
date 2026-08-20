@@ -205,17 +205,6 @@ class OpenVerifyMetrics {
         std::atomic<uint64_t> sum_micros{0};
     };
 
-    // cmsd SFS_STALL is whole seconds; use coarser bounds than DelayHistogram.
-    struct StallHistogram {
-        static constexpr double kBounds[] = {1, 2, 3, 5, 10, 15, 30, 60};
-        static constexpr size_t kBoundCount = sizeof(kBounds) / sizeof(kBounds[0]);
-        static constexpr size_t kBucketCount = kBoundCount + 1;  // +Inf
-
-        std::atomic<uint64_t> buckets[kBucketCount]{};
-        std::atomic<uint64_t> count{0};
-        std::atomic<uint64_t> sum_micros{0};
-    };
-
     PerFailureMetrics& EnsureFailure(const std::string& source, const std::string& host, int port,
                                      const std::string& reason);
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
@@ -278,7 +267,6 @@ class OpenVerifyMetrics {
     // One-shot locate RTT: Rucio REST list_replicas vs cmsd/OFS open select.
     DelayHistogram m_locate_rtt_rucio;
     DelayHistogram m_locate_rtt_cmsd;
-    StallHistogram m_cmsd_stall_hist;  // individual cmsd stall durations (seconds)
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;

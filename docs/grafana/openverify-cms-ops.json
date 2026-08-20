@@ -1068,7 +1068,7 @@
       "type": "heatmap",
       "id": 25,
       "title": "Redirect delay distribution",
-      "description": "Full distribution of redirect hold time. Use the Delay outcome variable to focus on verify success/failure, queue rejects, cache hits, or avoided redirects. Does not include cmsd stall waits.",
+      "description": "Full distribution of redirect hold time. Use the Delay outcome variable to focus on verify success/failure, queue rejects, cache hits, or avoided redirects. Does not include cmsd SFS_STALL (client-owned lookup delay).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1136,84 +1136,6 @@
           "reverse": false,
           "unit": "s",
           "decimals": 3
-        },
-        "cellValues": {
-          "unit": "ops"
-        }
-      }
-    },
-    {
-      "type": "heatmap",
-      "id": 26,
-      "title": "cmsd stall waits",
-      "description": "How long cmsd asked the client to wait (SFS_STALL) before a destination was known. Separate from OpenVerify probe time.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 50
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{le}}",
-          "format": "heatmap",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "calculate": false,
-        "yBucketBound": "auto",
-        "yBucketSize": null,
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "scheme": "Spectral",
-          "fill": "dark-orange",
-          "reverse": false,
-          "steps": 64,
-          "min": null,
-          "max": null,
-          "exponent": 0.5
-        },
-        "cellGap": 1,
-        "filterValues": {
-          "le": 1e-09
-        },
-        "tooltip": {
-          "mode": "single",
-          "yHistogram": true
-        },
-        "legend": {
-          "show": true
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "s",
-          "decimals": 0
         },
         "cellValues": {
           "unit": "ops"
@@ -2082,7 +2004,7 @@
       "type": "stat",
       "id": 42,
       "title": "cmsd locate time",
-      "description": "Average time for cmsd / base OFS to pick a redirect. Stall waits returned to the client are separate (see cmsd stall waits).",
+      "description": "Average time for cmsd / base OFS to pick a redirect (one open/select). Does not include client sleep after SFS_STALL.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2546,7 +2468,7 @@
       "type": "heatmap",
       "id": 69,
       "title": "cmsd locate time distribution",
-      "description": "Distribution of cmsd/OFS open-select wall times. Separate from site probe time and stall waits.",
+      "description": "Distribution of cmsd/OFS open-select wall times. Separate from site probe time and from client-owned SFS_STALL sleep.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"

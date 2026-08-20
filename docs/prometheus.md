@@ -45,8 +45,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_redirect_delay_seconds` (histogram by `outcome`; total hop = queue + RTT on miss)
 - `xrootd_openverify_queue_wait_seconds` (histogram by `result` = `admitted` | `timeout`)
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
-- `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total`
-- `xrootd_openverify_cmsd_stall_seconds` (histogram of individual stall durations)
+- `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total` (event rate / configured stall seconds sum; not a latency histogram)
 - `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd` \| `xrootd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`; xrootd `attempt` = `1` for static fallback)
 - `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
 - `xrootd_openverify_retry_exhausted_total`
@@ -93,32 +92,23 @@ Same meanings as before:
 ### cmsd lookup stalls (not per-site)
 
 cmsd returns `SFS_STALL` (positive seconds) **before** a redirect target is
-known, so these counters have no `host` label — they measure federation lookup
-delay, not “stall at site X”. OpenVerify passes the stall through to the
-protocol layer (`kXR_wait` for root; Bridge redrive for HTTP) rather than
-sleeping in the plugin.
+known, so these counters have no `host` label. The seconds value is almost
+always a **configured** manager delay (`delay lookup`, overload, …), not
+measured client wait across retries — use the **event rate**, not the duration
+distribution.
+
+OpenVerify passes the stall through to the protocol layer (`kXR_wait` for root;
+Bridge redrive for HTTP) rather than sleeping in the plugin.
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
 | `cmsd_stalls_total` | (instance) | Number of stall responses passed to the client |
-| `cmsd_stall_seconds_total` | (instance) | Sum of stall seconds requested |
-| `cmsd_stall_seconds` | histogram | Distribution of individual stall durations |
+| `cmsd_stall_seconds_total` | (instance) | Sum of configured stall seconds requested |
 
-Histogram buckets (seconds, upper-inclusive): `1`, `2`, `3`, `5`, `10`, `15`,
-`30`, `60`, `+Inf`.
-
-Average stall duration:
+Stall event rate:
 
 ```promql
-rate(xrootd_openverify_cmsd_stall_seconds_total[5m])
-/
-clamp_min(rate(xrootd_openverify_cmsd_stalls_total[5m]), 1e-9)
-```
-
-Heatmap / bin rates:
-
-```promql
-sum by (le) (rate(xrootd_openverify_cmsd_stall_seconds_bucket[5m]))
+sum(rate(xrootd_openverify_cmsd_stalls_total[5m]))
 ```
 
 ### Rucio-first locate
