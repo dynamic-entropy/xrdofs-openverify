@@ -37,7 +37,7 @@ class OpenVerifyHostReliability;
 //
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL / XRD_OPENVERIFY_RUCIO_CACHE_SIZE: list_replicas LRU.
-// XRD_OPENVERIFY_RUCIO_POOL_MIN / _MAX: elastic libcurl handle pool (default 50–500).
+// XRD_OPENVERIFY_RUCIO_POOL_MIN / _MAX: elastic libcurl handle pool (default 1–500; raise MIN via puppet).
 //
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.

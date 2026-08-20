@@ -26,7 +26,7 @@ class OpenVerifyRucioSelector;
 //                                      /store/user,/tmp
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL       list_replicas LRU TTL seconds (default 60; 0 disables)
 // XRD_OPENVERIFY_RUCIO_CACHE_SIZE      max (lfn, scheme) entries (default 8192; 0 disables)
-// XRD_OPENVERIFY_RUCIO_POOL_MIN        warm libcurl easy handles (default 50)
+// XRD_OPENVERIFY_RUCIO_POOL_MIN        warm libcurl easy handles (default 1; raise via puppet)
 // XRD_OPENVERIFY_RUCIO_POOL_MAX        cap; pool grows/shrinks in [min,max] (default 500)
 // XRD_OPENVERIFY_RUCIO_POOL_SIZE       optional alias for POOL_MIN
 // X509_USER_PROXY                      proxy for /auth/x509_proxy

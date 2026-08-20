@@ -39,13 +39,13 @@ void Test_PoolConfigFromEnvDefaults() {
     unsetenv("XRD_OPENVERIFY_RUCIO_POOL_MAX");
     unsetenv("XRD_OPENVERIFY_RUCIO_POOL_SIZE");
     auto cfg = OpenVerifyRucioCurlPoolConfig::FromEnv();
-    Expect(cfg.min_handles == 50, "default min 50");
+    Expect(cfg.min_handles == 1, "default min 1");
     Expect(cfg.max_handles == 500, "default max 500");
 
-    setenv("XRD_OPENVERIFY_RUCIO_POOL_MIN", "10", 1);
+    setenv("XRD_OPENVERIFY_RUCIO_POOL_MIN", "5", 1);
     setenv("XRD_OPENVERIFY_RUCIO_POOL_MAX", "20", 1);
     cfg = OpenVerifyRucioCurlPoolConfig::FromEnv();
-    Expect(cfg.min_handles == 10 && cfg.max_handles == 20, "min/max env");
+    Expect(cfg.min_handles == 5 && cfg.max_handles == 20, "min/max env");
 
     unsetenv("XRD_OPENVERIFY_RUCIO_POOL_MIN");
     unsetenv("XRD_OPENVERIFY_RUCIO_POOL_MAX");

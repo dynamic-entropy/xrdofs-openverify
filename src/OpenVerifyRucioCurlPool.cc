@@ -6,7 +6,7 @@
 
 namespace {
 
-constexpr std::size_t kDefaultMin = 50;
+constexpr std::size_t kDefaultMin = 1;
 constexpr std::size_t kDefaultMax = 500;
 constexpr std::size_t kHardMax = 500;
 // Drop idle keep-alives before typical front-end/NAT idle timeouts so reuse

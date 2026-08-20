@@ -12,7 +12,7 @@
 // Elastic pool of long-lived libcurl easy handles plus a CURLSH share (DNS +
 // SSL session). TCP+TLS stays on each easy handle across curl_easy_reset.
 //
-// XRD_OPENVERIFY_RUCIO_POOL_MIN   warm handles (default 50; min 1)
+// XRD_OPENVERIFY_RUCIO_POOL_MIN   warm handles (default 1; raise via puppet if needed)
 // XRD_OPENVERIFY_RUCIO_POOL_MAX   cap (default 500; >= min)
 // XRD_OPENVERIFY_RUCIO_POOL_SIZE  optional alias for MIN (compat)
 //
@@ -20,8 +20,12 @@
 // 15s back toward MIN on the next Acquire/Release (no janitor thread). At MAX,
 // Acquire waits for a handle. Each CURL* is used by one thread at a time.
 //
+// Note: MIN keeps easy handles (and DNS/SSL-session share), not forever-open
+// TCP sockets. CURLOPT_MAXAGE_CONN=15s still drops idle keep-alives on those
+// handles; the next transfer on a warm handle may open a new TCP+TLS.
+//
 struct OpenVerifyRucioCurlPoolConfig {
-    std::size_t min_handles{50};
+    std::size_t min_handles{1};
     std::size_t max_handles{500};
     std::chrono::milliseconds shrink_idle{std::chrono::seconds(15)};
 
@@ -88,7 +92,7 @@ class OpenVerifyRucioCurlPool {
     static void ShareLock(CURL* handle, curl_lock_data data, curl_lock_access access, void* userptr);
     static void ShareUnlock(CURL* handle, curl_lock_data data, void* userptr);
 
-    std::size_t m_min{50};
+    std::size_t m_min{1};
     std::size_t m_max{500};
     std::chrono::milliseconds m_shrink_idle{std::chrono::seconds(15)};
 
