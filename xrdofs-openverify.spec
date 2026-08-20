@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.12
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,12 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Thu Aug 20 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.0-1
+- Elastic Rucio libcurl pool (min 50 / max 500): grow under load, shrink idle extras after 15s.
+- Drop idle keep-alives after 15s; per-handle connection cache (no CURLSH CONNECT share).
+- Disable Expect: 100-continue on list_replicas POST.
+- Drop cmsd locate-RTT metric (stalls start a new client open; the per-call mean was not useful).
+
 * Thu Aug 20 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.12-1
 - Drop cmsd stall-duration histogram; keep stall event/sum counters (stall seconds are config, not latency).
 

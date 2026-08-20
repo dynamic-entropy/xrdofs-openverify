@@ -433,12 +433,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             m_log.Emsg(" INFO", "openverify cmsd retry", msg.c_str());
         }
 
-        const auto cmsd_t0 = std::chrono::steady_clock::now();
         rc = m_wrapped->open(fileName, openMode, createMode, client, opaque_str.c_str());
-        {
-            const double cmsd_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - cmsd_t0).count();
-            m_metrics.RecordLocateLatency("cmsd", cmsd_s);
-        }
 
         // SFS_STALL: pass through to the protocol layer (kXR_wait for root; Bridge
         // redrive for HTTP). Do not sleep here — that holds an open worker for the

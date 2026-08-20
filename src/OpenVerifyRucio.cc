@@ -293,7 +293,7 @@ OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     m_selector = OpenVerifyRucioMakeSelector(OpenVerifyRucioSelectorNameFromEnv());
     m_list_cache = std::make_unique<OpenVerifyRucioListCache>(OpenVerifyRucioListCacheConfig::FromEnv());
     if (m_enabled) {
-        m_curl_pool = std::make_unique<OpenVerifyRucioCurlPool>(OpenVerifyRucioPoolSizeFromEnv());
+        m_curl_pool = std::make_unique<OpenVerifyRucioCurlPool>(OpenVerifyRucioCurlPoolConfig::FromEnv());
     }
 }
 
@@ -323,8 +323,11 @@ void OpenVerifyRucio::LogConfig() {
     } else {
         msg += " list_cache=off";
     }
-    const std::size_t pool = (m_curl_pool) ? m_curl_pool->Size() : 0;
-    msg += " curl_pool=" + std::to_string(pool);
+    if (m_curl_pool) {
+        msg += " curl_pool_min=" + std::to_string(m_curl_pool->MinSize()) +
+               " curl_pool_max=" + std::to_string(m_curl_pool->MaxSize()) +
+               " curl_pool=" + std::to_string(m_curl_pool->Size());
+    }
     m_log.Emsg(" INFO", msg.c_str());
 }
 
@@ -434,6 +437,8 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     const std::string token_hdr = std::string("X-Rucio-Auth-Token: ") + token;
     headers = curl_slist_append(headers, token_hdr.c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    // Disable Expect: 100-continue (libcurl default can wait up to 1s on POST).
+    headers = curl_slist_append(headers, "Expect:");
     if (!client_ip.empty()) {
         const std::string xff = std::string("X-Forwarded-For: ") + client_ip;
         headers = curl_slist_append(headers, xff.c_str());

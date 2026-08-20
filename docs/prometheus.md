@@ -55,7 +55,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_rucio_candidates_total`
 - `xrootd_openverify_rucio_exhausted_total` (lookup `ok` but no PFN accepted → cmsd fallthrough)
 - `xrootd_openverify_location_source_total` (`source` = `rucio` \| `cmsd` \| `xrootd` — locate path / static fallback, not destination site)
-- `xrootd_openverify_locate_rtt_seconds` (histogram by `source` = `rucio` \| `cmsd`)
+- `xrootd_openverify_locate_rtt_seconds` (histogram `source=rucio` — cache-miss list_replicas)
 
 **Appear after first event:**
 
@@ -133,6 +133,7 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | `rucio_exhausted_recovered_total` | (instance) | Subset of exhaust where **cmsd openverify then accepted** (Rucio failed, cmsd saved the open) |
 | `rucio_cmsd_compare_total` | `result=overlap\|catalog_disagree` | Diagnostic split of recovered by hostname vs Rucio list (sum = recovered) |
 | `location_source_total` | `source=rucio\|cmsd\|xrootd` | Accepted open’s locate path (`xrootd` = successful static `xrootd.redirect` pass-through such as transit; **not an error**) |
+| `locate_rtt_seconds` | `source=rucio` | Cache-miss `list_replicas` wall time (Acquire + optional auth + POST). Not cmsd select; stall wait is `cmsd_stalls_total` |
 | `static_fallback_total` | `fallback=transit` | Successful static ENOENT redirect accepted without verify (not an error) |
 
 Primary fallthrough success signal: `recovered / exhausted` (how often cmsd
@@ -178,10 +179,10 @@ clamp_min(
   + sum(rate(xrootd_openverify_rucio_exhausted_total[5m]))
 , 1e-9)
 
-# Mean locate RTT by source (Rucio list_replicas vs cmsd OFS open)
-sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_sum[5m]))
-/
-clamp_min(sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_count[5m])), 1e-9)
+# Rucio list_replicas latency percentiles (cache-miss REST only)
+histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source="rucio"}[5m])))
+histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source="rucio"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source="rucio"}[5m])))
 ```
 
 AAA request volume (independent of OpenVerify) comes from **xrdmon**:

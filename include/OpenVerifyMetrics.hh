@@ -37,7 +37,7 @@ class OpenVerifyHostReliability;
 //
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL / XRD_OPENVERIFY_RUCIO_CACHE_SIZE: list_replicas LRU.
-// XRD_OPENVERIFY_RUCIO_POOL_SIZE: long-lived libcurl handles (default = MAX_INFLIGHT).
+// XRD_OPENVERIFY_RUCIO_POOL_MIN / _MAX: elastic libcurl handle pool (default 50–500).
 //
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.
@@ -148,7 +148,7 @@ class OpenVerifyMetrics {
     void RecordRucioCmsdCompare(const std::string& result);
     // Accepted open locate path: rucio | cmsd | xrootd (static redirect fallback).
     void RecordLocationSource(const std::string& source);
-    // Wall time of one locate call: source "rucio" (list_replicas) or "cmsd" (wrapped OFS open/select).
+    // Wall time of one Rucio list_replicas (cache miss).
     void RecordLocateLatency(const std::string& source, double seconds);
 
     // cmsd / wrapped-OFS candidate budget (enforce).
@@ -264,9 +264,8 @@ class OpenVerifyMetrics {
     // Leaders that ran open_verify after admission.
     DelayHistogram m_verify_rtt_success;
     DelayHistogram m_verify_rtt_failure;
-    // One-shot locate RTT: Rucio REST list_replicas vs cmsd/OFS open select.
+    // Rucio list_replicas RTT (cache miss).
     DelayHistogram m_locate_rtt_rucio;
-    DelayHistogram m_locate_rtt_cmsd;
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;

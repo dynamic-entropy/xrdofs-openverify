@@ -634,7 +634,7 @@
       "type": "stat",
       "id": 16,
       "title": "Rucio path share",
-      "description": "Of verified locate accepts (rucio+cmsd), how many used a Rucio replica. Excludes static xrootd.redirect fallback (transit) — that is a successful pass-through, not a locate failure.",
+      "description": "Of verified locate accepts (rucio+cmsd), how many used a Rucio replica. Excludes static xrootd.redirect fallback (transit) \u2014 that is a successful pass-through, not a locate failure.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1951,15 +1951,15 @@
     {
       "type": "stat",
       "id": 54,
-      "title": "Rucio locate time",
-      "description": "Average time for one Rucio replica listing. This is catalog lookup time, not the site probe.",
+      "title": "Rucio list_replicas p50 / p95 / p99",
+      "description": "Percentiles of cache-miss list_replicas wall time (Acquire + optional auth + POST). Not the site probe. Cache hits and ignore-prefix skips are excluded.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 16,
         "x": 8,
         "y": 107
       },
@@ -1969,61 +1969,32 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_locate_rtt_seconds_sum{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_locate_rtt_seconds_count{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
           "refId": "A",
           "editorMode": "code",
+          "legendFormat": "p50",
           "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
         },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 42,
-      "title": "cmsd locate time",
-      "description": "Average time for cmsd / base OFS to pick a redirect (one open/select). Does not include client sleep after SFS_STALL.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 16,
-        "y": 107
-      },
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_locate_rtt_seconds_sum{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_locate_rtt_seconds_count{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "refId": "B",
           "editorMode": "code",
+          "legendFormat": "p95",
+          "instant": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "refId": "C",
+          "editorMode": "code",
+          "legendFormat": "p99",
           "instant": true
         }
       ],
@@ -2049,14 +2020,15 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area"
+        "graphMode": "area",
+        "textMode": "value_and_name"
       }
     },
     {
       "type": "timeseries",
       "id": 50,
       "title": "Accepted opens by locate path",
-      "description": "Where the accepted redirect came from: rucio = verified Rucio replica; cmsd = verified cmsd/OFS site hop; xrootd = static xrootd.redirect fallback (cms-xrd-transit) passed through without verify — a successful client redirect, not an error.",
+      "description": "Where the accepted redirect came from: rucio = verified Rucio replica; cmsd = verified cmsd/OFS site hop; xrootd = static xrootd.redirect fallback (cms-xrd-transit) passed through without verify \u2014 a successful client redirect, not an error.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2184,66 +2156,6 @@
     },
     {
       "type": "timeseries",
-      "id": 52,
-      "title": "Locate time (Rucio vs cmsd)",
-      "description": "Side-by-side comparison of catalog listing time (rucio) vs cmsd/OFS selection time. Site probe time is on the Verify time chart above.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 119
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_sum{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum by (source) (rate(xrootd_openverify_locate_rtt_seconds_count{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{source}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
       "id": 53,
       "title": "Rucio accepts by replica",
       "description": "Which ordered Rucio replica was accepted after a successful probe. exhausted = every Rucio replica failed or was skipped (fall through to cmsd).",
@@ -2255,7 +2167,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 127
+        "y": 119
       },
       "targets": [
         {
@@ -2327,7 +2239,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 127
+        "y": 119
       },
       "targets": [
         {
@@ -2387,19 +2299,19 @@
       }
     },
     {
-      "type": "heatmap",
+      "type": "timeseries",
       "id": 68,
-      "title": "Rucio locate time distribution",
-      "description": "Distribution of Rucio list_replicas wall times. The mean alone can hide a long tail.",
+      "title": "Rucio list_replicas p50 / p95 / p99",
+      "description": "Cache-miss list_replicas wall time percentiles. p99 rising toward 10s usually means REST timeout or pool wait at max.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 135
+        "y": 127
       },
       "targets": [
         {
@@ -2407,138 +2319,65 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
           "refId": "A",
-          "legendFormat": "{{le}}",
-          "format": "heatmap",
+          "legendFormat": "p50",
           "editorMode": "code",
           "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
         },
-        "overrides": []
-      },
-      "options": {
-        "calculate": false,
-        "yBucketBound": "auto",
-        "yBucketSize": null,
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "scheme": "Spectral",
-          "fill": "dark-orange",
-          "reverse": false,
-          "steps": 64,
-          "min": null,
-          "max": null,
-          "exponent": 0.5
-        },
-        "cellGap": 1,
-        "filterValues": {
-          "le": 1e-09
-        },
-        "tooltip": {
-          "mode": "single",
-          "yHistogram": true
-        },
-        "legend": {
-          "show": true
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "s",
-          "decimals": 3
-        },
-        "cellValues": {
-          "unit": "ops"
-        }
-      }
-    },
-    {
-      "type": "heatmap",
-      "id": 69,
-      "title": "cmsd locate time distribution",
-      "description": "Distribution of cmsd/OFS open-select wall times. Separate from site probe time and from client-owned SFS_STALL sleep.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 135
-      },
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "legendFormat": "{{le}}",
-          "format": "heatmap",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "refId": "B",
+          "legendFormat": "p95",
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
+          "refId": "C",
+          "legendFormat": "p99",
           "editorMode": "code",
           "range": true
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "s",
           "custom": {
-            "scaleDistribution": {
-              "type": "linear"
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
             }
           }
         },
         "overrides": []
       },
       "options": {
-        "calculate": false,
-        "yBucketBound": "auto",
-        "yBucketSize": null,
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "scheme": "Spectral",
-          "fill": "dark-orange",
-          "reverse": false,
-          "steps": 64,
-          "min": null,
-          "max": null,
-          "exponent": 0.5
-        },
-        "cellGap": 1,
-        "filterValues": {
-          "le": 1e-09
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
-          "mode": "single",
-          "yHistogram": true
-        },
-        "legend": {
-          "show": true
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "s",
-          "decimals": 3
-        },
-        "cellValues": {
-          "unit": "ops"
+          "mode": "multi"
         }
       }
     },
@@ -2549,7 +2388,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 143
+        "y": 135
       },
       "collapsed": false,
       "panels": []
@@ -2567,7 +2406,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 136
       },
       "targets": [
         {
@@ -2728,7 +2567,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 144
       },
       "targets": [
         {
@@ -2813,7 +2652,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 160
+        "y": 152
       },
       "targets": [
         {
@@ -2908,7 +2747,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 170
+        "y": 162
       },
       "collapsed": false,
       "panels": []
@@ -2926,7 +2765,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 171
+        "y": 163
       },
       "targets": [
         {
@@ -2978,7 +2817,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 171
+        "y": 163
       },
       "targets": [
         {
@@ -3030,7 +2869,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 167
       },
       "targets": [
         {
@@ -3090,7 +2929,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 183
+        "y": 175
       },
       "targets": [
         {

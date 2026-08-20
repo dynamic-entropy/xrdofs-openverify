@@ -325,10 +325,26 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
     emit_labeled_delay_hist("xrootd_openverify_verify_rtt_seconds",
                             "open_verify wall time after FIFO admission (excludes queue wait).", "result", "success",
                             m_verify_rtt_success, "failure", m_verify_rtt_failure);
-    emit_labeled_delay_hist(
-        "xrootd_openverify_locate_rtt_seconds",
-        "Wall time of one locate: Rucio list_replicas or cmsd/OFS open select (excludes verify).", "source", "rucio",
-        m_locate_rtt_rucio, "cmsd", m_locate_rtt_cmsd);
+    {
+        const char* name = "xrootd_openverify_locate_rtt_seconds";
+        body << "# HELP " << name << " Wall time of one Rucio list_replicas (cache miss; excludes verify).\n"
+             << "# TYPE " << name << " histogram\n";
+        const DelayHistogram& h = m_locate_rtt_rucio;
+        uint64_t cumulative = 0;
+        for (size_t b = 0; b < DelayHistogram::kBucketCount; ++b) {
+            cumulative += h.buckets[b].load(std::memory_order_relaxed);
+            body << name << "_bucket{source=\"rucio\",le=\"";
+            if (b < DelayHistogram::kBoundCount) {
+                body << DelayHistogram::kBounds[b];
+            } else {
+                body << "+Inf";
+            }
+            body << "\"" << lbl << "} " << cumulative << "\n";
+        }
+        const double sum_s = static_cast<double>(h.sum_micros.load(std::memory_order_relaxed)) / 1e6;
+        body << name << "_sum{source=\"rucio\"" << lbl << "} " << sum_s << "\n"
+             << name << "_count{source=\"rucio\"" << lbl << "} " << h.count.load(std::memory_order_relaxed) << "\n";
+    }
 
     body << "# HELP xrootd_openverify_verify_failures_total OpenVerify verify failures by locate source, "
             "redirect target and reason.\n"
@@ -633,8 +649,8 @@ void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
 }
 
 void OpenVerifyMetrics::RecordLocateLatency(const std::string& source, double seconds) {
-    if (seconds < 0) return;
-    ObserveHistogram(source == "rucio" ? m_locate_rtt_rucio : m_locate_rtt_cmsd, seconds);
+    if (seconds < 0 || source != "rucio") return;
+    ObserveHistogram(m_locate_rtt_rucio, seconds);
     if (!m_path.empty()) Flush();
 }
 
