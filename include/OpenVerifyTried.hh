@@ -5,23 +5,25 @@
 
 // Client/plugin `tried=` CGI: comma-separated host or host:port entries.
 // Used to skip already-tried Rucio/cmsd hops and to inject failed hosts into
-// the next cmsd locate. Retry logs print this list — never the full opaque
-// (which may contain authz=/bearer tokens).
+// the next cmsd locate (still the `tried=` key — never a separate CGI param).
+// Retry logs may print client_tried= vs ov_tried=; they never print the full
+// opaque (which may contain authz=/bearer tokens).
 
-inline std::unordered_set<std::string> ParseTriedHosts(const char* opaque) {
-    std::unordered_set<std::string> out;
-    if (!opaque || !*opaque) return out;
-
+inline std::string TriedCgiValue(const char* opaque) {
+    if (!opaque || !*opaque) return {};
     std::string s = opaque;
     if (!s.empty() && s.front() == '?') s.erase(s.begin());
-
     const size_t pos = s.find("tried=");
-    if (pos == std::string::npos) return out;
+    if (pos == std::string::npos) return {};
     size_t start = pos + 6;
     size_t end = s.find('&', start);
     if (end == std::string::npos) end = s.size();
-    const std::string list = s.substr(start, end - start);
+    return s.substr(start, end - start);
+}
 
+inline std::unordered_set<std::string> ParseTriedHosts(const char* opaque) {
+    std::unordered_set<std::string> out;
+    const std::string list = TriedCgiValue(opaque);
     size_t i = 0;
     while (i < list.size()) {
         size_t j = list.find(',', i);

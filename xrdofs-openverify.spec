@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.4.10
+Version:        0.4.11
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Thu Aug 20 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.11-1
+- Reuse Rucio HTTPS via a libcurl easy-handle pool (XRD_OPENVERIFY_RUCIO_POOL_SIZE; default MAX_INFLIGHT).
+- Split exhaust/retry logs into client_tried= vs ov_tried=.
+
 * Wed Aug 19 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.4.10-1
 - TTL LRU for Rucio list_replicas (lfn, scheme → PFN list) so cmsd-stall retries skip REST.
 

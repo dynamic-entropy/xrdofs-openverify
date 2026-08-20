@@ -85,6 +85,13 @@ grep 'openverify rucio_skipped' /var/log/xrootd/fed/xrootd.log
 # Rucio returned PFNs but none were accepted: LFN + catalog sites + per-host error
 grep 'openverify rucio_exhausted' /var/log/xrootd/fed/xrootd.log
 #   path=/store/... rucio=[host1:1094,host2:1094] errors=host1:1094=operation_expired,host2:1094=negative_cache
+#   client_tried= / ov_tried= are log-only; cgi sent downstream is still tried=
+
+# Site already in the client's tried= CGI (not an OpenVerify retry)
+grep 'openverify skip client_tried' /var/log/xrootd/fed/xrootd.log
+
+# cmsd retry: log splits origin; opaque still has one tried=
+grep 'openverify cmsd retry' /var/log/xrootd/fed/xrootd.log
 
 # Probe timeouts (Open / Stat / VectorRead of first+last byte)
 grep 'reason=operation_expired' /var/log/xrootd/fed/xrootd.log
@@ -102,7 +109,7 @@ grep 'openverify cmsd_error' /var/log/xrootd/fed/xrootd.log
 grep 'openverify cmsd_exhausted' /var/log/xrootd/fed/xrootd.log
 ```
 
-`errors=` on the exhaust line uses the same reason vocabulary as Prometheus (`operation_expired`, `not_found`, …) plus skip tags `tried`, `quarantine`, `host_busy`, `negative_cache`. Other Rucio lookup failures (auth/timeout/error) are `openverify rucio_lookup result=… path=…`. Prefix-skipped LFNs are `openverify rucio_skipped`. Successful accepts are `openverify succeeded` (and `openverify: verifying` marks the start of a probe).
+`errors=` on the exhaust line uses the same reason vocabulary as Prometheus (`operation_expired`, `not_found`, …) plus skip tags `tried`, `quarantine`, `host_busy`, `negative_cache`. Summary lines also print `client_tried=` (CGI the client sent) and `ov_tried=` (hosts OpenVerify added this open); downstream opaque is still a single merged `tried=`. Other Rucio lookup failures (auth/timeout/error) are `openverify rucio_lookup result=… path=…`. Prefix-skipped LFNs are `openverify rucio_skipped`. Successful accepts are `openverify succeeded` (and `openverify: verifying` marks the start of a probe).
 
 ## Metrics (Prometheus)
 

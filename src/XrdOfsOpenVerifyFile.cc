@@ -218,7 +218,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     int rc = 0;
-    std::string tried_hosts;
+    std::string tried_hosts;  // hosts OpenVerify added this open; merged into cgi `tried=`
     int retry_count{0};
     const int max_retries = m_observe ? 1 : OpenVerifyMetrics::kMaxAcceptAttempts;
     bool retry = true;
@@ -232,8 +232,18 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     std::string rucio_host_list;
     std::string rucio_errors;  // host:port=reason,... for the exhaust line
     const std::string pathStr = fileName ? fileName : "";
-    // Client-supplied tried= (and any prior plugin injections on retries).
     const auto client_tried = ParseTriedHosts(opaque);
+    const std::string client_tried_cgi = TriedCgiValue(opaque);
+    auto appendTriedLog = [&](std::string& msg) {
+        if (!client_tried_cgi.empty()) {
+            msg += " client_tried=";
+            msg += client_tried_cgi;
+        }
+        if (!tried_hosts.empty()) {
+            msg += " ov_tried=";
+            msg += tried_hosts;
+        }
+    };
 
     // --- Rucio-first locate (feature-flagged) ---------------------------------
     if (m_rucio.Enabled() && !pathStr.empty()) {
@@ -275,8 +285,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
                 // Honour client tried= (bare host or host:port) before counting an attempt.
                 if (IsInTriedList(client_tried, hostStr, portVal)) {
-                    m_log.Emsg(" INFO", "openverify skip tried", hostPort.c_str(), pathStr.c_str());
-                    AppendTriedHost(tried_hosts, hostPort);
+                    m_log.Emsg(" INFO", "openverify skip client_tried", hostPort.c_str(), pathStr.c_str());
                     AppendHostReason(rucio_errors, hostPort, "tried");
                     continue;
                 }
@@ -384,6 +393,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     msg += " errors=";
                     msg += rucio_errors;
                 }
+                appendTriedLog(msg);
                 m_log.Emsg(" INFO", "openverify rucio_exhausted", msg.c_str());
             }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
@@ -414,11 +424,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         // currently we return the last redirect, thus only performing a best effort verify
         // another approach is we change this and return SFS_ERROR instead
 
-        // cmsd locate needs tried= (client + failed Rucio/cmsd hops) to return the next site.
+        // cmsd locate needs tried= (client CGI + failed Rucio/cmsd hops) to return the next site.
         std::string opaque_str = MergeTriedOpaque(opaque, tried_hosts, m_observe);
 
         if (retry_count > 0) {
-            const std::string msg = std::string("path=") + pathStr + " tried=" + tried_hosts;
+            std::string msg = std::string("path=") + pathStr;
+            appendTriedLog(msg);
             m_log.Emsg(" INFO", "openverify cmsd retry", msg.c_str());
         }
 
@@ -589,10 +600,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         // just mean "first candidate failed verify" while still returning it.
         m_metrics.RecordOpenRetryExhausted();
         std::string msg = std::string("path=") + pathStr + " last=" + HostPortFromErrInfo(error);
-        if (!tried_hosts.empty()) {
-            msg += " tried=";
-            msg += tried_hosts;
-        }
+        appendTriedLog(msg);
         m_log.Emsg(" WARN", "openverify cmsd_exhausted", msg.c_str());
     } else if (m_observe && rc == SFS_REDIRECT && !accepted) {
         const std::string msg = std::string("path=") + pathStr + " host=" + HostPortFromErrInfo(error);

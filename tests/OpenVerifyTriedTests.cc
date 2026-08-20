@@ -29,6 +29,9 @@ void Test_ParseTriedHosts() {
     Expect(mixed.count("h1") && mixed.count("h2:1094") && mixed.count("h3") && mixed.size() == 3,
            "tried= among other cgi; whitespace trimmed");
     Expect(!mixed.count("Bearer%20secret") && !mixed.count("authz"), "authz value is not a tried host");
+
+    Expect(TriedCgiValue("authz=x&tried=h1,h2&foo=1") == "h1,h2", "raw cgi value for logs");
+    Expect(TriedCgiValue(nullptr).empty(), "null cgi value");
 }
 
 void Test_IsInTriedList() {
