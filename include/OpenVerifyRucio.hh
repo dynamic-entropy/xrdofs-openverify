@@ -24,6 +24,8 @@ class OpenVerifyRucioSelector;
 //                                      /store/user
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL       list_replicas LRU TTL seconds (default 60; 0 disables)
 // XRD_OPENVERIFY_RUCIO_CACHE_SIZE      max (lfn, scheme) entries (default 8192; 0 disables)
+// XRD_OPENVERIFY_RUCIO_POOL_SIZE       long-lived libcurl easy handles
+//                                      (default = XRD_OPENVERIFY_MAX_INFLIGHT, usually 32; max 256)
 // X509_USER_PROXY                      proxy for /auth/x509_proxy
 //
 struct OpenVerifyRucioCandidate {
@@ -52,6 +54,7 @@ struct OpenVerifyRucioListResult {
 };
 
 class OpenVerifyRucioListCache;
+class OpenVerifyRucioCurlPool;
 
 // Testable helpers (no network).
 std::string OpenVerifyRucioSchemeFromProt(const char* prot);
@@ -106,6 +109,7 @@ class OpenVerifyRucio {
     std::vector<std::string> m_ignore_prefixes;
     std::unique_ptr<OpenVerifyRucioSelector> m_selector;
     std::unique_ptr<OpenVerifyRucioListCache> m_list_cache;
+    std::unique_ptr<OpenVerifyRucioCurlPool> m_curl_pool;
 
     std::mutex m_token_mtx;
     std::string m_token;

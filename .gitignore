@@ -35,3 +35,5 @@
 # build directories
 build/
 build-ov/
+
+/usr/

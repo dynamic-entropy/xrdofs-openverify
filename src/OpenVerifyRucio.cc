@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#include "OpenVerifyRucioCurlPool.hh"
 #include "OpenVerifyRucioListCache.hh"
 #include "OpenVerifyRucioSelector.hh"
 
@@ -291,13 +292,15 @@ OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
     m_ignore_prefixes = OpenVerifyRucioParseIgnorePrefixes(EnvOrDefault("XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX", ""));
     m_selector = OpenVerifyRucioMakeSelector(OpenVerifyRucioSelectorNameFromEnv());
     m_list_cache = std::make_unique<OpenVerifyRucioListCache>(OpenVerifyRucioListCacheConfig::FromEnv());
+    if (m_enabled) {
+        m_curl_pool = std::make_unique<OpenVerifyRucioCurlPool>(OpenVerifyRucioPoolSizeFromEnv());
+    }
 }
 
 OpenVerifyRucio::~OpenVerifyRucio() = default;
 
 void OpenVerifyRucio::LogConfig() {
     if (!m_enabled) return;
-    curl_global_init(CURL_GLOBAL_DEFAULT);
     if (m_account.empty()) {
         m_log.Emsg(" WARN",
                    "openverify rucio enabled but XRD_OPENVERIFY_RUCIO_ACCOUNT unset; lookups will soft-fail to cmsd");
@@ -320,6 +323,8 @@ void OpenVerifyRucio::LogConfig() {
     } else {
         msg += " list_cache=off";
     }
+    const std::size_t pool = (m_curl_pool) ? m_curl_pool->Size() : 0;
+    msg += " curl_pool=" + std::to_string(pool);
     m_log.Emsg(" INFO", msg.c_str());
 }
 
@@ -344,9 +349,14 @@ bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
     std::string token;
     std::string body;
 
-    CURL* curl = curl_easy_init();
+    if (!m_curl_pool) {
+        m_log.Emsg(" WARN", "openverify rucio auth: curl pool not initialized");
+        return false;
+    }
+    auto handle = m_curl_pool->Acquire();
+    CURL* curl = handle.get();
     if (!curl) {
-        m_log.Emsg(" WARN", "openverify rucio auth: curl_easy_init failed");
+        m_log.Emsg(" WARN", "openverify rucio auth: curl pool acquire failed");
         return false;
     }
 
@@ -371,7 +381,7 @@ bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
+    handle = {};
 
     if (rc == CURLE_OPERATION_TIMEDOUT) {
         m_log.Emsg(" WARN", "openverify rucio auth timed out");
@@ -409,9 +419,14 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     const std::string url = m_rucio_url + "/replicas/list";
     std::string response;
 
-    CURL* curl = curl_easy_init();
+    if (!m_curl_pool) {
+        m_log.Emsg(" WARN", "openverify rucio list: curl pool not initialized", lfn.c_str());
+        return result;
+    }
+    auto handle = m_curl_pool->Acquire();
+    CURL* curl = handle.get();
     if (!curl) {
-        m_log.Emsg(" WARN", "openverify rucio list: curl_easy_init failed", lfn.c_str());
+        m_log.Emsg(" WARN", "openverify rucio list: curl pool acquire failed", lfn.c_str());
         return result;
     }
 
@@ -439,7 +454,7 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
+    handle = {};
 
     if (rc == CURLE_OPERATION_TIMEDOUT) {
         result.status = OpenVerifyRucioLookupResult::Timeout;

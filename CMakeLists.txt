@@ -23,6 +23,7 @@ add_library(XrdOfsOpenVerify SHARED
     src/OpenVerifyRucio.cc
     src/OpenVerifyRucioSelector.cc
     src/OpenVerifyRucioListCache.cc
+    src/OpenVerifyRucioCurlPool.cc
 )
 
 target_include_directories(XrdOfsOpenVerify
@@ -85,6 +86,7 @@ add_executable(openverify_rucio_tests
     src/OpenVerifyRucio.cc
     src/OpenVerifyRucioSelector.cc
     src/OpenVerifyRucioListCache.cc
+    src/OpenVerifyRucioCurlPool.cc
 )
 
 target_include_directories(openverify_rucio_tests
@@ -105,6 +107,7 @@ add_executable(openverify_rucio_listcache_tests
     src/OpenVerifyRucioListCache.cc
     src/OpenVerifyRucio.cc
     src/OpenVerifyRucioSelector.cc
+    src/OpenVerifyRucioCurlPool.cc
 )
 
 target_include_directories(openverify_rucio_listcache_tests
@@ -119,6 +122,23 @@ target_link_libraries(openverify_rucio_listcache_tests
 )
 
 add_test(NAME openverify_rucio_listcache_tests COMMAND openverify_rucio_listcache_tests)
+
+add_executable(openverify_rucio_curlpool_tests
+    tests/OpenVerifyRucioCurlPoolTests.cc
+    src/OpenVerifyRucioCurlPool.cc
+)
+
+target_include_directories(openverify_rucio_curlpool_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(openverify_rucio_curlpool_tests
+    PRIVATE
+        CURL::libcurl
+)
+
+add_test(NAME openverify_rucio_curlpool_tests COMMAND openverify_rucio_curlpool_tests)
 
 add_executable(openverify_url_tests
     tests/OpenVerifyUrlTests.cc
