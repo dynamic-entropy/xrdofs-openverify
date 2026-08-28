@@ -64,7 +64,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Client redirects (AAA)",
+      "title": "1. Query funnel — what happened to each open",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -75,10 +75,426 @@
       "panels": []
     },
     {
+      "type": "stat",
+      "id": 200,
+      "title": "1. Client redirects / s",
+      "description": "AAA r-stream: every redirect this redirector sent to a client (locate, open, …). This is redirector demand, independent of OpenVerify.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 201,
+      "title": "2. Opens classified / s",
+      "description": "Every plugin open() that ran Rucio-first locate (sum of rucio_lookups_total). One count per open, including cmsd-stall retries of the same LFN.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 202,
+      "title": "3. Rucio accepted / s",
+      "description": "Opens that finished on a verified (or positive-cache) Rucio replica. The client was redirected to a Rucio PFN gateway.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 203,
+      "title": "4. cmsd accepted / s",
+      "description": "Opens that fell through to cmsd and then passed OpenVerify on a cmsd site hop. Much smaller than (2)−(3): stalls, transit, and cmsd failures are not accepts.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 204,
+      "title": "5. Transit / s",
+      "description": "Static xrootd.redirect to cms-xrd-transit (ENOENT fallback). Successful pass-through, not a verify error. Typical for files cmsd also cannot place.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"xrootd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 205,
+      "title": "cmsd stalls / s",
+      "description": "cmsd returned SFS_STALL. The plugin returns wait to the client; the next open() is counted again in (2). Stalls explain skipped+empty >> cmsd accepts.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 206,
+      "title": "Fell through to cmsd / s",
+      "description": "Rucio did not accept: skip + empty + auth/timeout/error + replica exhaust. These opens then hit cmsd (and maybe transit/stall).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "(sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"skipped|empty|auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) + (sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0))",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 207,
+      "title": "Rucio share of accepts",
+      "description": "Rucio accepted / (Rucio + cmsd accepted). Excludes transit (successful ENOENT hop) and stalls.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) / clamp_min(sum(rate(xrootd_openverify_location_source_total{source=~\"rucio|cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
       "type": "timeseries",
-      "id": 5,
-      "title": "Redirects by type",
-      "description": "How many client redirects the redirector issues, split by request type (open-read, locate, \u2026). The thick total line is the sum of all types.",
+      "id": 210,
+      "title": "Each open() outcome",
+      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) — the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -87,7 +503,301 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 1
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "rucio accepted",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "cmsd accepted",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"xrootd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "C",
+          "editorMode": "code",
+          "legendFormat": "transit",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "D",
+          "editorMode": "code",
+          "legendFormat": "cmsd stall",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "E",
+          "editorMode": "code",
+          "legendFormat": "cmsd retry exhausted",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "F",
+          "editorMode": "code",
+          "legendFormat": "opens classified",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opens classified"
+            },
+            "properties": [
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 211,
+      "title": "Why Rucio did not accept",
+      "description": "Reasons an open fell through to cmsd. skipped = ignore prefix (/store/user, /tmp). empty = no usable disk PFN. exhausted = replicas existed but none verified. infra = auth/timeout/error. Stack ≈ (6) Fell through.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=\"skipped\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "skipped (ignore prefix)",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=\"empty\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "B",
+          "editorMode": "code",
+          "legendFormat": "empty (no replicas)",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "C",
+          "editorMode": "code",
+          "legendFormat": "exhausted (replicas failed verify)",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "D",
+          "editorMode": "code",
+          "legendFormat": "infra (auth/timeout/error)",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 50,
+      "title": "Accepted landing (Rucio / cmsd / transit)",
+      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). Does not include stalls or failed locates — see Each open() outcome.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (source) (rate(xrootd_openverify_location_source_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 5,
+      "title": "Redirector demand by type",
+      "description": "AAA r-stream redirects split by opcode. Thick total = (1) Client redirects. OpenVerify classification is (2); they differ when stall retries or non-open opcodes dominate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
       },
       "targets": [
         {
@@ -169,160 +879,22 @@
       }
     },
     {
-      "type": "timeseries",
-      "id": 6,
-      "title": "Top client redirect destinations",
-      "description": "Site gateways receiving the most client redirects (AAA r-stream; all locate paths). Rucio-path and cmsd-path destinations are broken out under verify errors.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval])))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{host}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "table",
-      "id": 7,
-      "title": "All client redirect destinations",
-      "description": "Full sortable list of client redirect destinations (AAA r-stream; all locate paths). For Rucio vs cmsd destination failures, use the verify-error tables below.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "host"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 360
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Rate",
-            "desc": true
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "job": true,
-              "instance": true,
-              "xrootd_instance": true
-            },
-            "renameByName": {
-              "Value": "Rate"
-            }
-          }
-        }
-      ]
-    },
-    {
       "type": "row",
-      "title": "OpenVerify overview",
+      "title": "2. Rucio path — in order",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "collapsed": false,
       "panels": []
     },
     {
       "type": "stat",
-      "id": 10,
-      "title": "OpenVerify redirects / s",
-      "description": "Redirect hops that entered the OpenVerify plugin. Compare with the AAA total above; they should be close when OpenVerify is on the open path.",
+      "id": 31,
+      "title": "Rucio soft-fail / s",
+      "description": "empty + auth_error + timeout + error. No Rucio probe ran; open went to cmsd. Does not include skipped or exhausted.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -330,422 +902,6 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 0,
-        "y": 18
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 11,
-      "title": "Verify failure rate",
-      "description": "Share of live probe opens that failed. Only counts hops that actually ran a probe (cache misses). Queue rejects are not included.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 18
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_runs_total{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 12,
-      "title": "Queue rejects / s",
-      "description": "Global FIFO: queue full or waited too long. These requeue once and do not add the site to tried=. Per-site inflight cap is host_busy (see Per-site inflight busy).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 18
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 13,
-      "title": "Unhealthy sites",
-      "description": "How many sites currently score as unhealthy (EWMA quarantine). Zero while the fail-safe is tripped (mass-quarantine circuit breaker released them). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 18
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\"} == 0) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 14,
-      "title": "Positive cache hit ratio",
-      "description": "Share of lookups that found a recent successful probe and skipped a new live open.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 22
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 15,
-      "title": "Negative cache hit ratio",
-      "description": "Share of lookups that found a recent failed probe. In observe mode the redirect is still returned; OpenVerify asks for another site.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 22
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_negative\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 16,
-      "title": "Rucio path share",
-      "description": "Of verified locate accepts (rucio+cmsd), how many used a Rucio replica. Excludes static xrootd.redirect fallback (transit) \u2014 that is a successful pass-through, not a locate failure.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 22
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_location_source_total{source=~\"rucio|cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 17,
-      "title": "Successful verify time",
-      "description": "Average time for a successful live probe. See the Verify time chart for success vs failure.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 22
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 20,
-      "title": "Verify outcomes",
-      "description": "Rate of probe opens that succeeded or failed. Does not include cache hits or queue rejects.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
         "y": 26
       },
@@ -755,427 +911,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (result) (rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{result}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 21,
-      "title": "Cache lookups",
-      "description": "What the probe cache returned: hit_positive = reuse a good result; miss = run a live probe; hit_negative = remember a recent failure.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 26
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (result) (rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{result}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 22,
-      "title": "Verify queue",
-      "description": "admitted = got a probe slot; queue_timeout / queue_full = global FIFO (requeued, not tried=); host_busy = this site already at 50% of MAX_INFLIGHT (skipped via tried=).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 34
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (result) (rate(xrootd_openverify_queue_admissions_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{result}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 23,
-      "title": "Verify time (success vs failure)",
-      "description": "Average live-probe duration. Failures often sit near the verify timeout when sites hang.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 34
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "success"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "failure"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 24,
-      "title": "Redirect delay (p50 / p95 / p99)",
-      "description": "How long OpenVerify holds the client redirect before accepting or retrying (queue wait + probe). Spikes often mean timeouts. Use the heatmap and Delay outcome filter to see which path dominates.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 42
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "p50"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "p95"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
-          "refId": "C",
-          "editorMode": "code",
-          "legendFormat": "p99"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "heatmap",
-      "id": 25,
-      "title": "Redirect delay distribution",
-      "description": "Full distribution of redirect hold time. Use the Delay outcome variable to focus on verify success/failure, queue rejects, cache hits, or avoided redirects. Does not include cmsd SFS_STALL (client-owned lookup delay).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 42
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\",outcome=~\"$delay_outcome\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{le}}",
-          "format": "heatmap",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "calculate": false,
-        "yBucketBound": "auto",
-        "yBucketSize": null,
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "scheme": "Spectral",
-          "fill": "dark-orange",
-          "reverse": false,
-          "steps": 64,
-          "min": null,
-          "max": null,
-          "exponent": 0.5
-        },
-        "cellGap": 1,
-        "filterValues": {
-          "le": 1e-09
-        },
-        "tooltip": {
-          "mode": "single",
-          "yHistogram": true
-        },
-        "legend": {
-          "show": true
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "s",
-          "decimals": 3
-        },
-        "cellValues": {
-          "unit": "ops"
-        }
-      }
-    },
-    {
-      "type": "row",
-      "title": "Rucio verify errors",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 58
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "type": "stat",
-      "id": 30,
-      "title": "Rucio probe failures / s",
-      "description": "Live probes that failed against a Rucio-chosen replica. Filtered by Site and Error reason.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 59
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
+          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"empty|auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
           "editorMode": "code",
           "instant": true
@@ -1210,7 +946,7 @@
       "type": "stat",
       "id": 32,
       "title": "Rucio replicas exhausted / s",
-      "description": "Rucio returned replicas, but none were accepted (probe fail, negative cache, quarantine, or already in tried=). OpenVerify then falls through to cmsd.",
+      "description": "lookup=ok but no PFN accepted. Next hop is cmsd (then maybe recovered — see cmsd path).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1219,7 +955,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 59
+        "y": 26
       },
       "targets": [
         {
@@ -1260,9 +996,9 @@
     },
     {
       "type": "stat",
-      "id": 112,
-      "title": "cmsd recovered after exhaust / s",
-      "description": "Opens where every Rucio replica failed/was skipped, then cmsd openverify accepted. Absolute rate (pair with the ratio).",
+      "id": 30,
+      "title": "Rucio probe failures / s",
+      "description": "Live probes that failed against a Rucio-chosen replica. Filtered by Site and Error reason.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1271,7 +1007,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 59
+        "y": 26
       },
       "targets": [
         {
@@ -1279,7 +1015,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
           "refId": "A",
           "editorMode": "code",
           "instant": true
@@ -1312,9 +1048,9 @@
     },
     {
       "type": "stat",
-      "id": 33,
-      "title": "cmsd recovery ratio after exhaust",
-      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate \u2014 a high ratio on tiny volume is less meaningful.",
+      "id": 54,
+      "title": "Rucio list cache hit ratio",
+      "description": "Share of list_replicas lookups served from the (lfn, scheme) LRU. Hits skip REST; misses proceed to auth/POST and then appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1323,7 +1059,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 59
+        "y": 26
       },
       "targets": [
         {
@@ -1331,21 +1067,30 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "expr": "(sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
           "editorMode": "code",
-          "instant": true
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "decimals": 3,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "red",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.3
+              },
+              {
+                "color": "green",
+                "value": 0.6
               }
             ]
           }
@@ -1356,26 +1101,222 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
+          ],
+          "fields": "",
+          "values": false
         },
         "colorMode": "value",
-        "graphMode": "area"
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 51,
+      "title": "Rucio step 1 — list_replicas decision",
+      "description": "First thing Rucio-first does: classify the LFN. ok = disk PFNs returned (then try verify). skipped = ignore prefix, no REST. empty / auth / timeout / error = soft-fail to cmsd. Includes list-cache hits for ok/empty.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (result) (rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 123,
+      "title": "Rucio step 1b — skipped by prefix",
+      "description": "Ignore-prefix skips split by the matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX. Needs OpenVerify 0.5.4+. Canary: /store/user and /tmp.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (reason) (rate(xrootd_openverify_rucio_skipped_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "{{reason}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 53,
+      "title": "Rucio step 2 — which replica was accepted",
+      "description": "For lookup=ok: which ordered PFN passed verify (replica 1…5+). exhausted = every replica failed or was skipped → cmsd. Observe mode only tries replica 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "legendFormat": "replica {{attempt}}",
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "B",
+          "legendFormat": "exhausted",
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
       "type": "timeseries",
       "id": 34,
       "title": "Rucio probe failures by error",
-      "description": "Why Rucio-selected probes fail (timeout, auth, not found, \u2026). Uses Site and Error reason filters.",
+      "description": "Why Rucio-selected probes fail (timeout, auth, not found, …). Uses Site and Error reason filters.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 46
       },
       "targets": [
         {
@@ -1432,10 +1373,10 @@
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 46
       },
       "targets": [
         {
@@ -1492,10 +1433,10 @@
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "h": 10,
+        "h": 8,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 54
       },
       "targets": [
         {
@@ -1566,457 +1507,10 @@
       ]
     },
     {
-      "type": "row",
-      "title": "cmsd verify errors",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 82
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "type": "stat",
-      "id": 40,
-      "title": "cmsd probe failures / s",
-      "description": "Live probes that failed against a cmsd-chosen redirect. Filtered by Site and Error reason.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 0,
-        "y": 83
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 41,
-      "title": "cmsd retries exhausted / s",
-      "description": "Opens that used up the cmsd retry budget without a successful probe. Near 0 when retries are not enabled.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 83
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 43,
-      "title": "cmsd probe failures by error",
-      "description": "Why cmsd-selected probes fail. Uses Site and Error reason filters.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 87
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{reason}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 44,
-      "title": "cmsd redirect destinations (failures)",
-      "description": "Destinations that failed a live probe on the cmsd locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 87
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (host) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{host}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "table",
-      "id": 45,
-      "title": "cmsd redirect destination failures (selected time range)",
-      "description": "Total cmsd-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 96
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (host, port, reason) (increase(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$__range]))",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Count"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Count",
-            "desc": true
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "job": true,
-              "instance": true,
-              "xrootd_instance": true
-            },
-            "renameByName": {
-              "host": "Site",
-              "port": "Port",
-              "reason": "Error",
-              "Value": "Count"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "title": "Locate path",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 106
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "type": "stat",
-      "id": 31,
-      "title": "Rucio soft-fail / s",
-      "description": "Rucio list_replicas failed or returned no replicas (empty / auth / timeout / error). No Rucio probe was tried; OpenVerify went straight to cmsd.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 107
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"empty|auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 54,
-      "title": "Rucio list cache hit ratio",
-      "description": "Share of list_replicas lookups served from the (lfn, scheme) LRU. Hits skip REST; misses proceed to auth/POST and then appear in Rucio lookups (REST).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 107
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "(sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": ""
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "decimals": 3,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.3
-              },
-              {
-                "color": "green",
-                "value": 0.6
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      }
-    },
-    {
       "type": "stat",
       "id": 121,
       "title": "Rucio list cache hits / s",
-      "description": "LRU hits \u2014 no REST call. Does not appear in Rucio lookups (REST).",
+      "description": "LRU hits — no REST call. Does not appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2024,8 +1518,8 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 12,
-        "y": 107
+        "x": 0,
+        "y": 62
       },
       "targets": [
         {
@@ -2063,7 +1557,7 @@
       "type": "stat",
       "id": 122,
       "title": "Rucio list cache misses / s",
-      "description": "LRU misses \u2014 each miss becomes one Rucio lookups (REST) outcome (ok/empty/\u2026).",
+      "description": "LRU misses — each miss becomes one Rucio lookups (REST) outcome (ok/empty/…).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2071,8 +1565,8 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 18,
-        "y": 107
+        "x": 6,
+        "y": 62
       },
       "targets": [
         {
@@ -2108,270 +1602,6 @@
     },
     {
       "type": "timeseries",
-      "id": 50,
-      "title": "Accepted opens by locate path",
-      "description": "Where the accepted redirect came from: rucio = verified Rucio replica; cmsd = verified cmsd/OFS site hop; xrootd = static xrootd.redirect fallback (cms-xrd-transit) passed through without verify \u2014 a successful client redirect, not an error.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 111
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (source) (rate(xrootd_openverify_location_source_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{source}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 51,
-      "title": "Rucio lookups (REST)",
-      "description": "REST list_replicas outcomes after a cache miss (or with cache disabled). ok = replicas returned; empty / auth_error / timeout / error = soft-fail to cmsd; skipped = XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call). Cache hit/miss are separate panels \u2014 a miss then contributes one of these results.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 111
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (result) (rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{result}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 53,
-      "title": "Rucio accepts by replica",
-      "description": "Which ordered Rucio replica was accepted after a successful probe. exhausted = every Rucio replica failed or was skipped (fall through to cmsd).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 119
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "legendFormat": "replica {{attempt}}",
-          "editorMode": "code",
-          "range": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "B",
-          "legendFormat": "exhausted",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 55,
-      "title": "cmsd accepts by attempt",
-      "description": "Which cmsd redirect candidate was accepted after a successful probe. exhausted = cmsd retry budget used up without success.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 119
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "legendFormat": "attempt {{attempt}}",
-          "editorMode": "code",
-          "range": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "B",
-          "legendFormat": "exhausted",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
       "id": 68,
       "title": "Rucio list_replicas p50 / p95 / p99",
       "description": "Timeseries of cache-miss list_replicas wall time (Acquire + optional auth + POST). Not the site probe. Cache hits are not included.",
@@ -2381,9 +1611,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 127
+        "w": 12,
+        "x": 12,
+        "y": 62
       },
       "targets": [
         {
@@ -2455,20 +1685,154 @@
     },
     {
       "type": "row",
-      "title": "Rucio curl pool",
-      "collapsed": false,
+      "title": "3. cmsd path — in order",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 135
+        "y": 70
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 220,
+      "title": "cmsd step 1 — lookup stalls",
+      "description": "cmsd returned SFS_STALL before a destination. Client waits and retries; that retry is a new open() (counted again in the funnel). Not a site failure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 71
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "legendFormat": "stalls",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 55,
+      "title": "cmsd step 2 — which hop was accepted",
+      "description": "Which cmsd redirect candidate passed verify (attempt 1–3). exhausted = retry budget spent, last redirect returned unverified (enforce only).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 71
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "A",
+          "legendFormat": "attempt {{attempt}}",
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "refId": "B",
+          "legendFormat": "exhausted",
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
       "type": "stat",
-      "id": 113,
-      "title": "TCP reuse ratio",
-      "description": "Share of Rucio HTTP transfers with CURLINFO_NUM_CONNECTS==0 (keep-alive). Low under load means Rucio/proxy closes connections or idle > MAXAGE_CONN.",
+      "id": 41,
+      "title": "cmsd retries exhausted / s",
+      "description": "Opens that used up the cmsd retry budget without a successful probe. Near 0 when retries are not enabled.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2477,7 +1841,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 136
+        "y": 79
       },
       "targets": [
         {
@@ -2485,29 +1849,21 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(rate(xrootd_openverify_rucio_curl_tcp_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": ""
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "ops",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "blue",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.5
-              },
-              {
-                "color": "green",
-                "value": 0.8
               }
             ]
           }
@@ -2518,20 +1874,17 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+          ]
         },
         "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
+        "graphMode": "area"
       }
     },
     {
       "type": "stat",
-      "id": 114,
-      "title": "Easy-handle reuse ratio",
-      "description": "Share of transfers that reused an idle pooled CURL* (vs curl_easy_init under load). Warm min should keep this high once the pool is filled.",
+      "id": 112,
+      "title": "cmsd recovered after Rucio exhaust / s",
+      "description": "Rucio had replicas, all failed verify, then cmsd openverify accepted. Subset of cmsd accepts.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2540,7 +1893,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 136
+        "y": 79
       },
       "targets": [
         {
@@ -2548,29 +1901,21 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(rate(xrootd_openverify_rucio_curl_handle_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": ""
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "ops",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "blue",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.5
-              },
-              {
-                "color": "green",
-                "value": 0.8
               }
             ]
           }
@@ -2581,20 +1926,17 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+          ]
         },
         "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
+        "graphMode": "area"
       }
     },
     {
       "type": "stat",
-      "id": 115,
-      "title": "Pool handles (now)",
-      "description": "Current easy handles in the elastic pool (between POOL_MIN and POOL_MAX).",
+      "id": 33,
+      "title": "cmsd recovery ratio after Rucio exhaust",
+      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate — a high ratio on tiny volume is less meaningful.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2603,7 +1945,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 136
+        "y": 79
       },
       "targets": [
         {
@@ -2611,16 +1953,24 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+          "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": ""
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "decimals": 0
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -2628,20 +1978,17 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+          ]
         },
         "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
+        "graphMode": "area"
       }
     },
     {
       "type": "stat",
-      "id": 116,
-      "title": "Pool inflight (now)",
-      "description": "Checked-out easy handles currently in a Rucio auth/list transfer.",
+      "id": 40,
+      "title": "cmsd probe failures / s",
+      "description": "Live probes that failed against a cmsd-chosen redirect. Filtered by Site and Error reason.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2650,7 +1997,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 136
+        "y": 79
       },
       "targets": [
         {
@@ -2658,16 +2005,24 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
+          "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": ""
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "decimals": 0
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -2675,20 +2030,17 @@
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+          ]
         },
         "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
+        "graphMode": "area"
       }
     },
     {
       "type": "timeseries",
-      "id": 117,
-      "title": "TCP connection reuse",
-      "description": "reused = CURLINFO_NUM_CONNECTS==0; new = opened a TCP(+TLS) connection for this transfer.",
+      "id": 43,
+      "title": "cmsd probe failures by error",
+      "description": "Why cmsd-selected probes fail. Uses Site and Error reason filters.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2697,7 +2049,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 140
+        "y": 83
       },
       "targets": [
         {
@@ -2705,10 +2057,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": "{{result}}"
+          "legendFormat": "{{reason}}"
         }
       ],
       "fieldConfig": {
@@ -2746,9 +2098,9 @@
     },
     {
       "type": "timeseries",
-      "id": 118,
-      "title": "Easy-handle reuse",
-      "description": "reused = Acquire returned an idle pooled handle; new = pool grew with curl_easy_init.",
+      "id": 44,
+      "title": "cmsd redirect destinations (failures)",
+      "description": "Destinations that failed a live probe on the cmsd locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2757,7 +2109,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 140
+        "y": 83
       },
       "targets": [
         {
@@ -2765,10 +2117,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+          "expr": "sum by (host) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": "{{result}}"
+          "legendFormat": "{{host}}"
         }
       ],
       "fieldConfig": {
@@ -2805,19 +2157,19 @@
       }
     },
     {
-      "type": "timeseries",
-      "id": 119,
-      "title": "Curl pool size",
-      "description": "handles = total easies; idle = available; inflight = checked out. Should rise with concurrent list_replicas, then fall after idle TTL (~15s).",
+      "type": "table",
+      "id": 45,
+      "title": "cmsd redirect destination failures (selected time range)",
+      "description": "Total cmsd-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 148
+        "y": 91
       },
       "targets": [
         {
@@ -2825,143 +2177,1515 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+          "expr": "sum by (host, port, reason) (increase(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$__range]))",
           "refId": "A",
           "editorMode": "code",
-          "legendFormat": "handles"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(xrootd_openverify_rucio_curl_pool_idle{xrootd_instance=~\"$instance\"})",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "idle"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
-          "refId": "C",
-          "editorMode": "code",
-          "legendFormat": "inflight"
+          "instant": true,
+          "format": "table"
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Count"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
           }
-        },
-        "overrides": []
+        ]
       },
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 120,
-      "title": "Curl pool grow / shrink",
-      "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink \u2192 stuck at high size or max.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Count",
+            "desc": true
+          }
+        ]
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 148
-      },
-      "targets": [
+      "transformations": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_grows_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "grows / s"
+          "id": "merge",
+          "options": {}
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_shrinks_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "shrinks / s"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "none",
-              "group": "A"
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "xrootd_instance": true
+            },
+            "renameByName": {
+              "host": "Site",
+              "port": "Port",
+              "reason": "Error",
+              "Value": "Count"
             }
           }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
         }
-      }
+      ]
     },
     {
       "type": "row",
-      "title": "Site health",
+      "title": "4. AAA destinations",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 156
+        "y": 99
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 6,
+          "title": "Top client redirect destinations",
+          "description": "Site gateways receiving the most client redirects (AAA r-stream; all locate paths). Rucio-path and cmsd-path destinations are broken out under verify errors.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval])))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{host}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "table",
+          "id": 7,
+          "title": "All client redirect destinations",
+          "description": "Full sortable list of client redirect destinations (AAA r-stream; all locate paths). For Rucio vs cmsd destination failures, use the verify-error tables below.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "host"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 360
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Rate",
+                "desc": true
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "job": true,
+                  "instance": true,
+                  "xrootd_instance": true
+                },
+                "renameByName": {
+                  "Value": "Rate"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "5. OpenVerify internals (cache, queue, delay)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 100
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "type": "stat",
+          "id": 10,
+          "title": "OpenVerify redirects / s",
+          "description": "Redirect hops that entered the OpenVerify plugin. Compare with the AAA total above; they should be close when OpenVerify is on the open path.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 11,
+          "title": "Verify failure rate",
+          "description": "Share of live probe opens that failed. Only counts hops that actually ran a probe (cache misses). Queue rejects are not included.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_runs_total{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 12,
+          "title": "Queue rejects / s",
+          "description": "Global FIFO: queue full or waited too long. These requeue once and do not add the site to tried=. Per-site inflight cap is host_busy (see Per-site inflight busy).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 13,
+          "title": "Unhealthy sites",
+          "description": "How many sites currently score as unhealthy (EWMA quarantine). Zero while the fail-safe is tripped (mass-quarantine circuit breaker released them). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\"} == 0) or vector(0)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 14,
+          "title": "Positive cache hit ratio",
+          "description": "Share of lookups that found a recent successful probe and skipped a new live open.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 4
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 15,
+          "title": "Negative cache hit ratio",
+          "description": "Share of lookups that found a recent failed probe. In observe mode the redirect is still returned; OpenVerify asks for another site.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 4
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_negative\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 17,
+          "title": "Successful verify time",
+          "description": "Average time for a successful live probe. See the Verify time chart for success vs failure.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 4
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 20,
+          "title": "Verify outcomes",
+          "description": "Rate of probe opens that succeeded or failed. Does not include cache hits or queue rejects.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (result) (rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{result}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 21,
+          "title": "Cache lookups",
+          "description": "What the probe cache returned: hit_positive = reuse a good result; miss = run a live probe; hit_negative = remember a recent failure.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (result) (rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{result}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 22,
+          "title": "Verify queue",
+          "description": "admitted = got a probe slot; queue_timeout / queue_full = global FIFO (requeued, not tried=); host_busy = this site already at 50% of MAX_INFLIGHT (skipped via tried=).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (result) (rate(xrootd_openverify_queue_admissions_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{result}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 23,
+          "title": "Verify time (success vs failure)",
+          "description": "Average live-probe duration. Failures often sit near the verify timeout when sites hang.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "success"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "B",
+              "editorMode": "code",
+              "legendFormat": "failure"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 24,
+          "title": "Redirect delay (p50 / p95 / p99)",
+          "description": "How long OpenVerify holds the client redirect before accepting or retrying (queue wait + probe). Spikes often mean timeouts. Use the heatmap and Delay outcome filter to see which path dominates.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "p50"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
+              "refId": "B",
+              "editorMode": "code",
+              "legendFormat": "p95"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
+              "refId": "C",
+              "editorMode": "code",
+              "legendFormat": "p99"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "heatmap",
+          "id": 25,
+          "title": "Redirect delay distribution",
+          "description": "Full distribution of redirect hold time. Use the Delay outcome variable to focus on verify success/failure, queue rejects, cache hits, or avoided redirects. Does not include cmsd SFS_STALL (client-owned lookup delay).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\",outcome=~\"$delay_outcome\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{le}}",
+              "format": "heatmap",
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "calculate": false,
+            "yBucketBound": "auto",
+            "yBucketSize": null,
+            "rowsFrame": {
+              "layout": "auto"
+            },
+            "color": {
+              "mode": "scheme",
+              "scheme": "Spectral",
+              "fill": "dark-orange",
+              "reverse": false,
+              "steps": 64,
+              "min": null,
+              "max": null,
+              "exponent": 0.5
+            },
+            "cellGap": 1,
+            "filterValues": {
+              "le": 1e-09
+            },
+            "tooltip": {
+              "mode": "single",
+              "yHistogram": true
+            },
+            "legend": {
+              "show": true
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false,
+              "unit": "s",
+              "decimals": 3
+            },
+            "cellValues": {
+              "unit": "ops"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "6. Rucio curl pool",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 101
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "type": "stat",
+          "id": 113,
+          "title": "TCP reuse ratio",
+          "description": "Share of Rucio HTTP transfers with CURLINFO_NUM_CONNECTS==0 (keep-alive). Low under load means Rucio/proxy closes connections or idle > MAXAGE_CONN.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(sum(rate(xrootd_openverify_rucio_curl_tcp_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": ""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.8
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 114,
+          "title": "Easy-handle reuse ratio",
+          "description": "Share of transfers that reused an idle pooled CURL* (vs curl_easy_init under load). Warm min should keep this high once the pool is filled.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "(sum(rate(xrootd_openverify_rucio_curl_handle_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": ""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.8
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 115,
+          "title": "Pool handles (now)",
+          "description": "Current easy handles in the elastic pool (between POOL_MIN and POOL_MAX).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": ""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto"
+          }
+        },
+        {
+          "type": "stat",
+          "id": 116,
+          "title": "Pool inflight (now)",
+          "description": "Checked-out easy handles currently in a Rucio auth/list transfer.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": ""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "auto"
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 117,
+          "title": "TCP connection reuse",
+          "description": "reused = CURLINFO_NUM_CONNECTS==0; new = opened a TCP(+TLS) connection for this transfer.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{result}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 118,
+          "title": "Easy-handle reuse",
+          "description": "reused = Acquire returned an idle pooled handle; new = pool grew with curl_easy_init.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{result}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 119,
+          "title": "Curl pool size",
+          "description": "handles = total easies; idle = available; inflight = checked out. Should rise with concurrent list_replicas, then fall after idle TTL (~15s).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 12
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "handles"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(xrootd_openverify_rucio_curl_pool_idle{xrootd_instance=~\"$instance\"})",
+              "refId": "B",
+              "editorMode": "code",
+              "legendFormat": "idle"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
+              "refId": "C",
+              "editorMode": "code",
+              "legendFormat": "inflight"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 120,
+          "title": "Curl pool grow / shrink",
+          "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink → stuck at high size or max.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 12
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_grows_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "grows / s"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_shrinks_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "B",
+              "editorMode": "code",
+              "legendFormat": "shrinks / s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "7. Site health",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 102
       },
       "collapsed": false,
       "panels": []
@@ -2979,7 +3703,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 157
+        "y": 103
       },
       "targets": [
         {
@@ -3138,9 +3862,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
-        "y": 165
+        "y": 111
       },
       "targets": [
         {
@@ -3222,10 +3946,10 @@
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 173
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 111
       },
       "targets": [
         {
@@ -3315,239 +4039,240 @@
     },
     {
       "type": "row",
-      "title": "Avoidance & retries",
+      "title": "8. Avoidance & retries",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 183
+        "y": 119
       },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "type": "stat",
-      "id": 70,
-      "title": "Bad redirects avoided / s",
-      "description": "Redirects skipped because the site was quarantined or in the negative cache (client gets tried= and another site). Near 0 when avoidance is not active.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 0,
-        "y": 184
-      },
-      "targets": [
+      "collapsed": true,
+      "panels": [
         {
+          "type": "stat",
+          "id": 70,
+          "title": "Bad redirects avoided / s",
+          "description": "Redirects skipped because the site was quarantined or in the negative cache (client gets tried= and another site). Near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
               }
-            ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 71,
-      "title": "Avoidance rate",
-      "description": "Avoided redirects as a share of OpenVerify-handled redirects. Near 0 when avoidance is not active.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 184
-      },
-      "targets": [
         {
+          "type": "stat",
+          "id": 71,
+          "title": "Avoidance rate",
+          "description": "Avoided redirects as a share of OpenVerify-handled redirects. Near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "refId": "A",
+              "editorMode": "code",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
               }
-            ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 73,
-      "title": "Avoided redirects by reason",
-      "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered; host_busy = site already at 50% of MAX_INFLIGHT. Flat near 0 when avoidance is not active.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 188
-      },
-      "targets": [
         {
+          "type": "timeseries",
+          "id": 73,
+          "title": "Avoided redirects by reason",
+          "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered; host_busy = site already at 50% of MAX_INFLIGHT. Flat near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (reason) (rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{reason}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (reason) (rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{reason}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
             }
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 74,
-      "title": "Per-site inflight busy",
-      "description": "This host already held 50% of MAX_INFLIGHT probe slots, so OpenVerify skipped it via tried= (not EWMA quarantine). Use the Site filter. Distinct from Verify queue timeout/full (global FIFO).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 196
-      },
-      "targets": [
         {
+          "type": "timeseries",
+          "id": 74,
+          "title": "Per-site inflight busy",
+          "description": "This host already held 50% of MAX_INFLIGHT probe slots, so OpenVerify skipped it via tried= (not EWMA quarantine). Use the Site filter. Distinct from Verify queue timeout/full (global FIFO).",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (host, port) (rate(xrootd_openverify_host_busy_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{host}}:{{port}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "sum by (host, port) (rate(xrootd_openverify_host_busy_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
+              "refId": "A",
+              "editorMode": "code",
+              "legendFormat": "{{host}}:{{port}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 15,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "mean"
+              ],
+              "showLegend": true,
+              "sortBy": "Mean",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi"
             }
           }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
         }
-      }
+      ]
     }
   ],
   "refresh": "30s",
@@ -3747,7 +4472,7 @@
   "timezone": "",
   "title": "CMS XRootD OpenVerify",
   "uid": "openverify-cms-ops",
-  "version": 14,
+  "version": 16,
   "weekStart": "",
-  "description": "Ops view of CMS global redirectors with OpenVerify: client AAA demand, probe health, Rucio vs cmsd destinations/errors, and locate path. Hover a panel title for a short explanation. Includes Rucio libcurl pool reuse and size panels."
+  "description": "Read top to bottom: (1) query funnel — demand, Rucio vs cmsd vs transit vs stall; (2) Rucio path in order; (3) cmsd path in order. Later rows are destinations, plugin internals, curl pool, and site health. Hover a panel title for the metric."
 }

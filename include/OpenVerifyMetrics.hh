@@ -131,7 +131,8 @@ class OpenVerifyMetrics {
     // Rucio list_replicas outcome: ok | empty | auth_error | timeout | error | skipped.
     // empty = no replicas (soft-fail to cmsd); auth/timeout/error also soft-fail.
     // skipped = LFN matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX (no REST call).
-    void RecordRucioLookup(const std::string& result);
+    // skip_reason is the matched prefix when result==skipped (e.g. /store/user).
+    void RecordRucioLookup(const std::string& result, const std::string& skip_reason = {});
     // list_replicas LRU: hit | miss (not recorded for disabled/skipped).
     void RecordRucioListCache(const std::string& result);
     void SetRucioListCacheEntries(std::size_t n);
@@ -291,6 +292,13 @@ class OpenVerifyMetrics {
     };
     mutable std::mutex m_host_busy_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerHostBusyMetrics>> m_host_busy;
+
+    struct PerSkipReasonMetrics {
+        std::string reason_esc;
+        std::atomic<uint64_t> count{0};
+    };
+    mutable std::mutex m_rucio_skip_mtx;
+    mutable std::unordered_map<std::string, std::unique_ptr<PerSkipReasonMetrics>> m_rucio_skipped_by_reason;
 
     // Rucio: replica index in try-order that passed verify → count (N or kMaxRucioReplicaLabel).
     mutable std::mutex m_rucio_accept_mtx;

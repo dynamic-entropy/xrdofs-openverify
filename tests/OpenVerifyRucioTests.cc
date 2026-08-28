@@ -253,15 +253,20 @@ void Test_ParseIgnorePrefixes() {
 void Test_ShouldIgnoreLfn() {
     const auto prefixes = OpenVerifyRucioParseIgnorePrefixes("/store/user");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/store/user/rchauhan/a.root", prefixes), "user file");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/user/rchauhan/a.root", prefixes) == "/store/user",
+           "matched prefix user");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/store/user", prefixes), "exact prefix");
     Expect(OpenVerifyRucioShouldIgnoreLfn("//store/user/foo", prefixes), "double leading slash");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/userdata/a.root", prefixes), "not userdata");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/userdata/a.root", prefixes).empty(), "userdata no match");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/mc/file.root", prefixes), "not mc");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/store/user", {}), "no prefixes configured");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("", prefixes), "empty lfn");
     const auto multi = OpenVerifyRucioParseIgnorePrefixes("/store/user,/store/temp,/tmp");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/store/temp/x.root", multi), "second prefix");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/temp/x.root", multi) == "/store/temp", "matched temp");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/tmp/xrootd-testfile.global", multi), "tmp testfile");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/tmp/xrootd-testfile.global", multi) == "/tmp", "matched tmp");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/tmp", multi), "exact tmp");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/tmpdir/x", multi), "not tmpdir");
 }

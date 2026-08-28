@@ -270,16 +270,20 @@ std::vector<std::string> OpenVerifyRucioParseIgnorePrefixes(const std::string& s
     return out;
 }
 
-bool OpenVerifyRucioShouldIgnoreLfn(const std::string& lfn, const std::vector<std::string>& prefixes) {
-    if (prefixes.empty() || lfn.empty()) return false;
+std::string OpenVerifyRucioMatchedIgnorePrefix(const std::string& lfn, const std::vector<std::string>& prefixes) {
+    if (prefixes.empty() || lfn.empty()) return {};
     const std::string n = NormalizeLfnPrefix(lfn);
-    if (n.size() <= 1) return false;
+    if (n.size() <= 1) return {};
     for (const auto& p : prefixes) {
         if (p.empty()) continue;
-        if (n == p) return true;
-        if (n.size() > p.size() && n.compare(0, p.size(), p) == 0 && n[p.size()] == '/') return true;
+        if (n == p) return p;
+        if (n.size() > p.size() && n.compare(0, p.size(), p) == 0 && n[p.size()] == '/') return p;
     }
-    return false;
+    return {};
+}
+
+bool OpenVerifyRucioShouldIgnoreLfn(const std::string& lfn, const std::vector<std::string>& prefixes) {
+    return !OpenVerifyRucioMatchedIgnorePrefix(lfn, prefixes).empty();
 }
 
 OpenVerifyRucio::OpenVerifyRucio(XrdSysError& log) : m_log(log) {
@@ -529,7 +533,8 @@ OpenVerifyRucioListResult OpenVerifyRucio::ListReplicas(const std::string& lfn, 
         result.status = OpenVerifyRucioLookupResult::Disabled;
         return result;
     }
-    if (OpenVerifyRucioShouldIgnoreLfn(lfn, m_ignore_prefixes)) {
+    result.skip_reason = OpenVerifyRucioMatchedIgnorePrefix(lfn, m_ignore_prefixes);
+    if (!result.skip_reason.empty()) {
         result.status = OpenVerifyRucioLookupResult::Skipped;
         return result;
     }

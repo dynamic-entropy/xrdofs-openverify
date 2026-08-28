@@ -54,6 +54,7 @@ struct OpenVerifyRucioListResult {
     OpenVerifyRucioLookupResult status{OpenVerifyRucioLookupResult::Disabled};
     std::vector<OpenVerifyRucioCandidate> candidates;
     bool from_cache{false};
+    std::string skip_reason;  // matched ignore prefix when status==Skipped
 };
 
 class OpenVerifyRucioListCache;
@@ -72,8 +73,9 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
                                                                       const std::string& want_scheme);
 // Comma-separated LFN prefixes from XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX.
 std::vector<std::string> OpenVerifyRucioParseIgnorePrefixes(const std::string& spec);
-// True when the LFN is under one of the ignore prefixes (path-component match after
-// collapsing leading slashes). `/store/user` matches `/store/user/a` but not `/store/userdata`.
+// Matching ignore prefix, or empty if the LFN is not skipped. Path-component match after
+// collapsing leading slashes: `/store/user` matches `/store/user/a` but not `/store/userdata`.
+std::string OpenVerifyRucioMatchedIgnorePrefix(const std::string& lfn, const std::vector<std::string>& prefixes);
 bool OpenVerifyRucioShouldIgnoreLfn(const std::string& lfn, const std::vector<std::string>& prefixes);
 
 class OpenVerifyRucio {

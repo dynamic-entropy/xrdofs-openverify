@@ -272,7 +272,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     m_metrics.RecordLocateLatency("rucio", rucio_s);
                 }
             }
-            m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status));
+            m_metrics.RecordRucioLookup(RucioLookupResultLabel(listed.status), listed.skip_reason);
         }
         if (listed.status == OpenVerifyRucioLookupResult::Ok) {
             m_metrics.RecordRucioCandidates(listed.candidates.size());
@@ -399,7 +399,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             }
         } else if (listed.status != OpenVerifyRucioLookupResult::Disabled) {
             const char* label = RucioLookupResultLabel(listed.status);
-            const std::string msg = std::string("result=") + label + " path=" + pathStr;
+            std::string msg = std::string("result=") + label;
+            if (listed.status == OpenVerifyRucioLookupResult::Skipped && !listed.skip_reason.empty()) {
+                msg += " reason=";
+                msg += listed.skip_reason;
+            }
+            msg += " path=";
+            msg += pathStr;
             if (listed.status == OpenVerifyRucioLookupResult::Empty) {
                 m_log.Emsg(" INFO", "openverify rucio_empty", msg.c_str());
             } else if (listed.status == OpenVerifyRucioLookupResult::Skipped) {

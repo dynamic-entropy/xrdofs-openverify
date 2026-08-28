@@ -223,7 +223,18 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_rucio_lookup_error.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_rucio_lookups_total{result=\"skipped\""
          << lbl << "} " << m_rucio_lookup_skipped.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_rucio_list_cache_total Rucio list_replicas LRU lookups (lfn+scheme).\n"
+            "# HELP xrootd_openverify_rucio_skipped_total Rucio ignore-prefix skips by matched prefix (reason).\n"
+            "# TYPE xrootd_openverify_rucio_skipped_total counter\n";
+    {
+        std::lock_guard<std::mutex> lock(m_rucio_skip_mtx);
+        for (const auto& kv : m_rucio_skipped_by_reason) {
+            const PerSkipReasonMetrics* e = kv.second.get();
+            if (!e) continue;
+            body << "xrootd_openverify_rucio_skipped_total{reason=\"" << e->reason_esc << "\"" << lbl << "} "
+                 << e->count.load(std::memory_order_relaxed) << "\n";
+        }
+    }
+    body << "# HELP xrootd_openverify_rucio_list_cache_total Rucio list_replicas LRU lookups (lfn+scheme).\n"
             "# TYPE xrootd_openverify_rucio_list_cache_total counter\n"
             "xrootd_openverify_rucio_list_cache_total{result=\"hit\""
          << lbl << "} " << m_rucio_list_cache_hit.load(std::memory_order_relaxed) << "\n"
@@ -620,7 +631,7 @@ void OpenVerifyMetrics::RecordOpenRetryExhausted() {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordRucioLookup(const std::string& result) {
+void OpenVerifyMetrics::RecordRucioLookup(const std::string& result, const std::string& skip_reason) {
     if (result == "ok") {
         m_rucio_lookup_ok.fetch_add(1, std::memory_order_relaxed);
     } else if (result == "empty") {
@@ -631,6 +642,19 @@ void OpenVerifyMetrics::RecordRucioLookup(const std::string& result) {
         m_rucio_lookup_timeout.fetch_add(1, std::memory_order_relaxed);
     } else if (result == "skipped") {
         m_rucio_lookup_skipped.fetch_add(1, std::memory_order_relaxed);
+        std::string reason = skip_reason.empty() ? std::string("unknown") : skip_reason;
+        {
+            std::lock_guard<std::mutex> lock(m_rucio_skip_mtx);
+            if (m_rucio_skipped_by_reason.size() >= 64 && !m_rucio_skipped_by_reason.count(reason)) {
+                reason = "other";
+            }
+            std::unique_ptr<PerSkipReasonMetrics>& slot = m_rucio_skipped_by_reason[reason];
+            if (!slot) {
+                slot = std::make_unique<PerSkipReasonMetrics>();
+                slot->reason_esc = EscapeLabelValue(reason);
+            }
+            slot->count.fetch_add(1, std::memory_order_relaxed);
+        }
     } else {
         m_rucio_lookup_error.fetch_add(1, std::memory_order_relaxed);
     }

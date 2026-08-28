@@ -13,7 +13,7 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 | File | Audience |
 |------|----------|
 | [`docs/grafana/openverify-developer.json`](grafana/openverify-developer.json) | Plugin internals: cache, single-flight, queue, delay histogram |
-| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS XRootD OpenVerify: client AAA, OV overview, separate Rucio/cmsd probe errors, locate path, site health |
+| [`docs/grafana/openverify-cms-ops.json`](grafana/openverify-cms-ops.json) | CMS ops: **query funnel** (demand → Rucio vs cmsd vs transit), then Rucio path and cmsd path in order |
 
 **CMS ops variables** (top of dashboard):
 
@@ -25,11 +25,12 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 | Error reason | Multi-select `reason` (scoped to selected sites) |
 | Delay outcome | Filter redirect-delay heatmap by outcome |
 
-Sections:
+Sections (read top to bottom):
 
-- **Rucio / cmsd verify errors** — live probe failures by `source` (Site / Error reason filters)
-- **How opens were located** — Rucio soft-fail, exhaust recovery context, accept path / attempt
-- **Rucio curl pool** — TCP/easy-handle reuse ratios, pool handles/idle/inflight, grow vs shrink rates
+- **1. Query funnel** — client redirects, opens classified, Rucio/cmsd/transit accepts, stalls; each `open()` outcome vs why Rucio did not accept
+- **2. Rucio path** — `list_replicas` decision, skip prefix, replica accept/exhaust, probe errors
+- **3. cmsd path** — stalls, hop accept, retry exhaust, recover-after-Rucio-exhaust, probe errors
+- **4–8** — AAA destinations, plugin internals, curl pool, site health, avoidance (most collapsed)
 
 New series appear after deploying a build that includes latency / avoid / site
 export, and after at least one redirect has been handled (site gauges appear
@@ -51,6 +52,7 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
 - `xrootd_openverify_retry_exhausted_total`
 - `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error` \| `skipped`; `empty` = no replicas; `skipped` = ignore-prefix)
+- `xrootd_openverify_rucio_skipped_total` (`reason` = matched `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX`, e.g. `/store/user` \| `/tmp`)
 - `xrootd_openverify_rucio_list_cache_total` (`result` = `hit` \| `miss` — `(lfn, scheme)` LRU; not recorded for disabled/skipped)
 - `xrootd_openverify_rucio_list_cache_entries` (gauge: current LRU occupancy)
 - `xrootd_openverify_rucio_candidates_total`
@@ -66,6 +68,7 @@ once a host has a verify outcome recorded).
 
 - `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
 - `xrootd_openverify_host_busy_total` — first per-host inflight-cap reject (`host`, `port`)
+- `xrootd_openverify_rucio_skipped_total` — first ignore-prefix skip (`reason` = matched prefix)
 - `xrootd_openverify_site_*` — first per-site verify success/failure
 - `xrootd_openverify_failsafe_active` / `failsafe_trips_total` / `failsafe_recent_sites` / `failsafe_max_sites` — exported with site gauges (mass-quarantine circuit breaker)
 
@@ -131,6 +134,7 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | Metric | Labels | Meaning |
 |--------|--------|---------|
 | `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error\|skipped` | `list_replicas` outcome; `empty` = no replicas (soft-fail); `skipped` = ignore-prefix (no REST call) |
+| `rucio_skipped_total` | `reason=/store/user\|/tmp\|…` | Ignore-prefix skips split by the matched prefix (appears after the first skip) |
 | `rucio_list_cache_total` | `result=hit\|miss` | LRU of `(lfn, scheme)` → PFN list (TTL `XRD_OPENVERIFY_RUCIO_CACHE_TTL`) |
 | `rucio_list_cache_entries` | (instance) | Current LRU occupancy |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
@@ -189,6 +193,9 @@ clamp_min(sum(rate(xrootd_openverify_location_source_total{source=~"rucio|cmsd"}
 
 # Soft-fail (no usable list_replicas — includes empty replica list)
 sum(rate(xrootd_openverify_rucio_lookups_total{result=~"empty|auth_error|timeout|error"}[5m]))
+
+# Ignore-prefix skips by matched prefix (/store/user, /tmp, …)
+sum by (reason) (rate(xrootd_openverify_rucio_skipped_total[5m]))
 
 # ok-but-no-accept fallthrough
 sum(rate(xrootd_openverify_rucio_exhausted_total[5m]))
