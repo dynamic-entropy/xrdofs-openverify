@@ -64,7 +64,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "1. Query funnel — what happened to each open",
+      "title": "1. Query funnel \u2014 what happened to each open",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -78,10 +78,10 @@
       "type": "stat",
       "id": 200,
       "title": "1. Client redirects / s",
-      "description": "AAA r-stream: every redirect this redirector sent to a client (locate, open, …). This is redirector demand, independent of OpenVerify.",
+      "description": "AAA r-stream: every redirect this redirector sent to a client (locate, open, \u2026). This is redirector demand, independent of OpenVerify.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -93,7 +93,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -133,7 +133,7 @@
       "description": "Every plugin open() that ran Rucio-first locate (sum of rucio_lookups_total). One count per open, including cmsd-stall retries of the same LFN.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -145,7 +145,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -185,7 +185,7 @@
       "description": "Opens that finished on a verified (or positive-cache) Rucio replica. The client was redirected to a Rucio PFN gateway.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -197,7 +197,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -234,10 +234,10 @@
       "type": "stat",
       "id": 203,
       "title": "4. cmsd accepted / s",
-      "description": "Opens that fell through to cmsd and then passed OpenVerify on a cmsd site hop. Much smaller than (2)−(3): stalls, transit, and cmsd failures are not accepts.",
+      "description": "Opens that fell through to cmsd and then passed OpenVerify on a cmsd site hop. Much smaller than (2)\u2212(3): stalls, transit, and cmsd failures are not accepts.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -249,7 +249,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -289,7 +289,7 @@
       "description": "Static xrootd.redirect to cms-xrd-transit (ENOENT fallback). Successful pass-through, not a verify error. Typical for files cmsd also cannot place.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -301,7 +301,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"xrootd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -341,7 +341,7 @@
       "description": "cmsd returned SFS_STALL. The plugin returns wait to the client; the next open() is counted again in (2). Stalls explain skipped+empty >> cmsd accepts.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -353,7 +353,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -393,7 +393,7 @@
       "description": "Rucio did not accept: skip + empty + auth/timeout/error + replica exhaust. These opens then hit cmsd (and maybe transit/stall).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -405,7 +405,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "(sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"skipped|empty|auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) + (sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0))",
           "refId": "A",
@@ -445,7 +445,7 @@
       "description": "Rucio accepted / (Rucio + cmsd accepted). Excludes transit (successful ENOENT hop) and stalls.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -457,7 +457,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) / clamp_min(sum(rate(xrootd_openverify_location_source_total{source=~\"rucio|cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
@@ -494,10 +494,10 @@
       "type": "timeseries",
       "id": 210,
       "title": "Each open() outcome",
-      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) — the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Skip = XRD_OPENVERIFY_SKIP_PREFIX (no verify). Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
+      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) \u2014 the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Skip = XRD_OPENVERIFY_SKIP_PREFIX (no verify). Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -509,7 +509,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -520,7 +520,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "B",
@@ -531,7 +531,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"xrootd\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "C",
@@ -542,7 +542,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"skip\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "G",
@@ -553,7 +553,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "D",
@@ -564,7 +564,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "E",
@@ -575,7 +575,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "F",
@@ -645,10 +645,10 @@
       "type": "timeseries",
       "id": 211,
       "title": "Why Rucio did not accept",
-      "description": "Reasons an open fell through to cmsd. skipped = ignore prefix (/store/user, /tmp). empty = no usable disk PFN. exhausted = replicas existed but none verified. infra = auth/timeout/error. Stack ≈ (6) Fell through.",
+      "description": "Reasons an open fell through to cmsd. skipped = ignore prefix (/store/user, /tmp). empty = no usable disk PFN. exhausted = replicas existed but none verified. infra = auth/timeout/error. Stack \u2248 (6) Fell through.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -660,7 +660,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=\"skipped\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -671,7 +671,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=\"empty\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "B",
@@ -682,7 +682,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "C",
@@ -693,7 +693,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "D",
@@ -739,10 +739,10 @@
       "type": "timeseries",
       "id": 50,
       "title": "Accepted landing (Rucio / cmsd / transit / skip)",
-      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). skip = XRD_OPENVERIFY_SKIP_PREFIX (cmsd locate, no verify). Does not include stalls or failed locates — see Each open() outcome.",
+      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). skip = XRD_OPENVERIFY_SKIP_PREFIX (cmsd locate, no verify). Does not include stalls or failed locates \u2014 see Each open() outcome.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -754,7 +754,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (source) (rate(xrootd_openverify_location_source_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -802,7 +802,7 @@
       "description": "AAA r-stream redirects split by opcode. Thick total = (1) Client redirects. OpenVerify classification is (2); they differ when stall retries or non-open opcodes dominate.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -814,7 +814,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (opcode) (rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -824,7 +824,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "B",
@@ -891,7 +891,7 @@
     },
     {
       "type": "row",
-      "title": "2. Rucio path — in order",
+      "title": "1b. Selected site \u2014 probes to this hop",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -903,12 +903,12 @@
     },
     {
       "type": "stat",
-      "id": 31,
-      "title": "Rucio soft-fail / s",
-      "description": "empty + auth_error + timeout + error. No Rucio probe ran; open went to cmsd. Does not include skipped or exhausted.",
+      "id": 300,
+      "title": "Rucio probes / s",
+      "description": "open_verify against this host after a Rucio PFN redirect. Cache hits are not probes. Needs OpenVerify 0.5.6+. Site picker.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -920,7 +920,473 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(xrootd_openverify_verify_probes_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 301,
+      "title": "cmsd probes / s",
+      "description": "open_verify against this host after a cmsd redirect. Cache hits are not probes. Needs OpenVerify 0.5.6+. Site picker.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 26
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(xrootd_openverify_verify_probes_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 302,
+      "title": "Success / s",
+      "description": "Probes that passed Open/Stat/VectorRead on the selected host(s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 26
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(xrootd_openverify_verify_probes_total{result=\"success\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 303,
+      "title": "Failure / s",
+      "description": "Probes that failed on the selected host(s). Split by reason in the chart below.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 26
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(xrootd_openverify_verify_probes_total{result=\"failure\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])) or vector(0)",
+          "refId": "A",
+          "editorMode": "code",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 304,
+      "title": "Probe rate by locate path and result",
+      "description": "Every XrdCl open_verify to the Site picker host(s). source=rucio is a catalog PFN gateway; source=cmsd is a cmsd hop (often a regional). Cache hits do not appear. Pick one host (e.g. pubxrootd.hep.wisc.edu) to see that site's story.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (source, result) (rate(xrootd_openverify_verify_probes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{source}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 305,
+      "title": "Probe success ratio",
+      "description": "success / (success+failure) for the selected host(s). 1 = all probes OK.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 30
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(xrootd_openverify_verify_probes_total{result=\"success\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_probes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])), 1e-9)",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "success ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 306,
+      "title": "Failures by reason",
+      "description": "Same Site picker. Why probes failed (permission_denied, operation_expired, \u2026).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 307,
+      "title": "Failures by locate path",
+      "description": "Rucio-path vs cmsd-path failures for the selected host(s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (source) (rate(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "mean"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "2. Rucio path \u2014 in order",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 31,
+      "title": "Rucio soft-fail / s",
+      "description": "empty + auth_error + timeout + error. No Rucio probe ran; open went to cmsd. Does not include skipped or exhausted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 47
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_lookups_total{result=~\"empty|auth_error|timeout|error\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -957,22 +1423,22 @@
       "type": "stat",
       "id": 32,
       "title": "Rucio replicas exhausted / s",
-      "description": "lookup=ok but no PFN accepted. Next hop is cmsd (then maybe recovered — see cmsd path).",
+      "description": "lookup=ok but no PFN accepted. Next hop is cmsd (then maybe recovered \u2014 see cmsd path).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 26
+        "y": 47
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1012,19 +1478,19 @@
       "description": "Live probes that failed against a Rucio-chosen replica. Filtered by Site and Error reason.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 26
+        "y": 47
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1064,19 +1530,19 @@
       "description": "Share of list_replicas lookups served from the (lfn, scheme) LRU. Hits skip REST; misses proceed to auth/POST and then appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 26
+        "y": 47
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "(sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_list_cache_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
@@ -1124,23 +1590,23 @@
     {
       "type": "timeseries",
       "id": 51,
-      "title": "Rucio step 1 — list_replicas decision",
+      "title": "Rucio step 1 \u2014 list_replicas decision",
       "description": "First thing Rucio-first does: classify the LFN. ok = disk PFNs returned (then try verify). skipped = ignore prefix, no REST. empty / auth / timeout / error = soft-fail to cmsd. Includes list-cache hits for ok/empty.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 51
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (result) (rate(xrootd_openverify_rucio_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -1184,23 +1650,23 @@
     {
       "type": "timeseries",
       "id": 123,
-      "title": "Rucio step 1b — skipped by prefix",
+      "title": "Rucio step 1b \u2014 skipped by prefix",
       "description": "Ignore-prefix skips split by the matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX. Needs OpenVerify 0.5.4+. Canary: /store/user and /tmp. Distinct from skip_prefix_total (no verify; needs 0.5.5+).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 51
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (reason) (rate(xrootd_openverify_rucio_skipped_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -1245,23 +1711,23 @@
     {
       "type": "timeseries",
       "id": 53,
-      "title": "Rucio step 2 — which replica was accepted",
-      "description": "For lookup=ok: which ordered PFN passed verify (replica 1…5+). exhausted = every replica failed or was skipped → cmsd. Observe mode only tries replica 1.",
+      "title": "Rucio step 2 \u2014 which replica was accepted",
+      "description": "For lookup=ok: which ordered PFN passed verify (replica 1\u20265+). exhausted = every replica failed or was skipped \u2192 cmsd. Observe mode only tries replica 1.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 59
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -1272,7 +1738,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "B",
@@ -1318,22 +1784,22 @@
       "type": "timeseries",
       "id": 34,
       "title": "Rucio probe failures by error",
-      "description": "Why Rucio-selected probes fail (timeout, auth, not found, …). Uses Site and Error reason filters.",
+      "description": "Why Rucio-selected probes fail (timeout, auth, not found, \u2026). Uses Site and Error reason filters.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 46
+        "y": 67
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
@@ -1381,19 +1847,19 @@
       "description": "Destinations that failed a live probe on the Rucio locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 46
+        "y": 67
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host) (rate(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
@@ -1441,19 +1907,19 @@
       "description": "Total Rucio-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 75
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host, port, reason) (increase(xrootd_openverify_verify_failures_total{source=\"rucio\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$__range]))",
           "refId": "A",
@@ -1521,22 +1987,22 @@
       "type": "stat",
       "id": 121,
       "title": "Rucio list cache hits / s",
-      "description": "LRU hits — no REST call. Does not appear in Rucio lookups (REST).",
+      "description": "LRU hits \u2014 no REST call. Does not appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 62
+        "y": 83
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"hit\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1568,22 +2034,22 @@
       "type": "stat",
       "id": 122,
       "title": "Rucio list cache misses / s",
-      "description": "LRU misses — each miss becomes one Rucio lookups (REST) outcome (ok/empty/…).",
+      "description": "LRU misses \u2014 each miss becomes one Rucio lookups (REST) outcome (ok/empty/\u2026).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 62
+        "y": 83
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_list_cache_total{result=\"miss\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1618,19 +2084,19 @@
       "description": "Timeseries of cache-miss list_replicas wall time (Acquire + optional auth + POST). Not the site probe. Cache hits are not included.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 62
+        "y": 83
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
           "refId": "A",
@@ -1641,7 +2107,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
           "refId": "B",
@@ -1652,7 +2118,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source=\"rucio\",xrootd_instance=~\"$instance\"}[$rate_interval])))",
           "refId": "C",
@@ -1696,12 +2162,12 @@
     },
     {
       "type": "row",
-      "title": "3. cmsd path — in order",
+      "title": "3. cmsd path \u2014 in order",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 91
       },
       "collapsed": false,
       "panels": []
@@ -1709,23 +2175,23 @@
     {
       "type": "timeseries",
       "id": 220,
-      "title": "cmsd step 1 — lookup stalls",
+      "title": "cmsd step 1 \u2014 lookup stalls",
       "description": "cmsd returned SFS_STALL before a destination. Client waits and retries; that retry is a new open() (counted again in the funnel). Not a site failure.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 92
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_cmsd_stalls_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1770,23 +2236,23 @@
     {
       "type": "timeseries",
       "id": 55,
-      "title": "cmsd step 2 — which hop was accepted",
-      "description": "Which cmsd redirect candidate passed verify (attempt 1–3). exhausted = retry budget spent, last redirect returned unverified (enforce only).",
+      "title": "cmsd step 2 \u2014 which hop was accepted",
+      "description": "Which cmsd redirect candidate passed verify (attempt 1\u20133). exhausted = retry budget spent, last redirect returned unverified (enforce only).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 92
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (attempt) (rate(xrootd_openverify_accepted_total{source=\"cmsd\",xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "A",
@@ -1797,7 +2263,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
           "refId": "B",
@@ -1846,19 +2312,19 @@
       "description": "Opens that used up the cmsd retry budget without a successful probe. Near 0 when retries are not enabled.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 79
+        "y": 100
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_retry_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1898,19 +2364,19 @@
       "description": "Rucio had replicas, all failed verify, then cmsd openverify accepted. Subset of cmsd accepts.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 79
+        "y": 100
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -1947,22 +2413,22 @@
       "type": "stat",
       "id": 33,
       "title": "cmsd recovery ratio after Rucio exhaust",
-      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate — a high ratio on tiny volume is less meaningful.",
+      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate \u2014 a high ratio on tiny volume is less meaningful.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 79
+        "y": 100
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_rucio_exhausted_recovered_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_rucio_exhausted_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
           "refId": "A",
@@ -2002,19 +2468,19 @@
       "description": "Live probes that failed against a cmsd-chosen redirect. Filtered by Site and Error reason.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 79
+        "y": 100
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum(rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval])) or vector(0)",
           "refId": "A",
@@ -2054,19 +2520,19 @@
       "description": "Why cmsd-selected probes fail. Uses Site and Error reason filters.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 83
+        "y": 104
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (reason) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
@@ -2114,19 +2580,19 @@
       "description": "Destinations that failed a live probe on the cmsd locate path. Uses Site and Error reason filters. Legend sorted by mean rate.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 83
+        "y": 104
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host) (rate(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$rate_interval]))",
           "refId": "A",
@@ -2174,19 +2640,19 @@
       "description": "Total cmsd-path probe failures in the dashboard time range, by destination and error. Sorted by count.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 91
+        "y": 112
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host, port, reason) (increase(xrootd_openverify_verify_failures_total{source=\"cmsd\",xrootd_instance=~\"$instance\",host=~\"$site\",reason=~\"$reason\"}[$__range]))",
           "refId": "A",
@@ -2257,7 +2723,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 99
+        "y": 120
       },
       "collapsed": true,
       "panels": [
@@ -2265,10 +2731,10 @@
           "type": "timeseries",
           "id": 6,
           "title": "Top client redirect destinations",
-          "description": "Site gateways receiving the most client redirects (AAA r-stream; all locate paths). Rucio-path and cmsd-path destinations are broken out under verify errors.",
+          "description": "Site gateways receiving the most client redirects (AAA r-stream). Honors the Site picker. Rucio-path and cmsd-path probe failures are under 1b / verify-error tables.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2280,9 +2746,9 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
-              "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval])))",
+              "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\",host=~\"$site\"}[$rate_interval])))",
               "refId": "A",
               "editorMode": "code",
               "legendFormat": "{{host}}"
@@ -2325,10 +2791,10 @@
           "type": "table",
           "id": 7,
           "title": "All client redirect destinations",
-          "description": "Full sortable list of client redirect destinations (AAA r-stream; all locate paths). For Rucio vs cmsd destination failures, use the verify-error tables below.",
+          "description": "Client redirect destinations (AAA r-stream). Honors the Site picker. For Rucio vs cmsd probe failures, use 1b / verify-error tables.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2340,9 +2806,9 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
-              "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\"}[$rate_interval]))",
+              "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\",host=~\"$site\"}[$rate_interval]))",
               "refId": "A",
               "editorMode": "code",
               "instant": true,
@@ -2408,7 +2874,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 100
+        "y": 121
       },
       "collapsed": true,
       "panels": [
@@ -2419,7 +2885,7 @@
           "description": "Redirect hops that entered the OpenVerify plugin. Compare with the AAA total above; they should be close when OpenVerify is on the open path.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2431,7 +2897,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
               "refId": "A",
@@ -2468,10 +2934,10 @@
           "type": "stat",
           "id": 11,
           "title": "Verify failure rate",
-          "description": "Share of live probe opens that failed. Only counts hops that actually ran a probe (cache misses). Queue rejects are not included.",
+          "description": "Share of live probe opens that failed on the Site picker host(s). Cache hits and queue rejects are not included. Needs OpenVerify 0.5.6+ (verify_probes_total).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2483,9 +2949,9 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
-              "expr": "sum(rate(xrootd_openverify_runs_total{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
+              "expr": "sum(rate(xrootd_openverify_verify_probes_total{result=\"failure\",xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_probes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval])), 1e-9)",
               "refId": "A",
               "editorMode": "code",
               "instant": true
@@ -2523,7 +2989,7 @@
           "description": "Global FIFO: queue full or waited too long. These requeue once and do not add the site to tried=. Per-site inflight cap is host_busy (see Per-site inflight busy).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2535,7 +3001,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
               "refId": "A",
@@ -2572,10 +3038,10 @@
           "type": "stat",
           "id": 13,
           "title": "Unhealthy sites",
-          "description": "How many sites currently score as unhealthy (EWMA quarantine). Zero while the fail-safe is tripped (mass-quarantine circuit breaker released them). In observe mode clients are still redirected there; OpenVerify tries to skip them.",
+          "description": "How many of the Site picker host(s) currently score as unhealthy (EWMA quarantine). With Site=All this is the fleet count. Zero while the fail-safe is tripped. In observe mode clients are still redirected there; OpenVerify tries to skip them.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2587,9 +3053,9 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
-              "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\"} == 0) or vector(0)",
+              "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"} == 0) or vector(0)",
               "refId": "A",
               "editorMode": "code",
               "instant": true
@@ -2627,7 +3093,7 @@
           "description": "Share of lookups that found a recent successful probe and skipped a new live open.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2639,7 +3105,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -2679,7 +3145,7 @@
           "description": "Share of lookups that found a recent failed probe. In observe mode the redirect is still returned; OpenVerify asks for another site.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2691,7 +3157,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_negative\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -2731,7 +3197,7 @@
           "description": "Average time for a successful live probe. See the Verify time chart for success vs failure.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -2743,7 +3209,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -2780,10 +3246,10 @@
           "type": "timeseries",
           "id": 20,
           "title": "Verify outcomes",
-          "description": "Rate of probe opens that succeeded or failed. Does not include cache hits or queue rejects.",
+          "description": "Probe opens that succeeded or failed on the Site picker host(s). Cache hits and queue rejects are not included. Needs OpenVerify 0.5.6+.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2795,9 +3261,9 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
-              "expr": "sum by (result) (rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
+              "expr": "sum by (result) (rate(xrootd_openverify_verify_probes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
               "refId": "A",
               "editorMode": "code",
               "legendFormat": "{{result}}"
@@ -2843,7 +3309,7 @@
           "description": "What the probe cache returned: hit_positive = reuse a good result; miss = run a live probe; hit_negative = remember a recent failure.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2855,7 +3321,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (result) (rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -2903,7 +3369,7 @@
           "description": "admitted = got a probe slot; queue_timeout / queue_full = global FIFO (requeued, not tried=); host_busy = this site already at 50% of MAX_INFLIGHT (skipped via tried=).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2915,7 +3381,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (result) (rate(xrootd_openverify_queue_admissions_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -2963,7 +3429,7 @@
           "description": "Average live-probe duration. Failures often sit near the verify timeout when sites hang.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -2975,7 +3441,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -2985,7 +3451,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"failure\",xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "B",
@@ -3033,7 +3499,7 @@
           "description": "How long OpenVerify holds the client redirect before accepting or retrying (queue wait + probe). Spikes often mean timeouts. Use the heatmap and Delay outcome filter to see which path dominates.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3045,7 +3511,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
               "refId": "A",
@@ -3055,7 +3521,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
               "refId": "B",
@@ -3065,7 +3531,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\"}[$rate_interval])))",
               "refId": "C",
@@ -3113,7 +3579,7 @@
           "description": "Full distribution of redirect hold time. Use the Delay outcome variable to focus on verify success/failure, queue rejects, cache hits, or avoided redirects. Does not include cmsd SFS_STALL (client-owned lookup delay).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3125,7 +3591,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (le) (rate(xrootd_openverify_redirect_delay_seconds_bucket{xrootd_instance=~\"$instance\",outcome=~\"$delay_outcome\"}[$rate_interval]))",
               "refId": "A",
@@ -3193,7 +3659,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 101
+        "y": 122
       },
       "collapsed": true,
       "panels": [
@@ -3204,7 +3670,7 @@
           "description": "Share of Rucio HTTP transfers with CURLINFO_NUM_CONNECTS==0 (keep-alive). Low under load means Rucio/proxy closes connections or idle > MAXAGE_CONN.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -3216,7 +3682,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "(sum(rate(xrootd_openverify_rucio_curl_tcp_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -3267,7 +3733,7 @@
           "description": "Share of transfers that reused an idle pooled CURL* (vs curl_easy_init under load). Warm min should keep this high once the pool is filled.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -3279,7 +3745,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "(sum(rate(xrootd_openverify_rucio_curl_handle_total{result=\"reused\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)) / clamp_min(sum(rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -3330,7 +3796,7 @@
           "description": "Current easy handles in the elastic pool (between POOL_MIN and POOL_MAX).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -3342,7 +3808,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
               "refId": "A",
@@ -3377,7 +3843,7 @@
           "description": "Checked-out easy handles currently in a Rucio auth/list transfer.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -3389,7 +3855,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
               "refId": "A",
@@ -3424,7 +3890,7 @@
           "description": "reused = CURLINFO_NUM_CONNECTS==0; new = opened a TCP(+TLS) connection for this transfer.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3436,7 +3902,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_tcp_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -3484,7 +3950,7 @@
           "description": "reused = Acquire returned an idle pooled handle; new = pool grew with curl_easy_init.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3496,7 +3962,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (result) (rate(xrootd_openverify_rucio_curl_handle_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -3544,7 +4010,7 @@
           "description": "handles = total easies; idle = available; inflight = checked out. Should rise with concurrent list_replicas, then fall after idle TTL (~15s).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3556,7 +4022,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(xrootd_openverify_rucio_curl_pool_handles{xrootd_instance=~\"$instance\"})",
               "refId": "A",
@@ -3566,7 +4032,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(xrootd_openverify_rucio_curl_pool_idle{xrootd_instance=~\"$instance\"})",
               "refId": "B",
@@ -3576,7 +4042,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(xrootd_openverify_rucio_curl_pool_inflight{xrootd_instance=~\"$instance\"})",
               "refId": "C",
@@ -3621,10 +4087,10 @@
           "type": "timeseries",
           "id": 120,
           "title": "Curl pool grow / shrink",
-          "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink → stuck at high size or max.",
+          "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink \u2192 stuck at high size or max.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -3636,7 +4102,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_grows_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -3646,7 +4112,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_rucio_curl_pool_shrinks_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "B",
@@ -3696,7 +4162,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 102
+        "y": 123
       },
       "collapsed": false,
       "panels": []
@@ -3708,19 +4174,19 @@
       "description": "How close OpenVerify is to the mass-quarantine circuit breaker. 'entered quarantine in window' is unique sites that crossed into quarantine during FAILSAFE_WINDOW (default 5m). The dashed line is the trip threshold (default 8). 'currently quarantined' is sites OpenVerify is skipping now. If the window count hits the threshold, fail-safe trips (red bars, right axis): those sites are released and skip is disabled until the hold expires.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 103
+        "y": 124
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "max(xrootd_openverify_failsafe_recent_sites{xrootd_instance=~\"$instance\"}) or vector(0)",
           "refId": "A",
@@ -3730,9 +4196,9 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
-          "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\"} == 0) or vector(0)",
+          "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"} == 0) or vector(0)",
           "refId": "B",
           "editorMode": "code",
           "legendFormat": "currently quarantined"
@@ -3740,7 +4206,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "max(xrootd_openverify_failsafe_max_sites{xrootd_instance=~\"$instance\"}) or vector(8)",
           "refId": "C",
@@ -3750,7 +4216,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "max(xrootd_openverify_failsafe_active{xrootd_instance=~\"$instance\"}) or vector(0)",
           "refId": "D",
@@ -3869,19 +4335,19 @@
       "description": "EWMA badness (0 = healthy, 1 = worst). Yellow line = recover (0.4); red = quarantine (0.6). Top 15 non-zero sites.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 111
+        "y": 132
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "topk(15, xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"} > 0)",
           "refId": "A",
@@ -3954,19 +4420,19 @@
       "description": "Current health score and healthy flag, plus probe success/failure counts over the dashboard time range. healthy=0 means the site is quarantined in the EWMA score.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 111
+        "y": 132
       },
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"}",
           "refId": "A",
@@ -3977,7 +4443,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"}",
           "refId": "B",
@@ -3988,7 +4454,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host, port) (increase(xrootd_openverify_site_verify_successes_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$__range]))",
           "refId": "C",
@@ -3999,7 +4465,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "expr": "sum by (host, port) (increase(xrootd_openverify_site_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$__range]))",
           "refId": "D",
@@ -4055,7 +4521,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 119
+        "y": 140
       },
       "collapsed": true,
       "panels": [
@@ -4066,7 +4532,7 @@
           "description": "Redirects skipped because the site was quarantined or in the negative cache (client gets tried= and another site). Near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -4078,7 +4544,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
               "refId": "A",
@@ -4118,7 +4584,7 @@
           "description": "Avoided redirects as a share of OpenVerify-handled redirects. Near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 4,
@@ -4130,7 +4596,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum(rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))\n/\nclamp_min(sum(rate(xrootd_openverify_redirects_handled_total{xrootd_instance=~\"$instance\"}[$rate_interval])), 1e-9)",
               "refId": "A",
@@ -4170,7 +4636,7 @@
           "description": "quarantine = EWMA-unhealthy site skipped; negative_cache = recent failed probe remembered; host_busy = site already at 50% of MAX_INFLIGHT. Flat near 0 when avoidance is not active.",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -4182,7 +4648,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (reason) (rate(xrootd_openverify_redirects_avoided_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
               "refId": "A",
@@ -4230,7 +4696,7 @@
           "description": "This host already held 50% of MAX_INFLIGHT probe slots, so OpenVerify skipped it via tried= (not EWMA quarantine). Use the Site filter. Distinct from Verify queue timeout/full (global FIFO).",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "gridPos": {
             "h": 8,
@@ -4242,7 +4708,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "${datasource}"
               },
               "expr": "sum by (host, port) (rate(xrootd_openverify_host_busy_total{xrootd_instance=~\"$instance\",host=~\"$site\"}[$rate_interval]))",
               "refId": "A",
@@ -4315,7 +4781,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${datasource}"
         },
         "definition": "label_values({__name__=~\"xrootd_openverify_cache_lookups_total|xrdmon_redir_total\"}, xrootd_instance)",
         "query": {
@@ -4407,11 +4873,11 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${datasource}"
         },
-        "definition": "label_values({__name__=~\"xrootd_openverify_(verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
+        "definition": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total|xrdmon_redir_dest_total\",xrootd_instance=~\"$instance\"}, host)",
         "query": {
-          "query": "label_values({__name__=~\"xrootd_openverify_(verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
+          "query": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total|xrdmon_redir_dest_total\",xrootd_instance=~\"$instance\"}, host)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -4431,7 +4897,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${datasource}"
         },
         "definition": "label_values(xrootd_openverify_verify_failures_total{xrootd_instance=~\"$instance\",host=~\"$site\"}, reason)",
         "query": {
@@ -4455,7 +4921,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${datasource}"
         },
         "definition": "label_values(xrootd_openverify_redirect_delay_seconds_count{xrootd_instance=~\"$instance\"}, outcome)",
         "query": {
@@ -4485,5 +4951,5 @@
   "uid": "openverify-cms-ops",
   "version": 16,
   "weekStart": "",
-  "description": "Read top to bottom: (1) query funnel — demand, Rucio vs cmsd vs transit vs stall; (2) Rucio path in order; (3) cmsd path in order. Later rows are destinations, plugin internals, curl pool, and site health. Hover a panel title for the metric."
+  "description": "Read top to bottom: (1) query funnel \u2014 demand, Rucio vs cmsd vs transit vs stall; (2) Rucio path in order; (3) cmsd path in order. Later rows are destinations, plugin internals, curl pool, and site health. Hover a panel title for the metric."
 }

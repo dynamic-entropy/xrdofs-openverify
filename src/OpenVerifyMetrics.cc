@@ -24,6 +24,11 @@ std::string FailureMapKey(const std::string& source, const std::string& host, in
     return source + '\x1e' + host + '\x1e' + PortLabelForMetrics(port) + '\x1e' + reason;
 }
 
+std::string ProbeMapKey(const std::string& source, const std::string& host, int port,
+                        const std::string& result) {
+    return source + '\x1e' + host + '\x1e' + PortLabelForMetrics(port) + '\x1e' + result;
+}
+
 std::string EscapeLabelValue(const std::string& in) {
     std::string out;
     out.reserve(in.size() + 8);
@@ -118,6 +123,32 @@ OpenVerifyMetrics::PerFailureMetrics& OpenVerifyMetrics::EnsureFailure(const std
         slot->reason_esc = EscapeLabelValue(reason);
     }
     return *slot;
+}
+
+OpenVerifyMetrics::PerProbeMetrics& OpenVerifyMetrics::EnsureProbe(const std::string& source,
+                                                                   const std::string& host, int port,
+                                                                   const std::string& result) {
+    std::string src = source.empty() ? std::string("unknown") : source;
+    std::string h = host.empty() ? std::string("unknown") : host;
+    const std::string res = result.empty() ? std::string("unknown") : result;
+    const std::string pl = PortLabelForMetrics(port);
+    {
+        std::lock_guard<std::mutex> lock(m_probe_mtx);
+        if (m_probes_by_target_result.size() >= 4096 &&
+            !m_probes_by_target_result.count(ProbeMapKey(src, h, port, res))) {
+            h = "other";
+        }
+        const std::string key = ProbeMapKey(src, h, port, res);
+        std::unique_ptr<PerProbeMetrics>& slot = m_probes_by_target_result[key];
+        if (!slot) {
+            slot = std::make_unique<PerProbeMetrics>();
+            slot->source_esc = EscapeLabelValue(src);
+            slot->host_esc = EscapeLabelValue(h);
+            slot->port_lbl = pl;
+            slot->result_esc = EscapeLabelValue(res);
+        }
+        return *slot;
+    }
 }
 
 std::string OpenVerifyMetrics::BuildExpositionBody() const {
@@ -428,6 +459,20 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         }
     }
 
+    body << "# HELP xrootd_openverify_verify_probes_total Actual open_verify runs by locate source, "
+            "redirect target and result (success|failure). Cache hits are not probes.\n"
+            "# TYPE xrootd_openverify_verify_probes_total counter\n";
+    {
+        std::lock_guard<std::mutex> lock(m_probe_mtx);
+        for (const auto& kv : m_probes_by_target_result) {
+            const PerProbeMetrics* e = kv.second.get();
+            if (!e) continue;
+            body << "xrootd_openverify_verify_probes_total{source=\"" << e->source_esc << "\",host=\""
+                 << e->host_esc << "\",port=\"" << e->port_lbl << "\",result=\"" << e->result_esc << "\"" << lbl
+                 << "} " << e->count.load(std::memory_order_relaxed) << "\n";
+        }
+    }
+
     body << "# HELP xrootd_openverify_host_busy_total Leaders rejected because this host already "
             "held the per-host inflight cap (default 50% of MAX_INFLIGHT).\n"
             "# TYPE xrootd_openverify_host_busy_total counter\n";
@@ -511,8 +556,9 @@ void OpenVerifyMetrics::RecordCacheHitNegative(double delay_seconds) {
     if (!m_path.empty()) Flush();
 }
 
-void OpenVerifyMetrics::RecordVerifySuccess() {
+void OpenVerifyMetrics::RecordVerifySuccess(const std::string& source, const std::string& host, int port) {
     m_verify_success.fetch_add(1, std::memory_order_relaxed);
+    EnsureProbe(source, host, port, "success").count.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 
@@ -521,6 +567,7 @@ void OpenVerifyMetrics::RecordVerifyFailure(const std::string& source, const std
     const std::string r = reason.empty() ? std::string("unknown") : reason;
     m_verify_failure.fetch_add(1, std::memory_order_relaxed);
     EnsureFailure(source, host, port, r).count.fetch_add(1, std::memory_order_relaxed);
+    EnsureProbe(source, host, port, "failure").count.fetch_add(1, std::memory_order_relaxed);
     if (!m_path.empty()) Flush();
 }
 

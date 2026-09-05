@@ -8,7 +8,9 @@ Rucio-first locate (`XRD_OPENVERIFY_RUCIO=1`) adds lookup/source counters below.
 
 ## Grafana dashboards
 
-Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasource):
+Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasource).
+Panels use the **Datasource** dropdown (`$datasource`). Pasting JSON into an
+existing dashboard without that variable leaves `${DS_PROMETHEUS}` as a literal UID.
 
 | File | Audience |
 |------|----------|
@@ -19,15 +21,17 @@ Importable JSON (Grafana → Dashboards → Import; pick your Prometheus datasou
 
 | Variable | Use |
 |----------|-----|
+| Datasource | Prometheus (`$datasource`) |
 | Redirector instance | Which `xrootd_instance` daemon(s) |
 | Rate interval | Bin for `rate()` panels (`auto`, `1m`, `5m`, `1h`, …) |
-| Site | Multi-select `host` from `verify_failures_total` and `host_busy_total` |
+| Site | Multi-select `host` from probe/failure/`host_busy` series and `xrdmon_redir_dest_total`. All host-labeled panels honor this (1b, probe errors, AAA dest, site health, inflight busy). |
 | Error reason | Multi-select `reason` (scoped to selected sites) |
 | Delay outcome | Filter redirect-delay heatmap by outcome |
 
 Sections (read top to bottom):
 
 - **1. Query funnel** — client redirects, opens classified, Rucio/cmsd/transit accepts, stalls; each `open()` outcome vs why Rucio did not accept
+- **1b. Selected site** — probe rate to the Site picker host(s): Rucio vs cmsd, success vs failure (needs `verify_probes_total`, 0.5.6+)
 - **2. Rucio path** — `list_replicas` decision, skip prefix, replica accept/exhaust, probe errors
 - **3. cmsd path** — stalls, hop accept, retry exhaust, recover-after-Rucio-exhaust, probe errors
 - **4–8** — AAA destinations, plugin internals, curl pool, site health, avoidance (most collapsed)
@@ -68,6 +72,7 @@ once a host has a verify outcome recorded).
 **Appear after first event:**
 
 - `xrootd_openverify_verify_failures_total` — first verify failure (**includes per-site timeouts**)
+- `xrootd_openverify_verify_probes_total` — first `open_verify` against a host (`source`,`host`,`port`,`result=success\|failure`)
 - `xrootd_openverify_host_busy_total` — first per-host inflight-cap reject (`host`, `port`)
 - `xrootd_openverify_rucio_skipped_total` — first ignore-prefix skip (`reason` = matched prefix)
 - `xrootd_openverify_site_*` — first per-site verify success/failure
@@ -94,6 +99,7 @@ Same meanings as before:
 | `host_busy_total` | `host`,`port` | Leader rejected: this host already held 50% of `MAX_INFLIGHT` |
 | `singleflight_requests_total` | `role` | Leader runs verify; follower waits |
 | `verify_failures_total` | `source`,`host`,`port`,`reason` | Failed verifies by locate path (`rucio`\|`cmsd`) and target |
+| `verify_probes_total` | `source`,`host`,`port`,`result` | Actual `open_verify` runs (`success`\|`failure`). Cache hits are not probes. Use this for per-site query rate. |
 
 `reason` includes `operation_expired`, `socket_timeout`, `auth_failed`,
 `permission_denied`, `redirect_limit`, … (see `ClassifyXrdClStatus`).
@@ -391,6 +397,15 @@ increase(xrootd_openverify_failsafe_trips_total[1h])
 
 # Worst site scores
 topk(10, xrootd_openverify_site_ewma_health)
+
+# Per-site probe rate (Site picker / Wisconsin story): Rucio vs cmsd, success vs failure
+sum by (source, result) (
+  rate(xrootd_openverify_verify_probes_total{host=~"pubxrootd.hep.wisc.edu|.*wisc.edu"}[5m]))
+
+# Success ratio for one host
+sum(rate(xrootd_openverify_verify_probes_total{host=~".*wisc.edu",result="success"}[5m]))
+/
+clamp_min(sum(rate(xrootd_openverify_verify_probes_total{host=~".*wisc.edu"}[5m])), 1e-9)
 
 # Top sites by verify TIMEOUT (operation_expired / socket_timeout)
 topk(15, sum by (host) (

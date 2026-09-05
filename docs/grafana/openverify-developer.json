@@ -63,7 +63,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -71,7 +71,7 @@
           "expr": "sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -117,7 +117,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -125,7 +125,7 @@
           "expr": "sum(rate(xrootd_openverify_runs_total{xrootd_instance=~\"$instance\"}[$__rate_interval]))",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -171,7 +171,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -179,7 +179,7 @@
           "expr": "sum(rate(xrootd_openverify_cache_lookups_total{result=\"hit_positive\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_cache_lookups_total{xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -226,7 +226,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -234,7 +234,7 @@
           "expr": "sum(rate(xrootd_openverify_singleflight_requests_total{role=\"follower\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_singleflight_requests_total{role=\"leader\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -280,7 +280,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -288,7 +288,7 @@
           "expr": "sum(rate(xrootd_openverify_verify_rtt_seconds_sum{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(xrootd_openverify_verify_rtt_seconds_count{result=\"success\",xrootd_instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -335,7 +335,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -343,7 +343,7 @@
           "expr": "sum(rate(xrootd_openverify_queue_admissions_total{result=~\"queue_timeout|queue_full\",xrootd_instance=~\"$instance\"}[$__rate_interval]))",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "instant": true
         }
@@ -390,7 +390,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -399,7 +399,7 @@
           "legendFormat": "{{result}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -442,7 +442,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -451,7 +451,7 @@
           "legendFormat": "{{result}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -494,7 +494,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -503,7 +503,7 @@
           "legendFormat": "{{role}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -546,7 +546,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -555,7 +555,7 @@
           "legendFormat": "{{result}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -600,7 +600,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -609,7 +609,7 @@
           "legendFormat": "success",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -620,7 +620,7 @@
           "legendFormat": "failure",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -664,7 +664,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -673,7 +673,7 @@
           "legendFormat": "p50",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -684,7 +684,7 @@
           "legendFormat": "p95",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -695,7 +695,7 @@
           "legendFormat": "p99",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -738,7 +738,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -747,7 +747,7 @@
           "legendFormat": "{{source}}: {{reason}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -792,7 +792,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "${datasource}"
       },
       "targets": [
         {
@@ -801,7 +801,7 @@
           "legendFormat": "{{host}}",
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "range": true
@@ -860,7 +860,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
+          "uid": "${datasource}"
         },
         "query": "label_values(xrootd_openverify_cache_lookups_total, xrootd_instance)",
         "refresh": 2,

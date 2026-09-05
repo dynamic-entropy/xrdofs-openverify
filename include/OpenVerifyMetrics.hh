@@ -84,7 +84,9 @@ class OpenVerifyMetrics {
     // delay_seconds >= 0 also updates redirect_delay_seconds histogram for this outcome.
     void RecordCacheHitPositive(double delay_seconds = -1);
     void RecordCacheHitNegative(double delay_seconds = -1);
-    void RecordVerifySuccess();
+    // After a cache miss, open_verify succeeded against this locate hop.
+    // source is the locate path: "rucio" or "cmsd".
+    void RecordVerifySuccess(const std::string& source, const std::string& host, int port);
     // After a cache miss, open_verify failed; reason is a stable snake_case label (e.g. permission_denied).
     // source is the locate path: "rucio" or "cmsd".
     void RecordVerifyFailure(const std::string& source, const std::string& host, int port, const std::string& reason);
@@ -221,6 +223,16 @@ class OpenVerifyMetrics {
 
     PerFailureMetrics& EnsureFailure(const std::string& source, const std::string& host, int port,
                                      const std::string& reason);
+
+    struct PerProbeMetrics {
+        std::string source_esc;
+        std::string host_esc;
+        std::string port_lbl;
+        std::string result_esc;
+        std::atomic<uint64_t> count{0};
+    };
+    PerProbeMetrics& EnsureProbe(const std::string& source, const std::string& host, int port,
+                                 const std::string& result);
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     static void ObserveHistogram(DelayHistogram& h, double seconds);
     std::string BuildExpositionBody() const;
@@ -294,6 +306,9 @@ class OpenVerifyMetrics {
 
     mutable std::mutex m_failure_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerFailureMetrics>> m_failures_by_target_reason;
+
+    mutable std::mutex m_probe_mtx;
+    mutable std::unordered_map<std::string, std::unique_ptr<PerProbeMetrics>> m_probes_by_target_result;
 
     struct PerHostBusyMetrics {
         std::string host_esc;

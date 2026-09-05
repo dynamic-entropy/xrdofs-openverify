@@ -334,7 +334,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             const auto st = open_verify(key, opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
                                                         &final_port, &fail_stage);
                             if (st.IsOK()) {
-                                m_metrics.RecordVerifySuccess();
+                                m_metrics.RecordVerifySuccess("rucio", hostStr, portVal);
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                                 // Store DS for metrics/cache completeness; do not rewrite Rucio redirect to it.
                                 m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
@@ -539,7 +539,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     const auto st = open_verify(key, verify_opaque, client, OpenVerifyTimeoutSeconds(), &final_host,
                                                 &final_port, &fail_stage);
                     if (st.IsOK()) {
-                        m_metrics.RecordVerifySuccess();
+                        m_metrics.RecordVerifySuccess("cmsd", hostStr, portVal);
                         m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                         m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
                     } else {
