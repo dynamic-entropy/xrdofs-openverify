@@ -82,6 +82,9 @@ void Test_CmsLfnFromPath() {
            "CmsLfnFromPath: LFN unchanged");
     Expect(OpenVerifyUrl::CmsLfnFromPath("/tmp/xrootd-testfile.global") == "/tmp/xrootd-testfile.global",
            "CmsLfnFromPath: non-store path unchanged");
+    Expect(OpenVerifyUrl::CmsLfnFromPath("/store/test/xrootd/T2_US_Wisconsin/store/mc/SAM/file.root") ==
+               "/store/test/xrootd/T2_US_Wisconsin/store/mc/SAM/file.root",
+           "CmsLfnFromPath: SAM AAA pin keeps the wrapper (first /store/)");
     Expect(OpenVerifyUrl::CmsLfnFromPath("") == "", "CmsLfnFromPath: empty");
 }
 

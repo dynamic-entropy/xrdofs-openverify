@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.5.4
+Version:        0.5.5
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,10 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Sat Sep 05 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.5-1
+- XRD_OPENVERIFY_SKIP_PREFIX: skip Rucio and verify; pass cmsd redirect through (SAM AAA /store/test/xrootd).
+- Metrics: location_source=skip, skip_prefix_total{reason=}, accepted_total source=skip.
+
 * Fri Aug 28 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.4-1
 - Export rucio_skipped_total{reason=matched ignore prefix} and Grafana panel.
 - Log skip reason= on openverify rucio_skipped.

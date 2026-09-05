@@ -38,6 +38,10 @@ class OpenVerifyHostReliability;
 // XRD_OPENVERIFY_RUCIO=1: try CMS Rucio replica lookup before cmsd (see OpenVerifyRucio.hh).
 // XRD_OPENVERIFY_RUCIO_CACHE_TTL / XRD_OPENVERIFY_RUCIO_CACHE_SIZE: list_replicas LRU.
 // XRD_OPENVERIFY_RUCIO_POOL_MIN / _MAX: elastic libcurl handle pool (default 1–500; raise MIN via puppet).
+// XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX: skip list_replicas only; cmsd locate is still verified.
+// XRD_OPENVERIFY_SKIP_PREFIX: skip Rucio *and* verify; one cmsd open, pass the redirect through
+// (same idea as transit). Use for SAM AAA `/store/test/xrootd` — ignore-prefix alone still
+// verify-opens regional hops from the global host. See README.
 //
 // Static xrootd.redirect fallbacks (cms-xrd-transit.cern.ch) are accepted without
 // verify and counted as location_source=xrootd / static_fallback=transit.
@@ -65,7 +69,7 @@ class OpenVerifyMetrics {
         QueueTimeout,  // FIFO wait hit QUEUE_TIMEOUT; open_verify never ran
         QueueFull,     // wait queue full; open_verify never ran
         HostBusy,      // host already at 50% of MAX_INFLIGHT; skipped via tried=
-        Passthrough,   // static xrootd.redirect fallback (e.g. transit); no verify
+        Passthrough,   // static xrootd.redirect fallback or SKIP_PREFIX; no verify
         Count
     };
 
@@ -114,16 +118,20 @@ class OpenVerifyMetrics {
     void RecordCmsdStall(int seconds);
 
     // Open accepted a verified/cached-positive redirect after `attempt` candidate
-    // sites within `source` ("rucio", "cmsd", or "xrootd"). Counters are separate
-    // per source.
+    // sites within `source` ("rucio", "cmsd", "xrootd", or "skip"). Counters are
+    // separate per source.
     // cmsd: which redirect candidate (1..kMaxCmsdAcceptAttempts) was accepted.
     // rucio: which ordered PFN/replica (1..kMaxRucioReplicaLabel) passed verify;
     // overflow label is "N+" (CMS files do not have dozens of replicas).
     // xrootd: static xrootd.redirect ENOENT fallback (attempt always 1).
+    // skip: XRD_OPENVERIFY_SKIP_PREFIX passthrough (attempt always 1; no verify).
     // Observe: only replica/attempt 1.
     void RecordOpenAccepted(int attempt, const std::string& source);
     // Static xrootd.redirect fallback accepted without verify (fallback=transit, …).
     void RecordStaticFallback(const std::string& fallback);
+    // LFN matched XRD_OPENVERIFY_SKIP_PREFIX: cmsd locate, no Rucio, no verify.
+    // reason is the matched prefix (e.g. /store/test/xrootd).
+    void RecordSkipPrefix(const std::string& reason);
     // Enforce mode only: cmsd retry budget fully spent with no accepted verify;
     // last redirect returned best-effort. Never recorded in observe mode.
     void RecordOpenRetryExhausted();
@@ -147,7 +155,7 @@ class OpenVerifyMetrics {
     // After rucio exhaust, cmsd accepted: was that host already in the Rucio PFN list?
     // result: overlap | catalog_disagree (diagnostic; sum equals recovered).
     void RecordRucioCmsdCompare(const std::string& result);
-    // Accepted open locate path: rucio | cmsd | xrootd (static redirect fallback).
+    // Accepted open locate path: rucio | cmsd | xrootd (static redirect fallback) | skip.
     void RecordLocationSource(const std::string& source);
     // Wall time of one Rucio list_replicas (cache miss).
     void RecordLocateLatency(const std::string& source, double seconds);
@@ -177,7 +185,7 @@ class OpenVerifyMetrics {
         void VerifyFinished(bool success);
         // kind: queue_timeout | queue_full (must match SingleFlight error messages without prefix).
         void QueueRejected(const std::string& kind);
-        // Static xrootd.redirect fallback: return redirect unchanged (no cache/verify).
+        // Static xrootd.redirect fallback or SKIP_PREFIX: return redirect unchanged.
         void Passthrough();
 
        private:
@@ -242,6 +250,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_cmsd_stall_seconds_sum{0};
     std::atomic<uint64_t> m_accepted_cmsd_by_attempt[kMaxCmsdAcceptAttempts]{};
     std::atomic<uint64_t> m_accepted_xrootd{0};
+    std::atomic<uint64_t> m_accepted_skip{0};
     std::atomic<uint64_t> m_static_fallback_transit{0};
     std::atomic<uint64_t> m_retry_exhausted{0};
 
@@ -262,6 +271,7 @@ class OpenVerifyMetrics {
     std::atomic<uint64_t> m_location_source_rucio{0};
     std::atomic<uint64_t> m_location_source_cmsd{0};
     std::atomic<uint64_t> m_location_source_xrootd{0};
+    std::atomic<uint64_t> m_location_source_skip{0};
     std::atomic<uint64_t> m_rucio_curl_tcp_reused{0};
     std::atomic<uint64_t> m_rucio_curl_tcp_new{0};
     std::atomic<uint64_t> m_rucio_curl_handle_reused{0};
@@ -299,6 +309,8 @@ class OpenVerifyMetrics {
     };
     mutable std::mutex m_rucio_skip_mtx;
     mutable std::unordered_map<std::string, std::unique_ptr<PerSkipReasonMetrics>> m_rucio_skipped_by_reason;
+    mutable std::mutex m_skip_prefix_mtx;
+    mutable std::unordered_map<std::string, std::unique_ptr<PerSkipReasonMetrics>> m_skip_prefix_by_reason;
 
     // Rucio: replica index in try-order that passed verify → count (N or kMaxRucioReplicaLabel).
     mutable std::mutex m_rucio_accept_mtx;

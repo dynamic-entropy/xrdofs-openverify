@@ -269,6 +269,17 @@ void Test_ShouldIgnoreLfn() {
     Expect(OpenVerifyRucioMatchedIgnorePrefix("/tmp/xrootd-testfile.global", multi) == "/tmp", "matched tmp");
     Expect(OpenVerifyRucioShouldIgnoreLfn("/tmp", multi), "exact tmp");
     Expect(!OpenVerifyRucioShouldIgnoreLfn("/tmpdir/x", multi), "not tmpdir");
+    // Same matcher is used for XRD_OPENVERIFY_SKIP_PREFIX (SAM AAA cmsd/TFC pin).
+    const auto sam = OpenVerifyRucioParseIgnorePrefixes("/store/test/xrootd");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/test/xrootd/T2_US_Wisconsin/store/mc/SAM/file.root", sam) ==
+               "/store/test/xrootd",
+           "SAM AAA pin matches skip prefix");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/mc/SAM/file.root", sam).empty(),
+           "bare SAM LFN is not the pin");
+    Expect(OpenVerifyRucioMatchedIgnorePrefix("/store/test/xrootdfoo/T2_US_Wisconsin/store/mc/SAM/a.root", sam)
+               .empty(),
+           "path-component match does not prefix-steal");
+    Expect(OpenVerifyRucioShouldIgnoreLfn("/store/test/xrootd", sam), "exact SAM pin prefix");
 }
 
 }  // namespace

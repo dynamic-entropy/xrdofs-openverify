@@ -194,7 +194,8 @@ std::string HostPortFromErrInfo(XrdOucErrInfo& err) {
 OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
                                OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
                                OpenVerifyHostReliability& host_reliability, OpenVerifyRucio& rucio, bool observe,
-                               bool direct_server, std::string ov_cert, std::string ov_key)
+                               bool direct_server, std::string ov_cert, std::string ov_key,
+                               std::vector<std::string> skip_prefixes)
     : XrdSfsFile(*wrapF),  // share ErrInfo with the wrapped OFS file
       m_wrapped(std::move(wrapF)),
       m_log(log),
@@ -206,7 +207,8 @@ OpenVerifyFile::OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& l
       m_observe(observe),
       m_direct_server(direct_server),
       m_ov_cert(std::move(ov_cert)),
-      m_ov_key(std::move(ov_key)) {}
+      m_ov_key(std::move(ov_key)),
+      m_skip_prefixes(std::move(skip_prefixes)) {}
 
 int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode_t createMode,
                          const XrdSecEntity* client, const char* opaque) {
@@ -226,6 +228,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     int cmsd_sites_tried = 0;
     bool accepted_from_rucio = false;
     bool accepted_from_xrootd = false;
+    bool accepted_from_skip = false;
     bool after_rucio_exhaust = false;
     std::unordered_set<std::string> rucio_host_index;
     std::string rucio_host_list;
@@ -235,6 +238,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     // /eos/cms/store/... here and get Rucio http=400. Outbound redirects still use
     // the catalog/cmsd PFN path.
     const std::string pathStr = OpenVerifyUrl::CmsLfnFromPath(fileName ? fileName : "");
+    const std::string skip_reason = OpenVerifyRucioMatchedIgnorePrefix(pathStr, m_skip_prefixes);
     const auto client_tried = ParseTriedHosts(opaque);
     const std::string client_tried_cgi = TriedCgiValue(opaque);
     auto appendTriedLog = [&](std::string& msg) {
@@ -249,7 +253,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     };
 
     // --- Rucio-first locate (feature-flagged) ---------------------------------
-    if (m_rucio.Enabled() && !pathStr.empty()) {
+    // SKIP_PREFIX: no REST and no verify; cmsd still locates (see skip_prefix hop).
+    if (skip_reason.empty() && m_rucio.Enabled() && !pathStr.empty()) {
         const char* prot = (client && client->prot[0]) ? client->prot : "";
         const std::string scheme = OpenVerifyRucioSchemeFromProt(prot);
         const std::string client_ip = (client && client->host) ? client->host : "";
@@ -480,6 +485,20 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
 
+        // Configured skip: cmsd located a next hop; do not verify-open it from here.
+        // SAM AAA `/store/test/xrootd/<SITE>/...` is a TFC pin, not a DID — probing
+        // the regional with the global host cert hammers the federation (see README).
+        if (!skip_reason.empty()) {
+            hop.Passthrough();
+            accepted = true;
+            accepted_from_skip = true;
+            retry = false;
+            m_metrics.RecordSkipPrefix(skip_reason);
+            std::string msg = std::string("reason=") + skip_reason + " host=" + hostPort + " path=" + pathStr;
+            m_log.Emsg(" INFO", "openverify skip_prefix", msg.c_str());
+            break;
+        }
+
         // Static xrootd.redirect ENOENT fallback (cms-xrd-transit) — not a site gateway.
         // Pass through without verify, quarantine, or cache; label as source=xrootd.
         if (IsStaticXrootdFallbackHost(hostStr)) {
@@ -586,8 +605,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     }
 
     if (accepted) {
-        const char* source = accepted_from_rucio ? "rucio" : (accepted_from_xrootd ? "xrootd" : "cmsd");
-        const int attempt = accepted_from_rucio ? rucio_sites_tried : (accepted_from_xrootd ? 1 : cmsd_sites_tried);
+        const char* source = accepted_from_rucio     ? "rucio"
+                             : accepted_from_xrootd  ? "xrootd"
+                             : accepted_from_skip    ? "skip"
+                                                     : "cmsd";
+        const int attempt = accepted_from_rucio                              ? rucio_sites_tried
+                            : (accepted_from_xrootd || accepted_from_skip)   ? 1
+                                                                             : cmsd_sites_tried;
         m_metrics.RecordOpenAccepted(attempt, source);
         m_metrics.RecordLocationSource(source);
         if (accepted_from_xrootd) {

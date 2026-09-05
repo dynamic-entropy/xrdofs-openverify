@@ -73,6 +73,18 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
                    "openverify direct server (XRD_OPENVERIFY_DIRECT_SERVER): rewrite accepted redirects to "
                    "verified data-server host:port (cmsd path only; unsafe for EOS FST)");
     }
+    const char* skip_spec = std::getenv("XRD_OPENVERIFY_SKIP_PREFIX");
+    m_skip_prefixes = OpenVerifyRucioParseIgnorePrefixes(skip_spec ? skip_spec : "");
+    if (!m_skip_prefixes.empty()) {
+        std::string joined;
+        for (size_t i = 0; i < m_skip_prefixes.size(); ++i) {
+            if (i) joined += ",";
+            joined += m_skip_prefixes[i];
+        }
+        const std::string msg =
+            std::string("openverify skip_prefix=") + joined + " (no rucio, no verify; cmsd redirect passthrough)";
+        m_log.Emsg(" INFO", msg.c_str());
+    }
     m_rucio.LogConfig();
     m_rucio.SetMetrics(&m_metrics);
     const std::string health_cfg = m_host_reliability.ConfigSummary();
@@ -94,7 +106,7 @@ XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
         return nullptr;
     }
     return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_rucio,
-                              m_observe, m_direct_server, m_ov_cert, m_ov_key);
+                              m_observe, m_direct_server, m_ov_cert, m_ov_key, m_skip_prefixes);
 }
 
 XrdSfsFile* OpenVerifyFileSystem::newFile(XrdOucErrInfo& einfo) { return m_next_sfs->newFile(einfo); }

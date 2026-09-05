@@ -180,7 +180,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << m_cmsd_stall_seconds_sum.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_accepted_total Opens that accepted a redirect: "
             "rucio=verify succeeded on Nth ordered replica; cmsd=Nth redirect candidate; "
-            "xrootd=static xrootd.redirect fallback (no verify).\n"
+            "xrootd=static xrootd.redirect fallback (no verify); "
+            "skip=XRD_OPENVERIFY_SKIP_PREFIX passthrough (no Rucio, no verify).\n"
             "# TYPE xrootd_openverify_accepted_total counter\n";
     {
         std::lock_guard<std::mutex> lock(m_rucio_accept_mtx);
@@ -199,12 +200,26 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
     }
     body << "xrootd_openverify_accepted_total{source=\"xrootd\",attempt=\"1\"" << lbl << "} "
          << m_accepted_xrootd.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_accepted_total{source=\"skip\",attempt=\"1\""
+         << lbl << "} " << m_accepted_skip.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_static_fallback_total Successful static xrootd.redirect "
             "pass-throughs (no verify). Not an error — e.g. cms-xrd-transit ENOENT fallback.\n"
             "# TYPE xrootd_openverify_static_fallback_total counter\n"
             "xrootd_openverify_static_fallback_total{fallback=\"transit\""
          << lbl << "} " << m_static_fallback_transit.load(std::memory_order_relaxed) << "\n"
-            "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
+            "# HELP xrootd_openverify_skip_prefix_total Opens matching XRD_OPENVERIFY_SKIP_PREFIX: "
+            "cmsd locate, no Rucio, no verify probe. reason=matched prefix.\n"
+            "# TYPE xrootd_openverify_skip_prefix_total counter\n";
+    {
+        std::lock_guard<std::mutex> lock(m_skip_prefix_mtx);
+        for (const auto& kv : m_skip_prefix_by_reason) {
+            const PerSkipReasonMetrics* e = kv.second.get();
+            if (!e) continue;
+            body << "xrootd_openverify_skip_prefix_total{reason=\"" << e->reason_esc << "\"" << lbl << "} "
+                 << e->count.load(std::memory_order_relaxed) << "\n";
+        }
+    }
+    body << "# HELP xrootd_openverify_retry_exhausted_total Enforce mode: opens that hit max site attempts without a verify success.\n"
             "# TYPE xrootd_openverify_retry_exhausted_total counter\n"
             "xrootd_openverify_retry_exhausted_total"
          << (m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}")) << " "
@@ -267,8 +282,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
             "xrootd_openverify_rucio_cmsd_compare_total{result=\"catalog_disagree\""
          << lbl << "} " << m_rucio_cmsd_compare_catalog_disagree.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_location_source_total Accepted opens by locate path "
-            "(rucio / cmsd verify, or successful static xrootd.redirect pass-through). "
-            "source=xrootd is not an error.\n"
+            "(rucio / cmsd verify, static xrootd.redirect pass-through, or SKIP_PREFIX). "
+            "source=xrootd and source=skip are not errors.\n"
             "# TYPE xrootd_openverify_location_source_total counter\n"
             "xrootd_openverify_location_source_total{source=\"rucio\""
          << lbl << "} " << m_location_source_rucio.load(std::memory_order_relaxed) << "\n"
@@ -276,6 +291,8 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
          << lbl << "} " << m_location_source_cmsd.load(std::memory_order_relaxed) << "\n"
             "xrootd_openverify_location_source_total{source=\"xrootd\""
          << lbl << "} " << m_location_source_xrootd.load(std::memory_order_relaxed) << "\n"
+            "xrootd_openverify_location_source_total{source=\"skip\""
+         << lbl << "} " << m_location_source_skip.load(std::memory_order_relaxed) << "\n"
             "# HELP xrootd_openverify_rucio_curl_tcp_total Rucio HTTP transfers by TCP reuse "
             "(CURLINFO_NUM_CONNECTS: reused=0 new connections, new>=1).\n"
             "# TYPE xrootd_openverify_rucio_curl_tcp_total counter\n"
@@ -612,6 +629,8 @@ void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& sourc
         }
     } else if (source == "xrootd") {
         m_accepted_xrootd.fetch_add(1, std::memory_order_relaxed);
+    } else if (source == "skip") {
+        m_accepted_skip.fetch_add(1, std::memory_order_relaxed);
     } else {
         if (attempt > kMaxCmsdAcceptAttempts) attempt = kMaxCmsdAcceptAttempts;
         m_accepted_cmsd_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
@@ -622,6 +641,23 @@ void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& sourc
 void OpenVerifyMetrics::RecordStaticFallback(const std::string& fallback) {
     if (fallback == "transit") {
         m_static_fallback_transit.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!m_path.empty()) Flush();
+}
+
+void OpenVerifyMetrics::RecordSkipPrefix(const std::string& reason_in) {
+    std::string reason = reason_in.empty() ? std::string("unknown") : reason_in;
+    {
+        std::lock_guard<std::mutex> lock(m_skip_prefix_mtx);
+        if (m_skip_prefix_by_reason.size() >= 64 && !m_skip_prefix_by_reason.count(reason)) {
+            reason = "other";
+        }
+        std::unique_ptr<PerSkipReasonMetrics>& slot = m_skip_prefix_by_reason[reason];
+        if (!slot) {
+            slot = std::make_unique<PerSkipReasonMetrics>();
+            slot->reason_esc = EscapeLabelValue(reason);
+        }
+        slot->count.fetch_add(1, std::memory_order_relaxed);
     }
     if (!m_path.empty()) Flush();
 }
@@ -705,6 +741,8 @@ void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
         m_location_source_rucio.fetch_add(1, std::memory_order_relaxed);
     } else if (source == "xrootd") {
         m_location_source_xrootd.fetch_add(1, std::memory_order_relaxed);
+    } else if (source == "skip") {
+        m_location_source_skip.fetch_add(1, std::memory_order_relaxed);
     } else {
         m_location_source_cmsd.fetch_add(1, std::memory_order_relaxed);
     }

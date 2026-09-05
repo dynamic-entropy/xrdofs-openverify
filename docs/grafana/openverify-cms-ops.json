@@ -494,7 +494,7 @@
       "type": "timeseries",
       "id": 210,
       "title": "Each open() outcome",
-      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) — the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
+      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) — the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Skip = XRD_OPENVERIFY_SKIP_PREFIX (no verify). Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -537,6 +537,17 @@
           "refId": "C",
           "editorMode": "code",
           "legendFormat": "transit",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(xrootd_openverify_location_source_total{source=\"skip\",xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
+          "refId": "G",
+          "editorMode": "code",
+          "legendFormat": "skip prefix",
           "range": true
         },
         {
@@ -727,8 +738,8 @@
     {
       "type": "timeseries",
       "id": 50,
-      "title": "Accepted landing (Rucio / cmsd / transit)",
-      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). Does not include stalls or failed locates — see Each open() outcome.",
+      "title": "Accepted landing (Rucio / cmsd / transit / skip)",
+      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). skip = XRD_OPENVERIFY_SKIP_PREFIX (cmsd locate, no verify). Does not include stalls or failed locates — see Each open() outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1174,7 +1185,7 @@
       "type": "timeseries",
       "id": 123,
       "title": "Rucio step 1b — skipped by prefix",
-      "description": "Ignore-prefix skips split by the matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX. Needs OpenVerify 0.5.4+. Canary: /store/user and /tmp.",
+      "description": "Ignore-prefix skips split by the matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX. Needs OpenVerify 0.5.4+. Canary: /store/user and /tmp. Distinct from skip_prefix_total (no verify; needs 0.5.5+).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"

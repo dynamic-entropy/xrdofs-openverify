@@ -4,6 +4,7 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "OpenVerifyCache.hh"
 #include "OpenVerifyHostReliability.hh"
@@ -91,6 +92,8 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     // When true, rewrite accepted SFS_REDIRECT host/port to the verified data server
     // (XRD_OPENVERIFY_DIRECT_SERVER=1). cmsd path only — do not use for EOS FSTs.
     const bool m_direct_server;
+    // XRD_OPENVERIFY_SKIP_PREFIX: no Rucio, no verify; cmsd redirect is passed through.
+    std::vector<std::string> m_skip_prefixes;
 
     std::string m_ov_cert;
     std::string m_ov_key;
@@ -149,7 +152,8 @@ class OpenVerifyFile : public XrdSfsFile {
     OpenVerifyFile(std::unique_ptr<XrdSfsFile> wrapF, XrdSysError& log, OpenVerifyCache& cache,
                    OpenVerifyMetrics& metrics, OpenVerifySingleFlight& single_flight,
                    OpenVerifyHostReliability& host_reliability, OpenVerifyRucio& rucio, bool observe,
-                   bool direct_server, std::string ov_cert, std::string ov_key);
+                   bool direct_server, std::string ov_cert, std::string ov_key,
+                   std::vector<std::string> skip_prefixes);
 
     std::unique_ptr<XrdSfsFile> m_wrapped;
     XrdSysError& m_log;
@@ -162,6 +166,7 @@ class OpenVerifyFile : public XrdSfsFile {
     const bool m_direct_server;
     const std::string m_ov_cert;
     const std::string m_ov_key;
+    const std::vector<std::string> m_skip_prefixes;
 
    private:
     // On success, optionally fills final_host/final_port with the data server XrdCl reached.

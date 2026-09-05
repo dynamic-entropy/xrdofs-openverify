@@ -48,8 +48,9 @@ once a host has a verify outcome recorded).
 - `xrootd_openverify_queue_wait_seconds` (histogram by `result` = `admitted` | `timeout`)
 - `xrootd_openverify_verify_rtt_seconds` (histogram by `result` = `success` | `failure`)
 - `xrootd_openverify_cmsd_stalls_total` / `cmsd_stall_seconds_total` (event rate / configured stall seconds sum; not a latency histogram)
-- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd` \| `xrootd`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`; xrootd `attempt` = `1` for static fallback)
+- `xrootd_openverify_accepted_total` (`source` = `rucio` \| `cmsd` \| `xrootd` \| `skip`; cmsd `attempt` = redirect candidate `1`|`2`|`3`; rucio `attempt` = ordered replica that passed verify `1`…`4`|`5+`; xrootd/skip `attempt` = `1`)
 - `xrootd_openverify_static_fallback_total` (`fallback` = `transit` — static `xrootd.redirect` ENOENT hop, no verify)
+- `xrootd_openverify_skip_prefix_total` (`reason` = matched `XRD_OPENVERIFY_SKIP_PREFIX`, e.g. `/store/test/xrootd`)
 - `xrootd_openverify_retry_exhausted_total`
 - `xrootd_openverify_rucio_lookups_total` (`result` = `ok` \| `empty` \| `auth_error` \| `timeout` \| `error` \| `skipped`; `empty` = no replicas; `skipped` = ignore-prefix)
 - `xrootd_openverify_rucio_skipped_total` (`reason` = matched `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX`, e.g. `/store/user` \| `/tmp`)
@@ -124,7 +125,9 @@ sum(rate(xrootd_openverify_cmsd_stalls_total[5m]))
 When `XRD_OPENVERIFY_RUCIO=1`, OpenVerify queries CMS Rucio before cmsd.
 Soft-fails (empty / auth / timeout / error) and all-candidates-failed fall back
 to cmsd. LFNs matching `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX` skip the REST call
-(`result=skipped`) and also fall through to cmsd. Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
+(`result=skipped`) and also fall through to cmsd **with verify still on**. LFNs matching `XRD_OPENVERIFY_SKIP_PREFIX`
+skip Rucio **and** the verify probe (cmsd locate, pass the redirect through).
+Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
 name ending in `_Tape`) before try-order. PFN try-order is selected by
 `XRD_OPENVERIFY_RUCIO_SELECT` (`random` default; `priority`; `geoip` reserved)
 — subsequent PFNs are tried only after the current verify fails. See the
@@ -135,6 +138,7 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 |--------|--------|---------|
 | `rucio_lookups_total` | `result=ok\|empty\|auth_error\|timeout\|error\|skipped` | `list_replicas` outcome; `empty` = no replicas (soft-fail); `skipped` = ignore-prefix (no REST call) |
 | `rucio_skipped_total` | `reason=/store/user\|/tmp\|…` | Ignore-prefix skips split by the matched prefix (appears after the first skip) |
+| `skip_prefix_total` | `reason=/store/test/xrootd\|…` | `XRD_OPENVERIFY_SKIP_PREFIX`: cmsd locate, no Rucio, no verify (appears after the first skip) |
 | `rucio_list_cache_total` | `result=hit\|miss` | LRU of `(lfn, scheme)` → PFN list (TTL `XRD_OPENVERIFY_RUCIO_CACHE_TTL`) |
 | `rucio_list_cache_entries` | (instance) | Current LRU occupancy |
 | `rucio_candidates_total` | (instance) | PFN candidates from successful lookups |
@@ -148,7 +152,7 @@ name ending in `_Tape`) before try-order. PFN try-order is selected by
 | `rucio_curl_pool_inflight` | (instance) | Checked-out handles (in a transfer) |
 | `rucio_curl_pool_grows_total` | (instance) | Demand-driven creates above warm min |
 | `rucio_curl_pool_shrinks_total` | (instance) | Idle extras destroyed (15s TTL / shrink) |
-| `location_source_total` | `source=rucio\|cmsd\|xrootd` | Accepted open’s locate path (`xrootd` = successful static `xrootd.redirect` pass-through such as transit; **not an error**) |
+| `location_source_total` | `source=rucio\|cmsd\|xrootd\|skip` | Accepted open’s locate path (`xrootd` = transit pass-through; `skip` = `SKIP_PREFIX`; **not errors**) |
 | `locate_rtt_seconds` | `source=rucio` | Cache-miss `list_replicas` wall time (Acquire + optional auth + POST). Not cmsd select; stall wait is `cmsd_stalls_total` |
 | `static_fallback_total` | `fallback=transit` | Successful static ENOENT redirect accepted without verify (not an error) |
 
@@ -237,7 +241,7 @@ source; client `tried=` skips on the Rucio path do not.
 
 | Metric | Labels | Meaning |
 |--------|--------|---------|
-| `accepted_total` | `source=rucio\|cmsd`, `attempt=…` | rucio: verify succeeded on Nth ordered replica (`5+` overflow); cmsd: Nth redirect candidate |
+| `accepted_total` | `source=rucio\|cmsd\|xrootd\|skip`, `attempt=…` | rucio: verify succeeded on Nth ordered replica (`5+` overflow); cmsd: Nth redirect candidate; xrootd/skip: always `1` |
 | `retry_exhausted_total` | (instance) | Enforce only: cmsd max attempts with no verify success; last redirect returned best-effort |
 
 ```promql
