@@ -2741,7 +2741,7 @@
           "type": "stat",
           "id": 13,
           "title": "Unhealthy sites",
-          "description": "How many of the Site picker host(s) currently score as unhealthy (EWMA quarantine). With Site=All this is the fleet count. Zero while the fail-safe is tripped. In observe mode clients are still redirected there; OpenVerify tries to skip them.",
+          "description": "Distinct sites quarantined on any selected redirector. All counts each site once, even if several redirectors have it quarantined. Zero while the fail-safe is tripped. In observe mode clients are still redirected there; OpenVerify tries to skip them.",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -2758,7 +2758,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"} == 0) or vector(0)",
+              "expr": "count(min by (host, port) (xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"}) == 0) or vector(0)",
               "refId": "A",
               "editorMode": "code",
               "instant": true
@@ -3874,7 +3874,7 @@
       "type": "timeseries",
       "id": 62,
       "title": "Quarantine burst (fail-safe)",
-      "description": "How close OpenVerify is to the mass-quarantine circuit breaker. 'entered quarantine in window' is unique sites that crossed into quarantine during FAILSAFE_WINDOW (default 5m). The dashed line is the trip threshold (default 8). 'currently quarantined' is sites OpenVerify is skipping now. If the window count hits the threshold, fail-safe trips (red bars, right axis): those sites are released and skip is disabled until the hold expires.",
+      "description": "How close OpenVerify is to the mass-quarantine circuit breaker. The breaker is per redirector: with several selected, 'entered quarantine in window' and the threshold are the highest among them, and 'fail-safe tripped' is 1 if any of them is tripped. 'currently quarantined' counts each site once if any selected redirector is skipping it. If a redirector's window count hits its threshold, fail-safe trips there: those sites are released and skip is disabled until the hold expires.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -3901,7 +3901,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"} == 0) or vector(0)",
+          "expr": "count(min by (host, port) (xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"}) == 0) or vector(0)",
           "refId": "B",
           "editorMode": "code",
           "legendFormat": "currently quarantined"
@@ -4035,7 +4035,7 @@
       "type": "timeseries",
       "id": 60,
       "title": "Site health score (higher = worse)",
-      "description": "EWMA badness (0 = healthy, 1 = worst). Yellow line = recover (0.4); red = quarantine (0.6). Top 15 non-zero sites.",
+      "description": "Worst EWMA badness across the selected redirectors (0 = healthy, 1 = worst), one line per site. Yellow line = recover (0.4); red = quarantine (0.6). Top 15 non-zero sites.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -4052,7 +4052,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(15, xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"} > 0)",
+          "expr": "topk(15, max by (host, port) (xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"}) > 0)",
           "refId": "A",
           "editorMode": "code",
           "legendFormat": "{{host}}:{{port}}"
@@ -4120,7 +4120,7 @@
       "type": "table",
       "id": 61,
       "title": "Site status (selected time range)",
-      "description": "Current health score and healthy flag, plus probe success/failure counts over the dashboard time range. healthy=0 means the site is quarantined in the EWMA score.",
+      "description": "One row per site across the selected redirectors. Health score is the worst EWMA. Healthy is 0 if any selected redirector has the site quarantined. Successes and failures are summed over the dashboard time range.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -4137,7 +4137,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"}",
+          "expr": "max by (host, port) (xrootd_openverify_site_ewma_health{xrootd_instance=~\"$instance\",host=~\"$site\"})",
           "refId": "A",
           "editorMode": "code",
           "instant": true,
@@ -4148,7 +4148,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"}",
+          "expr": "min by (host, port) (xrootd_openverify_site_healthy{xrootd_instance=~\"$instance\",host=~\"$site\"})",
           "refId": "B",
           "editorMode": "code",
           "instant": true,
@@ -4480,7 +4480,8 @@
       },
       {
         "name": "instance",
-        "label": "Redirector instance",
+        "label": "Redirector",
+        "description": "All aggregates every scraped OpenVerify deployment.",
         "type": "query",
         "datasource": {
           "type": "prometheus",

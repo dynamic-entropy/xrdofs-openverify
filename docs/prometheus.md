@@ -22,7 +22,7 @@ existing dashboard without that variable leaves `${DS_PROMETHEUS}` as a literal 
 | Variable | Use |
 |----------|-----|
 | Datasource | Prometheus (`$datasource`) |
-| Redirector instance | Which `xrootd_instance` daemon(s) |
+| Redirector | Which `xrootd_instance` daemon(s). **All** aggregates every scraped deployment: rates and counts are summed, ratios and percentiles are volume-weighted, site health is one row per site (worst score; quarantined if any redirector has it). |
 | Rate interval | Bin for `rate()` panels (`auto`, `1m`, `5m`, `1h`, …) |
 | Site | Multi-select `host` from probe/failure/`host_busy` series. All host-labeled panels honor this (1b, probe errors, site health, inflight busy). |
 | Error reason | Multi-select `reason` (scoped to selected sites) |
