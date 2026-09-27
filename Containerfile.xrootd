@@ -10,12 +10,11 @@ RUN dnf install -y epel-release dnf-plugins-core \
 RUN printf '[xrootd-stable]\nname=XRootD Stable\nbaseurl=https://xrootd.web.cern.ch/repo/stable/el10/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=https://xrootd.web.cern.ch/repo/RPM-GPG-KEY.txt\n' \
       > /etc/yum.repos.d/xrootd.repo
 
-# Install build toolchain, golang (xrdmon-collector), and xrootd development files
+# Install build toolchain and xrootd development files
 RUN dnf install -y \
       cmake \
       gcc-c++ \
       git \
-      golang \
       make \
       rpmdevtools \
       systemd-rpm-macros \

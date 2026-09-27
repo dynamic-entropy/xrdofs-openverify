@@ -19,10 +19,8 @@ sudo cmake --install build
 
 ## RPM packaging
 
-Both packages share one version (`xrdofs-openverify.spec` / `xrdmon-collector.spec`):
-
 ```bash
-# Local build (needs rpmdevtools, cmake toolchain, golang, xrootd-server-devel, …)
+# Local build (needs rpmdevtools, cmake toolchain, xrootd-server-devel, …)
 ./build-all-rpms.sh
 
 # Normal release: build in podman, publish to the yum repo, puppet lab nodes

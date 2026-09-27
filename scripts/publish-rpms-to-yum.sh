@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # publish-rpms-to-yum.sh
 #
-# End-to-end publish for both RPMs (same version):
-#   xrdofs-openverify + xrdmon-collector
+# End-to-end publish for the xrdofs-openverify RPM:
 #
 #   1. Build RPMs inside the podman container (build-all-rpms.sh)
 #   2. Copy binary RPMs into the local yum repo checkout
@@ -38,12 +37,6 @@ done
 
 VERSION="$(rpmspec -q --srpm --qf '%{VERSION}-%{RELEASE}\n' \
     "${REPO_ROOT}/xrdofs-openverify.spec" | head -1)"
-MON_VERSION="$(rpmspec -q --srpm --qf '%{VERSION}-%{RELEASE}\n' \
-    "${REPO_ROOT}/xrdmon-collector.spec" | head -1)"
-if [[ "${MON_VERSION}" != "${VERSION}" ]]; then
-    echo "ERROR: xrdmon-collector.spec (${MON_VERSION}) must match xrdofs-openverify.spec (${VERSION})" >&2
-    exit 1
-fi
 
 # ---------------------------------------------------------------------------
 # Step 1 – Build RPMs in the container
@@ -56,7 +49,7 @@ if [[ $SKIP_BUILD -eq 0 ]]; then
         -f "${REPO_ROOT}/Containerfile" \
         "${REPO_ROOT}"
 
-    echo "==> Running RPM build inside container (openverify + xrdmon-collector ${VERSION}) ..."
+    echo "==> Running RPM build inside container (xrdofs-openverify ${VERSION}) ..."
     mkdir -p "${RPMBUILD_DIR}"
     podman run --rm \
         --security-opt label=disable \
@@ -83,16 +76,13 @@ if [[ ! -d "${RPM_DST}" ]]; then
 fi
 
 OV_RPM="$(ls -t "${RPM_SRC}"/xrdofs-openverify-[0-9]*.rpm 2>/dev/null | head -1 || true)"
-MON_RPM="$(ls -t "${RPM_SRC}"/xrdmon-collector-[0-9]*.rpm 2>/dev/null | head -1 || true)"
-if [[ -z "${OV_RPM}" || -z "${MON_RPM}" ]]; then
-    echo "ERROR: need both RPMs in ${RPM_SRC}" >&2
-    echo "  xrdofs-openverify: ${OV_RPM:-MISSING}" >&2
-    echo "  xrdmon-collector:  ${MON_RPM:-MISSING}" >&2
+if [[ -z "${OV_RPM}" ]]; then
+    echo "ERROR: xrdofs-openverify RPM not found in ${RPM_SRC}" >&2
     exit 1
 fi
 
-echo "==> Copying RPMs to ${RPM_DST} ..."
-cp -v "${OV_RPM}" "${MON_RPM}" "${RPM_DST}/"
+echo "==> Copying RPM to ${RPM_DST} ..."
+cp -v "${OV_RPM}" "${RPM_DST}/"
 
 # ---------------------------------------------------------------------------
 # Step 3 – Regenerate repodata
@@ -105,10 +95,10 @@ createrepo_c --update "${RPM_DST}"
 # ---------------------------------------------------------------------------
 # Same NVR as HEAD → amend (republish/rebuild). Version bump → new commit.
 if [[ $SKIP_PUSH -eq 0 ]]; then
-    COMMIT_MSG="Update xrdofs-openverify and xrdmon-collector ${VERSION}"
+    COMMIT_MSG="Update xrdofs-openverify ${VERSION}"
     HEAD_MSG="$(git -C "${YUM_REPO}" log -1 --pretty=%s 2>/dev/null || true)"
 
-    echo "==> Staging yum repo (xrdofs-openverify + xrdmon-collector ${VERSION}) ..."
+    echo "==> Staging yum repo (xrdofs-openverify ${VERSION}) ..."
     git -C "${YUM_REPO}" add "${OS_VER}/"
 
     if [[ -z "$(git -C "${YUM_REPO}" status --porcelain)" ]]; then
@@ -129,5 +119,5 @@ else
 fi
 
 echo ""
-echo "Done. Published xrdofs-openverify + xrdmon-collector ${VERSION}."
-echo "Canary: puppet on cms-xrd-global-test (or dnf reinstall both packages there)."
+echo "Done. Published xrdofs-openverify ${VERSION}."
+echo "Canary: puppet on cms-xrd-global-test (or dnf reinstall the package there)."
