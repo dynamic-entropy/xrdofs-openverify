@@ -42,7 +42,7 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 
 | Variable | Effect |
 |----------|--------|
-| `XRD_OPENVERIFY_OBSERVE=1` | Metrics + verify on miss; no `tried=` / retry; cmsd redirect unchanged |
+| `XRD_OPENVERIFY_OBSERVE=1` | Metrics + verify on miss; no Rucio lookup (even with `XRD_OPENVERIFY_RUCIO=1`); no `tried=` / retry; cmsd redirect unchanged |
 | `XRD_OPENVERIFY_DIRECT_SERVER=1` | After a successful verify on the **cmsd** path (or positive cache with a recorded data server), rewrite the client redirect to that final data-server host:port. Unsafe for EOS when the recorded server is an FST (missing MGM-signed opaque). Not applied to Rucio-first redirects. |
 | `XRD_OPENVERIFY_RUCIO=1` | Enable Rucio-first locate: query CMS Rucio for replicas before cmsd; redirect to the site gateway from the PFN; fall back to cmsd on empty/auth/timeout/all candidates failed |
 | `XRD_OPENVERIFY_RUCIO_URL` | Rucio REST base URL (default `https://cms-rucio.cern.ch`) |

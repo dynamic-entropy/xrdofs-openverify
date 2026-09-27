@@ -254,7 +254,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
     // --- Rucio-first locate (feature-flagged) ---------------------------------
     // SKIP_PREFIX: no REST and no verify; cmsd still locates (see skip_prefix hop).
-    if (skip_reason.empty() && m_rucio.Enabled() && !pathStr.empty()) {
+    // Observe: no Rucio either, so the client always gets the unchanged cmsd redirect.
+    if (!m_observe && skip_reason.empty() && m_rucio.Enabled() && !pathStr.empty()) {
         const char* prot = (client && client->prot[0]) ? client->prot : "";
         const std::string scheme = OpenVerifyRucioSchemeFromProt(prot);
         const std::string client_ip = (client && client->host) ? client->host : "";
@@ -283,10 +284,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             m_metrics.RecordRucioCandidates(listed.candidates.size());
             IndexRucioHosts(listed.candidates, rucio_host_index);
             rucio_host_list = JoinRucioHostPorts(listed.candidates);
+            // Walk every Rucio PFN (no 3-cap).
             for (const auto& cand : listed.candidates) {
-                // Observe: single candidate only. Enforce: walk every Rucio PFN (no 3-cap).
-                if (m_observe && rucio_sites_tried >= 1) break;
-
                 std::string hostStr = NormalizeHostForXrdCl(cand.host);
                 const int portVal = cand.port;
                 const std::string hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
@@ -311,7 +310,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 ++rucio_sites_tried;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
-                if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
+                if (m_host_reliability.AvoidSite(hostStr, portVal)) {
                     AppendTriedHost(tried_hosts, hostPort);
                     hop.Avoided("quarantine");
                     AppendHostReason(rucio_errors, hostPort, "quarantine");
@@ -381,7 +380,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         m_log.Emsg(" INFO", "openverify succeeded (rucio cached) for", key.c_str());
                         break;
                     case OpenVerifyCache::Status::Negative:
-                        hop.CacheHitNegative(/*count_as_avoided=*/!m_observe);
+                        hop.CacheHitNegative(/*count_as_avoided=*/true);
                         AppendTriedHost(tried_hosts, hostPort);
                         AppendHostReason(rucio_errors, hostPort, "negative_cache");
                         LogOpenVerifyFail(m_log, "rucio", hostPort, "negative_cache", pathStr);

@@ -67,6 +67,9 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
         m_log.Emsg(" INFO",
                    "openverify observe mode (XRD_OPENVERIFY_OBSERVE): cache metrics + verify on miss only; "
                    "no cache/tried changes; redirect unchanged");
+        if (m_rucio.Enabled()) {
+            m_log.Emsg(" INFO", "openverify observe mode: XRD_OPENVERIFY_RUCIO ignored; cmsd locate only");
+        }
     }
     if (m_direct_server) {
         m_log.Emsg(" INFO",

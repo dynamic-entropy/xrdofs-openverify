@@ -25,7 +25,7 @@ class OpenVerifyHostReliability;
 //
 // XRD_OPENVERIFY_OBSERVE: if set to exactly 1, OpenVerify records cache
 // miss/hit metrics and runs open_verify only on cache miss (same as enforce), but does not
-// inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
+// query Rucio, inject tried=, or retry; the first SFS_REDIRECT from the wrapped OFS is
 // returned unchanged.
 //
 // XRD_OPENVERIFY_DIRECT_SERVER: if set to exactly 1, after a successful verify
