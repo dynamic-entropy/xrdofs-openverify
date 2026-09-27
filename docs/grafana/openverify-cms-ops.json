@@ -64,7 +64,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "1. Query funnel \u2014 what happened to each open",
+      "title": "1. Query funnel — what happened to each open",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -76,60 +76,8 @@
     },
     {
       "type": "stat",
-      "id": 200,
-      "title": "1. Client redirects / s",
-      "description": "AAA r-stream: every redirect this redirector sent to a client (locate, open, \u2026). This is redirector demand, independent of OpenVerify.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 1
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval])) or vector(0)",
-          "refId": "A",
-          "editorMode": "code",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value",
-        "graphMode": "area"
-      }
-    },
-    {
-      "type": "stat",
       "id": 201,
-      "title": "2. Opens classified / s",
+      "title": "1. Opens classified / s",
       "description": "Every plugin open() that ran Rucio-first locate (sum of rucio_lookups_total). One count per open, including cmsd-stall retries of the same LFN.",
       "datasource": {
         "type": "prometheus",
@@ -138,7 +86,7 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 6,
+        "x": 0,
         "y": 1
       },
       "targets": [
@@ -181,7 +129,7 @@
     {
       "type": "stat",
       "id": 202,
-      "title": "3. Rucio accepted / s",
+      "title": "2. Rucio accepted / s",
       "description": "Opens that finished on a verified (or positive-cache) Rucio replica. The client was redirected to a Rucio PFN gateway.",
       "datasource": {
         "type": "prometheus",
@@ -190,7 +138,7 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 12,
+        "x": 6,
         "y": 1
       },
       "targets": [
@@ -233,8 +181,8 @@
     {
       "type": "stat",
       "id": 203,
-      "title": "4. cmsd accepted / s",
-      "description": "Opens that fell through to cmsd and then passed OpenVerify on a cmsd site hop. Much smaller than (2)\u2212(3): stalls, transit, and cmsd failures are not accepts.",
+      "title": "3. cmsd accepted / s",
+      "description": "Opens that fell through to cmsd and then passed OpenVerify on a cmsd site hop. Much smaller than (2)−(3): stalls, transit, and cmsd failures are not accepts.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -242,7 +190,7 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 18,
+        "x": 12,
         "y": 1
       },
       "targets": [
@@ -285,7 +233,7 @@
     {
       "type": "stat",
       "id": 204,
-      "title": "5. Transit / s",
+      "title": "4. Transit / s",
       "description": "Static xrootd.redirect to cms-xrd-transit (ENOENT fallback). Successful pass-through, not a verify error. Typical for files cmsd also cannot place.",
       "datasource": {
         "type": "prometheus",
@@ -294,8 +242,8 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 0,
-        "y": 5
+        "x": 18,
+        "y": 1
       },
       "targets": [
         {
@@ -494,7 +442,7 @@
       "type": "timeseries",
       "id": 210,
       "title": "Each open() outcome",
-      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) \u2014 the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Skip = XRD_OPENVERIFY_SKIP_PREFIX (no verify). Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
+      "description": "Every plugin open() ends in exactly one of these. The thick line is opens classified (2) — the stack should track it. Stall = client will retry (another open). Transit = cms-xrd-transit. Skip = XRD_OPENVERIFY_SKIP_PREFIX (no verify). Retry exhausted = cmsd used 3 sites, last redirect returned unverified.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -645,7 +593,7 @@
       "type": "timeseries",
       "id": 211,
       "title": "Why Rucio did not accept",
-      "description": "Reasons an open fell through to cmsd. skipped = ignore prefix (/store/user, /tmp). empty = no usable disk PFN. exhausted = replicas existed but none verified. infra = auth/timeout/error. Stack \u2248 (6) Fell through.",
+      "description": "Reasons an open fell through to cmsd. skipped = ignore prefix (/store/user, /tmp). empty = no usable disk PFN. exhausted = replicas existed but none verified. infra = auth/timeout/error. Stack ≈ (6) Fell through.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -739,14 +687,14 @@
       "type": "timeseries",
       "id": 50,
       "title": "Accepted landing (Rucio / cmsd / transit / skip)",
-      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). skip = XRD_OPENVERIFY_SKIP_PREFIX (cmsd locate, no verify). Does not include stalls or failed locates \u2014 see Each open() outcome.",
+      "description": "Where a successful client redirect came from. rucio = verified Rucio PFN. cmsd = verified cmsd site. xrootd = transit ENOENT hop (no verify). skip = XRD_OPENVERIFY_SKIP_PREFIX (cmsd locate, no verify). Does not include stalls or failed locates — see Each open() outcome.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 17
       },
@@ -796,102 +744,8 @@
       }
     },
     {
-      "type": "timeseries",
-      "id": 5,
-      "title": "Redirector demand by type",
-      "description": "AAA r-stream redirects split by opcode. Thick total = (1) Client redirects. OpenVerify classification is (2); they differ when stall retries or non-open opcodes dominate.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (opcode) (rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "A",
-          "editorMode": "code",
-          "legendFormat": "{{opcode}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(rate(xrdmon_redir_total{xrootd_instance=~\"$instance\"}[$rate_interval]))",
-          "refId": "B",
-          "editorMode": "code",
-          "legendFormat": "total"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 15,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "total"
-            },
-            "properties": [
-              {
-                "id": "custom.stacking",
-                "value": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              },
-              {
-                "id": "custom.fillOpacity",
-                "value": 0
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull",
-            "mean"
-          ],
-          "showLegend": true,
-          "sortBy": "Mean",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
       "type": "row",
-      "title": "1b. Selected site \u2014 probes to this hop",
+      "title": "1b. Selected site — probes to this hop",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1237,7 +1091,7 @@
       "type": "timeseries",
       "id": 306,
       "title": "Failures by reason",
-      "description": "Same Site picker. Why probes failed (permission_denied, operation_expired, \u2026).",
+      "description": "Same Site picker. Why probes failed (permission_denied, operation_expired, …).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1357,7 +1211,7 @@
     },
     {
       "type": "row",
-      "title": "2. Rucio path \u2014 in order",
+      "title": "2. Rucio path — in order",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1423,7 +1277,7 @@
       "type": "stat",
       "id": 32,
       "title": "Rucio replicas exhausted / s",
-      "description": "lookup=ok but no PFN accepted. Next hop is cmsd (then maybe recovered \u2014 see cmsd path).",
+      "description": "lookup=ok but no PFN accepted. Next hop is cmsd (then maybe recovered — see cmsd path).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1590,7 +1444,7 @@
     {
       "type": "timeseries",
       "id": 51,
-      "title": "Rucio step 1 \u2014 list_replicas decision",
+      "title": "Rucio step 1 — list_replicas decision",
       "description": "First thing Rucio-first does: classify the LFN. ok = disk PFNs returned (then try verify). skipped = ignore prefix, no REST. empty / auth / timeout / error = soft-fail to cmsd. Includes list-cache hits for ok/empty.",
       "datasource": {
         "type": "prometheus",
@@ -1650,7 +1504,7 @@
     {
       "type": "timeseries",
       "id": 123,
-      "title": "Rucio step 1b \u2014 skipped by prefix",
+      "title": "Rucio step 1b — skipped by prefix",
       "description": "Ignore-prefix skips split by the matched XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX. Needs OpenVerify 0.5.4+. Canary: /store/user and /tmp. Distinct from skip_prefix_total (no verify; needs 0.5.5+).",
       "datasource": {
         "type": "prometheus",
@@ -1711,8 +1565,8 @@
     {
       "type": "timeseries",
       "id": 53,
-      "title": "Rucio step 2 \u2014 which replica was accepted",
-      "description": "For lookup=ok: which ordered PFN passed verify (replica 1\u20265+). exhausted = every replica failed or was skipped \u2192 cmsd. Observe mode only tries replica 1.",
+      "title": "Rucio step 2 — which replica was accepted",
+      "description": "For lookup=ok: which ordered PFN passed verify (replica 1…5+). exhausted = every replica failed or was skipped → cmsd. Observe mode only tries replica 1.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1784,7 +1638,7 @@
       "type": "timeseries",
       "id": 34,
       "title": "Rucio probe failures by error",
-      "description": "Why Rucio-selected probes fail (timeout, auth, not found, \u2026). Uses Site and Error reason filters.",
+      "description": "Why Rucio-selected probes fail (timeout, auth, not found, …). Uses Site and Error reason filters.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1987,7 +1841,7 @@
       "type": "stat",
       "id": 121,
       "title": "Rucio list cache hits / s",
-      "description": "LRU hits \u2014 no REST call. Does not appear in Rucio lookups (REST).",
+      "description": "LRU hits — no REST call. Does not appear in Rucio lookups (REST).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2034,7 +1888,7 @@
       "type": "stat",
       "id": 122,
       "title": "Rucio list cache misses / s",
-      "description": "LRU misses \u2014 each miss becomes one Rucio lookups (REST) outcome (ok/empty/\u2026).",
+      "description": "LRU misses — each miss becomes one Rucio lookups (REST) outcome (ok/empty/…).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2162,7 +2016,7 @@
     },
     {
       "type": "row",
-      "title": "3. cmsd path \u2014 in order",
+      "title": "3. cmsd path — in order",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2175,7 +2029,7 @@
     {
       "type": "timeseries",
       "id": 220,
-      "title": "cmsd step 1 \u2014 lookup stalls",
+      "title": "cmsd step 1 — lookup stalls",
       "description": "cmsd returned SFS_STALL before a destination. Client waits and retries; that retry is a new open() (counted again in the funnel). Not a site failure.",
       "datasource": {
         "type": "prometheus",
@@ -2236,8 +2090,8 @@
     {
       "type": "timeseries",
       "id": 55,
-      "title": "cmsd step 2 \u2014 which hop was accepted",
-      "description": "Which cmsd redirect candidate passed verify (attempt 1\u20133). exhausted = retry budget spent, last redirect returned unverified (enforce only).",
+      "title": "cmsd step 2 — which hop was accepted",
+      "description": "Which cmsd redirect candidate passed verify (attempt 1–3). exhausted = retry budget spent, last redirect returned unverified (enforce only).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2413,7 +2267,7 @@
       "type": "stat",
       "id": 33,
       "title": "cmsd recovery ratio after Rucio exhaust",
-      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate \u2014 a high ratio on tiny volume is less meaningful.",
+      "description": "recovered / exhausted: fraction of Rucio-exhaust opens that cmsd then saved. Use with the absolute rate — a high ratio on tiny volume is less meaningful.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2718,163 +2572,12 @@
     },
     {
       "type": "row",
-      "title": "4. AAA destinations",
+      "title": "4. OpenVerify internals (cache, queue, delay)",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 120
-      },
-      "collapsed": true,
-      "panels": [
-        {
-          "type": "timeseries",
-          "id": 6,
-          "title": "Top client redirect destinations",
-          "description": "Site gateways receiving the most client redirects (AAA r-stream). Honors the Site picker. Rucio-path and cmsd-path probe failures are under 1b / verify-error tables.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 0
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "topk(15, sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\",host=~\"$site\"}[$rate_interval])))",
-              "refId": "A",
-              "editorMode": "code",
-              "legendFormat": "{{host}}"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "calcs": [
-                "lastNotNull",
-                "mean"
-              ],
-              "showLegend": true,
-              "sortBy": "Mean",
-              "sortDesc": true
-            },
-            "tooltip": {
-              "mode": "multi"
-            }
-          }
-        },
-        {
-          "type": "table",
-          "id": 7,
-          "title": "All client redirect destinations",
-          "description": "Client redirect destinations (AAA r-stream). Honors the Site picker. For Rucio vs cmsd probe failures, use 1b / verify-error tables.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 24,
-            "x": 0,
-            "y": 8
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (host) (rate(xrdmon_redir_dest_total{xrootd_instance=~\"$instance\",host!=\"root\",host=~\"$site\"}[$rate_interval]))",
-              "refId": "A",
-              "editorMode": "code",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops"
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "host"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 360
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "showHeader": true,
-            "sortBy": [
-              {
-                "displayName": "Rate",
-                "desc": true
-              }
-            ]
-          },
-          "transformations": [
-            {
-              "id": "merge",
-              "options": {}
-            },
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true,
-                  "__name__": true,
-                  "job": true,
-                  "instance": true,
-                  "xrootd_instance": true
-                },
-                "renameByName": {
-                  "Value": "Rate"
-                }
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "title": "5. OpenVerify internals (cache, queue, delay)",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 121
       },
       "collapsed": true,
       "panels": [
@@ -3654,12 +3357,12 @@
     },
     {
       "type": "row",
-      "title": "6. Rucio curl pool",
+      "title": "5. Rucio curl pool",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 122
+        "y": 121
       },
       "collapsed": true,
       "panels": [
@@ -4087,7 +3790,7 @@
           "type": "timeseries",
           "id": 120,
           "title": "Curl pool grow / shrink",
-          "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink \u2192 stuck at high size or max.",
+          "description": "grows = demand-driven creates above warm min; shrinks = idle extras destroyed. Sustained grow without shrink → stuck at high size or max.",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
@@ -4157,12 +3860,12 @@
     },
     {
       "type": "row",
-      "title": "7. Site health",
+      "title": "6. Site health",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 123
+        "y": 122
       },
       "collapsed": false,
       "panels": []
@@ -4180,7 +3883,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 124
+        "y": 123
       },
       "targets": [
         {
@@ -4341,7 +4044,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 132
+        "y": 131
       },
       "targets": [
         {
@@ -4426,7 +4129,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 132
+        "y": 131
       },
       "targets": [
         {
@@ -4516,12 +4219,12 @@
     },
     {
       "type": "row",
-      "title": "8. Avoidance & retries",
+      "title": "7. Avoidance & retries",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 139
       },
       "collapsed": true,
       "panels": [
@@ -4783,9 +4486,9 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({__name__=~\"xrootd_openverify_cache_lookups_total|xrdmon_redir_total\"}, xrootd_instance)",
+        "definition": "label_values(xrootd_openverify_cache_lookups_total, xrootd_instance)",
         "query": {
-          "query": "label_values({__name__=~\"xrootd_openverify_cache_lookups_total|xrdmon_redir_total\"}, xrootd_instance)",
+          "query": "label_values(xrootd_openverify_cache_lookups_total, xrootd_instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -4875,9 +4578,9 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total|xrdmon_redir_dest_total\",xrootd_instance=~\"$instance\"}, host)",
+        "definition": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
         "query": {
-          "query": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total|xrdmon_redir_dest_total\",xrootd_instance=~\"$instance\"}, host)",
+          "query": "label_values({__name__=~\"xrootd_openverify_(verify_probes|verify_failures|host_busy)_total\",xrootd_instance=~\"$instance\"}, host)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
@@ -4951,5 +4654,5 @@
   "uid": "openverify-cms-ops",
   "version": 16,
   "weekStart": "",
-  "description": "Read top to bottom: (1) query funnel \u2014 demand, Rucio vs cmsd vs transit vs stall; (2) Rucio path in order; (3) cmsd path in order. Later rows are destinations, plugin internals, curl pool, and site health. Hover a panel title for the metric."
+  "description": "Read top to bottom: (1) query funnel — demand, Rucio vs cmsd vs transit vs stall; (2) Rucio path in order; (3) cmsd path in order. Later rows are destinations, plugin internals, curl pool, and site health. Hover a panel title for the metric."
 }

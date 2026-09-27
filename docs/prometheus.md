@@ -24,17 +24,17 @@ existing dashboard without that variable leaves `${DS_PROMETHEUS}` as a literal 
 | Datasource | Prometheus (`$datasource`) |
 | Redirector instance | Which `xrootd_instance` daemon(s) |
 | Rate interval | Bin for `rate()` panels (`auto`, `1m`, `5m`, `1h`, …) |
-| Site | Multi-select `host` from probe/failure/`host_busy` series and `xrdmon_redir_dest_total`. All host-labeled panels honor this (1b, probe errors, AAA dest, site health, inflight busy). |
+| Site | Multi-select `host` from probe/failure/`host_busy` series. All host-labeled panels honor this (1b, probe errors, site health, inflight busy). |
 | Error reason | Multi-select `reason` (scoped to selected sites) |
 | Delay outcome | Filter redirect-delay heatmap by outcome |
 
 Sections (read top to bottom):
 
-- **1. Query funnel** — client redirects, opens classified, Rucio/cmsd/transit accepts, stalls; each `open()` outcome vs why Rucio did not accept
+- **1. Query funnel** — opens classified, Rucio/cmsd/transit accepts, stalls; each `open()` outcome vs why Rucio did not accept
 - **1b. Selected site** — probe rate to the Site picker host(s): Rucio vs cmsd, success vs failure (needs `verify_probes_total`, 0.5.6+)
 - **2. Rucio path** — `list_replicas` decision, skip prefix, replica accept/exhaust, probe errors
 - **3. cmsd path** — stalls, hop accept, retry exhaust, recover-after-Rucio-exhaust, probe errors
-- **4–8** — AAA destinations, plugin internals, curl pool, site health, avoidance (most collapsed)
+- **4–7** — plugin internals, curl pool, site health, avoidance (most collapsed)
 
 New series appear after deploying a build that includes latency / avoid / site
 export, and after at least one redirect has been handled (site gauges appear
@@ -232,10 +232,6 @@ histogram_quantile(0.50, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_
 histogram_quantile(0.95, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source="rucio"}[5m])))
 histogram_quantile(0.99, sum by (le) (rate(xrootd_openverify_locate_rtt_seconds_bucket{source="rucio"}[5m])))
 ```
-
-AAA request volume (independent of OpenVerify) comes from **xrdmon**:
-`xrdmon_redir_total{opcode}` — see the **AAA baseline** row on the CMS ops
-dashboard.
 
 ### Accept attempt (retry depth)
 
