@@ -131,6 +131,10 @@ class ScopedTokenTempFile {
 bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) {
     outToken.clear();
     if (!client || !client->creds || client->credslen <= 0) return false;
+    // Only ztn puts a bearer token in creds. gsi (VOMS certfmt=pem) and sss put proxy/identity
+    // material there, which must never be forwarded to a remote site. HTTP bearers arrive via
+    // the authz opaque instead.
+    if (std::strcmp(client->prot, "ztn") != 0) return false;
 
     outToken.assign(client->creds, static_cast<size_t>(client->credslen));
     if (!outToken.empty() && outToken.back() == '\0') outToken.pop_back();
