@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -87,14 +88,28 @@ void Test_ParseReplicasJsonArray() {
     const auto cands = OpenVerifyRucioParseReplicasJson(body, "root");
     Expect(cands.size() == 2, "array: two root candidates");
     if (cands.size() >= 2) {
-        // Parse preserves JSON object iteration order; try-order is a separate selector.
         bool saw_a = false, saw_b = false;
         for (const auto& c : cands) {
             if (c.host == "a.example" && c.port == 1095 && c.rse == "T2_A" && c.priority == 1) saw_a = true;
             if (c.host == "b.example" && c.port == 1094 && c.rse == "T2_B" && c.priority == 2) saw_b = true;
         }
         Expect(saw_a && saw_b, "array: both root PFNs with rse/priority");
+        // Rucio's sort=geoip order is the pfns key order; parse must not re-sort keys.
+        Expect(cands[0].host == "b.example" && cands[1].host == "a.example", "array: keeps Rucio pfns order");
     }
+}
+
+void Test_ServerOrderSelector() {
+    std::vector<OpenVerifyRucioCandidate> cands = {
+        {.host = "c.example", .port = 1094, .priority = 3},
+        {.host = "a.example", .port = 1094, .priority = 1},
+        {.host = "b.example", .port = 1094, .priority = 2},
+    };
+    OpenVerifyRucioServerOrderSelector sel;
+    OpenVerifyRucioSelectContext ctx;
+    sel.Order(cands, ctx);
+    Expect(cands[0].host == "c.example" && cands[1].host == "a.example" && cands[2].host == "b.example",
+           "rucio: order unchanged");
 }
 
 void Test_PrioritySelector() {
@@ -145,7 +160,10 @@ void Test_MakeSelector() {
     Expect(std::string(OpenVerifyRucioMakeSelector("random")->Name()) == "random", "make random");
     Expect(std::string(OpenVerifyRucioMakeSelector("priority")->Name()) == "priority", "make priority");
     Expect(std::string(OpenVerifyRucioMakeSelector("geoip")->Name()) == "geoip", "make geoip");
-    Expect(std::string(OpenVerifyRucioMakeSelector("unknown")->Name()) == "random", "unknown → random");
+    Expect(std::string(OpenVerifyRucioMakeSelector("rucio")->Name()) == "rucio", "make rucio");
+    Expect(std::string(OpenVerifyRucioMakeSelector("unknown")->Name()) == "rucio", "unknown → rucio");
+    unsetenv("XRD_OPENVERIFY_RUCIO_SELECT");
+    Expect(OpenVerifyRucioSelectorNameFromEnv() == "rucio", "default selector is rucio");
 }
 
 void Test_ParseReplicasNdjson() {
@@ -301,6 +319,7 @@ int main() {
     Test_ParseIgnorePrefixes();
     Test_ShouldIgnoreLfn();
     Test_PrioritySelector();
+    Test_ServerOrderSelector();
     Test_RandomSelectorDeterministic();
     Test_MakeSelector();
 

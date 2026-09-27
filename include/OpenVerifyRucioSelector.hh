@@ -12,9 +12,10 @@
 // (observe: first only). The selector only chooses the order.
 //
 // XRD_OPENVERIFY_RUCIO_SELECT:
-//   random   — shuffle (default)
-//   priority — Rucio PFN priority ascending (previous behaviour)
-//   geoip    — reserved; currently falls back to random until geo ranking lands
+//   rucio    — keep the order Rucio returned for sort=geoip (default)
+//   random   — shuffle
+//   priority — Rucio PFN priority ascending
+//   geoip    — reserved for local geo ranking; currently same as rucio
 
 struct OpenVerifyRucioSelectContext {
     std::string client_ip;
@@ -27,6 +28,13 @@ class OpenVerifyRucioSelector {
     // Reorder in-place. Must not drop or invent candidates.
     virtual void Order(std::vector<OpenVerifyRucioCandidate>& candidates,
                        const OpenVerifyRucioSelectContext& ctx) const = 0;
+};
+
+// Identity: list_replicas already asks Rucio for sort=geoip.
+class OpenVerifyRucioServerOrderSelector final : public OpenVerifyRucioSelector {
+   public:
+    const char* Name() const override { return "rucio"; }
+    void Order(std::vector<OpenVerifyRucioCandidate>&, const OpenVerifyRucioSelectContext&) const override {}
 };
 
 // Fisher–Yates shuffle. Optional fixed seed for tests.
@@ -52,7 +60,7 @@ class OpenVerifyRucioPrioritySelector final : public OpenVerifyRucioSelector {
                const OpenVerifyRucioSelectContext& ctx) const override;
 };
 
-// Placeholder for client geo-IP / distance ranking. Falls back to random.
+// Placeholder for local client geo-IP / distance ranking. Falls back to the Rucio order.
 class OpenVerifyRucioGeoIpSelector final : public OpenVerifyRucioSelector {
    public:
     const char* Name() const override { return "geoip"; }
@@ -60,9 +68,9 @@ class OpenVerifyRucioGeoIpSelector final : public OpenVerifyRucioSelector {
                const OpenVerifyRucioSelectContext& ctx) const override;
 
    private:
-    OpenVerifyRucioRandomSelector m_fallback;
+    OpenVerifyRucioServerOrderSelector m_fallback;
 };
 
-// Build selector from env name ("random"|"priority"|"geoip"). Unknown → random.
+// Build selector from env name ("rucio"|"random"|"priority"|"geoip"). Unknown → rucio.
 std::unique_ptr<OpenVerifyRucioSelector> OpenVerifyRucioMakeSelector(const std::string& name);
 std::string OpenVerifyRucioSelectorNameFromEnv();

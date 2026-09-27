@@ -198,7 +198,8 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
 
     const std::string scheme = OpenVerifyRucioNormalizeScheme(want_scheme);
 
-    auto consume_object = [&](const nlohmann::json& obj) {
+    // ordered_json keeps the pfns key order Rucio returned (sort=geoip); plain json sorts keys.
+    auto consume_object = [&](const nlohmann::ordered_json& obj) {
         if (!obj.is_object() || !obj.contains("pfns") || !obj["pfns"].is_object()) return;
         for (auto it = obj["pfns"].begin(); it != obj["pfns"].end(); ++it) {
             const std::string pfn = it.key();
@@ -229,7 +230,7 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
         const auto trimmed_start = body.find_first_not_of(" \t\r\n");
         if (trimmed_start == std::string::npos) return out;
         if (body[trimmed_start] == '[') {
-            const auto j = nlohmann::json::parse(body);
+            const auto j = nlohmann::ordered_json::parse(body);
             if (j.is_array()) {
                 for (const auto& el : j) consume_object(el);
             }
@@ -240,7 +241,7 @@ std::vector<OpenVerifyRucioCandidate> OpenVerifyRucioParseReplicasJson(const std
             while (std::getline(iss, line)) {
                 const auto s = line.find_first_not_of(" \t\r\n");
                 if (s == std::string::npos) continue;
-                consume_object(nlohmann::json::parse(line));
+                consume_object(nlohmann::ordered_json::parse(line));
             }
         }
     } catch (const nlohmann::json::exception&) {

@@ -20,7 +20,7 @@ class OpenVerifyRucioSelector;
 // XRD_OPENVERIFY_RUCIO_AUTH_URL        default https://cms-rucio-auth.cern.ch
 // XRD_OPENVERIFY_RUCIO_ACCOUNT         required when enabled
 // XRD_OPENVERIFY_RUCIO_TIMEOUT         HTTP timeout seconds (default 10)
-// XRD_OPENVERIFY_RUCIO_SELECT          try-order: random (default) | priority | geoip
+// XRD_OPENVERIFY_RUCIO_SELECT          try-order: rucio (default) | random | priority | geoip
 // XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX   comma-separated LFN prefixes to skip (no list_replicas);
 //                                      fall through to cmsd *with verify still on*. CMS user
 //                                      files are not in Rucio: /store/user,/tmp

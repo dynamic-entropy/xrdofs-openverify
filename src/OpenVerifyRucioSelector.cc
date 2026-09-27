@@ -44,14 +44,15 @@ void OpenVerifyRucioGeoIpSelector::Order(std::vector<OpenVerifyRucioCandidate>& 
 
 std::string OpenVerifyRucioSelectorNameFromEnv() {
     const char* v = std::getenv("XRD_OPENVERIFY_RUCIO_SELECT");
-    if (!v || !*v) return "random";
+    if (!v || !*v) return "rucio";
     return ToLower(v);
 }
 
 std::unique_ptr<OpenVerifyRucioSelector> OpenVerifyRucioMakeSelector(const std::string& name) {
     const std::string n = ToLower(name);
+    if (n == "random") return std::make_unique<OpenVerifyRucioRandomSelector>();
     if (n == "priority") return std::make_unique<OpenVerifyRucioPrioritySelector>();
     if (n == "geoip") return std::make_unique<OpenVerifyRucioGeoIpSelector>();
-    // Default / unknown → random
-    return std::make_unique<OpenVerifyRucioRandomSelector>();
+    // Default / unknown → Rucio server order
+    return std::make_unique<OpenVerifyRucioServerOrderSelector>();
 }

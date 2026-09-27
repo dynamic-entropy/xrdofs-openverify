@@ -135,7 +135,7 @@ to cmsd. LFNs matching `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX` skip the REST call
 skip Rucio **and** the verify probe (cmsd locate, pass the redirect through).
 Tape PFNs are excluded from the candidate list (`type=TAPE` or RSE
 name ending in `_Tape`) before try-order. PFN try-order is selected by
-`XRD_OPENVERIFY_RUCIO_SELECT` (`random` default; `priority`; `geoip` reserved)
+`XRD_OPENVERIFY_RUCIO_SELECT` (`rucio` default = Rucio `sort=geoip` order; `random`; `priority`; `geoip` reserved)
 — subsequent PFNs are tried only after the current verify fails. See the
 **Rucio-first locate** row on
 [`openverify-cms-ops.json`](grafana/openverify-cms-ops.json).

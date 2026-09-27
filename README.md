@@ -50,7 +50,7 @@ Optional environment variables (see `include/OpenVerifyMetrics.hh` for the full 
 | `XRD_OPENVERIFY_RUCIO_ACCOUNT` | Rucio account (required when Rucio lookup is enabled) |
 | `XRD_OPENVERIFY_RUCIO_TIMEOUT` | HTTP timeout seconds for Rucio auth/list (default `10`) |
 | `XRD_OPENVERIFY_VERIFY_TIMEOUT` | Outbound XrdCl Open/Stat/VectorRead probe timeout in seconds (default `15`). FIFO wait defaults to twice this |
-| `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `random` (default), `priority` (Rucio priority), or `geoip` (reserved; currently same as random). Next PFNs are tried only after the current one fails verify |
+| `XRD_OPENVERIFY_RUCIO_SELECT` | Rucio PFN try-order: `rucio` (default; the order Rucio returns for `sort=geoip`), `random`, `priority` (Rucio priority), or `geoip` (reserved for local geo ranking; currently same as `rucio`). Next PFNs are tried only after the current one fails verify |
 | `XRD_OPENVERIFY_RUCIO_IGNORE_PREFIX` | Comma-separated LFN prefixes that skip Rucio `list_replicas` and fall through to **cmsd with verify still on**. Examples: `/store/user` (not in Rucio), `/tmp` (local SAM/test files). Does **not** stop OpenVerify probes. |
 | `XRD_OPENVERIFY_SKIP_PREFIX` | Comma-separated LFN prefixes that skip Rucio **and** the verify probe. One cmsd locate; the redirect is passed to the client (same idea as transit). Matching is the same path-component rule as ignore-prefix. Put `/store/test/xrootd` here — see [SAM AAA](#sam-aaa-storetestxrootd) below. |
 | `XRD_OPENVERIFY_RUCIO_CACHE_TTL` | `list_replicas` LRU TTL in seconds (default `60`; `0` disables). Key is `(lfn, scheme)`; replica set is reused across cmsd-stall retries |
