@@ -12,6 +12,8 @@
 #include "OpenVerifyRucioCurlPool.hh"
 #include "OpenVerifyRucioListCache.hh"
 #include "OpenVerifyRucioSelector.hh"
+#include "XrdSec/XrdSecEntity.hh"
+#include "XrdSec/XrdSecEntityAttr.hh"
 
 namespace {
 
@@ -136,6 +138,22 @@ bool PfnMatchesWantScheme(const std::string& pfn, const std::string& want_scheme
 }
 
 }  // namespace
+
+std::string OpenVerifyClientWireProt(const XrdSecEntity* client) {
+    if (!client) return {};
+    if (client->eaAPI) {
+        std::string wire;
+        if (client->eaAPI->Get("xrd.httpprot", wire) && (wire == "http" || wire == "https")) {
+            return wire;
+        }
+    }
+    // Stock XrdVomsHttp rewrites https → gsi and sets prox to xrdvoms (VOMSFun).
+    // Native xroot GSI leaves prox empty unless -vomsfun is loaded.
+    if (std::strcmp(client->prot, "gsi") == 0 && std::strcmp(client->prox, "xrdvoms") == 0) {
+        return "https";
+    }
+    return client->prot;
+}
 
 std::string OpenVerifyRucioSchemeFromProt(const char* prot) {
     if (prot && (std::strcmp(prot, "http") == 0 || std::strcmp(prot, "https") == 0)) {

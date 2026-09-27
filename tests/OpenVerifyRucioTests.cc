@@ -1,9 +1,12 @@
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <string>
 
 #include "OpenVerifyRucio.hh"
 #include "OpenVerifyRucioSelector.hh"
+#include "XrdSec/XrdSecEntity.hh"
+#include "XrdSec/XrdSecEntityAttr.hh"
 
 namespace {
 
@@ -14,6 +17,30 @@ void Expect(bool cond, const std::string& msg) {
         ++g_failures;
         std::cerr << "FAIL: " << msg << "\n";
     }
+}
+
+void Test_WireProtSurvivesVomsRewrite() {
+    XrdSecEntity https_client("https");
+    Expect(OpenVerifyClientWireProt(&https_client) == "https", "https prot is the wire protocol");
+    Expect(OpenVerifyRucioSchemeFromProt(OpenVerifyClientWireProt(&https_client).c_str()) == "davs",
+           "https client asks Rucio for davs");
+
+    // XrdVomsHttp rewrites prot to gsi. Stock builds only leave prox=xrdvoms.
+    std::strcpy(https_client.prot, "gsi");
+    Expect(OpenVerifyClientWireProt(&https_client) == "gsi", "gsi without prox or attribute stays xroot");
+    std::strncpy(https_client.prox, "xrdvoms", sizeof(https_client.prox) - 1);
+    Expect(OpenVerifyClientWireProt(&https_client) == "https", "stock XrdVomsHttp: gsi + prox=xrdvoms is HTTPS");
+    Expect(OpenVerifyRucioSchemeFromProt(OpenVerifyClientWireProt(&https_client).c_str()) == "davs",
+           "stock VOMS HTTPS client asks Rucio for davs");
+    Expect(https_client.eaAPI->Add("xrd.httpprot", "https", true), "record wire protocol");
+    Expect(OpenVerifyClientWireProt(&https_client) == "https", "gsi + xrd.httpprot=https is HTTPS");
+    Expect(OpenVerifyRucioSchemeFromProt(OpenVerifyClientWireProt(&https_client).c_str()) == "davs",
+           "VOMS-rewritten HTTPS client still asks Rucio for davs");
+
+    XrdSecEntity xroot_client("gsi");
+    Expect(OpenVerifyClientWireProt(&xroot_client) == "gsi", "xroot gsi is unchanged");
+    Expect(OpenVerifyRucioSchemeFromProt(OpenVerifyClientWireProt(&xroot_client).c_str()) == "root",
+           "xroot gsi asks Rucio for root");
 }
 
 void Test_SchemeFromProt() {
@@ -303,6 +330,7 @@ void Test_ShouldIgnoreLfn() {
 }  // namespace
 
 int main() {
+    Test_WireProtSurvivesVomsRewrite();
     Test_SchemeFromProt();
     Test_NormalizeScheme();
     Test_ParsePfnRoot();

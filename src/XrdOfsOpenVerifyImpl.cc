@@ -48,12 +48,11 @@ std::string MakeXrdClVerifyUrl(const std::string& key, const char* ztnFilePath, 
     return url;
 }
 
-// Returns true when the originating client connected over the HTTP(S) wire
-// protocol (see XrdHttpProtocol, which sets XrdSecEntity::prot to "http"/"https").
+// True when the client connected over HTTP(S). XrdVomsHttp rewrites prot to "gsi"
+// after VOMS extraction; OpenVerifyClientWireProt recovers the original value.
 bool IsHttpProtocol(const XrdSecEntity* client) {
-    if (!client) return false;
-    // prot is a fixed-size, NUL-terminated field (XrdSecPROTOIDSIZE).
-    return std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0;
+    const std::string prot = OpenVerifyClientWireProt(client);
+    return prot == "http" || prot == "https";
 }
 
 std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) {

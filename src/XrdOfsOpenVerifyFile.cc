@@ -86,8 +86,8 @@ void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const s
 }
 
 bool ClientIsHttp(const XrdSecEntity* client) {
-    return client && client->prot[0] &&
-           (std::strcmp(client->prot, "http") == 0 || std::strcmp(client->prot, "https") == 0);
+    const std::string prot = OpenVerifyClientWireProt(client);
+    return prot == "http" || prot == "https";
 }
 
 // Apply Rucio gateway redirect: full URL with the catalog PFN path (or LFN fallback).
@@ -256,8 +256,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
     // SKIP_PREFIX: no REST and no verify; cmsd still locates (see skip_prefix hop).
     // Observe: no Rucio either, so the client always gets the unchanged cmsd redirect.
     if (!m_observe && skip_reason.empty() && m_rucio.Enabled() && !pathStr.empty()) {
-        const char* prot = (client && client->prot[0]) ? client->prot : "";
-        const std::string scheme = OpenVerifyRucioSchemeFromProt(prot);
+        const std::string scheme = OpenVerifyRucioSchemeFromProt(OpenVerifyClientWireProt(client).c_str());
         const std::string client_ip = (client && client->host) ? client->host : "";
 
         const auto rucio_t0 = std::chrono::steady_clock::now();
