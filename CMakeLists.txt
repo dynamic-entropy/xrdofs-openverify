@@ -187,3 +187,15 @@ target_include_directories(openverify_hostreliability_tests
 )
 
 add_test(NAME openverify_hostreliability_tests COMMAND openverify_hostreliability_tests)
+
+add_executable(openverify_metrics_tests
+    tests/OpenVerifyMetricsTests.cc
+    src/OpenVerifyMetrics.cc
+    src/OpenVerifyHostReliability.cc
+)
+
+target_include_directories(openverify_metrics_tests
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_test(NAME openverify_metrics_tests COMMAND openverify_metrics_tests)

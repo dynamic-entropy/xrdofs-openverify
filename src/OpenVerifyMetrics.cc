@@ -897,10 +897,12 @@ void OpenVerifyMetrics::ObserveHistogram(DelayHistogram& h, double seconds) {
 }
 
 void OpenVerifyMetrics::Flush() {
-    const std::string content = BuildExpositionBody();
     const std::string tmp_path = m_path + ".tmp";
 
+    // Snapshot under the write lock: a body built earlier must never be renamed over a newer one,
+    // or Prometheus sees counters decrease and treats it as a reset.
     std::lock_guard<std::mutex> lock(m_write_mtx);
+    const std::string content = BuildExpositionBody();
 
     {
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
