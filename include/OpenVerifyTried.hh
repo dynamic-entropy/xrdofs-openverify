@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_set>
 
+#include "OpenVerifyCacheKey.hh"
+
 // Client/plugin `tried=` CGI: comma-separated host or host:port entries.
 // Used to skip already-tried Rucio/cmsd hops and to inject failed hosts into
 // the next cmsd locate (still the `tried=` key — never a separate CGI param).
@@ -157,6 +159,12 @@ inline std::unordered_set<std::string> ParseTriedHosts(const char* opaque) {
 inline bool IsInTriedList(const std::unordered_set<std::string>& tried, const std::string& host, int port) {
     if (tried.empty() || host.empty()) return false;
     if (tried.count(host)) return true;
+    const std::string canon = BracketIpv6Host(host);
+    if (canon != host && tried.count(canon)) return true;
+    if (canon.size() >= 2 && canon.front() == '[' && canon.back() == ']') {
+        const std::string bare = canon.substr(1, canon.size() - 2);
+        if (tried.count(bare)) return true;
+    }
     const std::string normalized = NormalizeCmsdTriedEntry(host);
     if (!normalized.empty() && tried.count(normalized)) return true;
     if (port >= 0) {

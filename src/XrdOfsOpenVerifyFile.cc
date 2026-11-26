@@ -100,7 +100,7 @@ void ApplyRucioRedirect(XrdOucErrInfo& err, const XrdSecEntity* client, const st
 // Index Rucio PFN hosts for later cmsd-accept compare (bare host + host:port).
 void IndexRucioHosts(const std::vector<OpenVerifyRucioCandidate>& candidates, std::unordered_set<std::string>& out) {
     for (const auto& cand : candidates) {
-        const std::string host = NormalizeHostForXrdCl(cand.host);
+        const std::string host = BracketIpv6Host(NormalizeHostForXrdCl(cand.host));
         if (host.empty()) continue;
         out.insert(host);
         if (cand.port >= 0) {
@@ -286,7 +286,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             rucio_host_list = JoinRucioHostPorts(listed.candidates);
             // Walk every Rucio PFN (no 3-cap).
             for (const auto& cand : listed.candidates) {
-                std::string hostStr = NormalizeHostForXrdCl(cand.host);
+                // One spelling for quarantine, the inflight cap, and tried=.
+                // [::1] is rewritten to 127.0.0.1 before brackets are applied.
+                std::string hostStr = BracketIpv6Host(NormalizeHostForXrdCl(cand.host));
                 const int portVal = cand.port;
                 const std::string shownHost = BracketIpv6Host(hostStr);
                 const std::string hostPort = (portVal < 0) ? shownHost : (shownHost + ":" + std::to_string(portVal));
@@ -533,9 +535,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             hostStr = NormalizeHostForXrdCl(parts.host);
             portVal = parts.port;
             if (!parts.path.empty()) verify_path = parts.path;
-            const std::string shownHost = BracketIpv6Host(hostStr);
-            hostPort = (portVal < 0) ? shownHost : (shownHost + ":" + std::to_string(portVal));
         }
+        hostStr = BracketIpv6Host(hostStr);
+        hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
 
         const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
         const auto cached = m_cache.Get(key);

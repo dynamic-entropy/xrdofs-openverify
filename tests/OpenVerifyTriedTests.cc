@@ -54,6 +54,10 @@ void Test_ParseTriedHosts() {
            "bracketed ipv6 drops the :port after ]");
     Expect(NormalizeCmsdTriedEntry("disk.example.edu:1094") == "disk.example.edu",
            "single-colon host:port still drops the port");
+
+    const auto v6 = ParseTriedHosts("tried=2001:db8::1");
+    Expect(IsInTriedList(v6, "[2001:db8::1]", 1094), "bracketed lookup matches an unbracketed tried host");
+    Expect(IsInTriedList(v6, "2001:db8::1", 1094), "unbracketed lookup matches the same tried host");
 }
 
 void Test_IsInTriedList() {
