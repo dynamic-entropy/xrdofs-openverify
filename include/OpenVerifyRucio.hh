@@ -65,10 +65,9 @@ class OpenVerifyMetrics;
 class XrdSecEntity;
 
 // Testable helpers (no network).
-// prot as the client connected, not as authz rewrote it. XrdVomsHttp sets prot to
-// "gsi" after a successful VOMS extract. Newer XrdVoms stores the original
-// "http"/"https" in the xrd.httpprot attribute. Stock XrdVoms only leaves
-// prox=="xrdvoms", which the global redirector does not set for xroot clients.
+// The link dialect is the wire protocol: "http", "https", "xroot", or
+// "xroots". sec.prot stays the auth protocol. When the dialect is unset,
+// prot is returned.
 std::string OpenVerifyClientWireProt(const XrdSecEntity* client);
 std::string OpenVerifyRucioSchemeFromProt(const char* prot);
 // Map client/wire aliases to the Rucio protocol id: http/https → davs, xroot → root.

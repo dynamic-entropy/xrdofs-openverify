@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.5.6
+Version:        0.5.7
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -39,6 +39,9 @@ and verifies file integrity decisions during open operations.
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Thu Nov 26 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.7-1
+- Read the client wire protocol from the link dialect. HTTPS probes stay HTTPS after VOMS sets prot to gsi, and an xroot client stays on xroot.
+
 * Sat Sep 05 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.6-1
 - Per-site verify_probes_total{source,host,port,result} so Grafana can show query/success/fail rates per hop.
 

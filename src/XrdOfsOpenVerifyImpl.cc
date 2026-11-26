@@ -48,8 +48,8 @@ std::string MakeXrdClVerifyUrl(const std::string& key, const char* ztnFilePath, 
     return url;
 }
 
-// True when the client connected over HTTP(S). XrdVomsHttp rewrites prot to "gsi"
-// after VOMS extraction; OpenVerifyClientWireProt recovers the original value.
+// True when the client connected over HTTP. The link dialect is "http" or
+// "https". sec.prot stays the auth protocol.
 bool IsHttpProtocol(const XrdSecEntity* client) {
     const std::string prot = OpenVerifyClientWireProt(client);
     return prot == "http" || prot == "https";
