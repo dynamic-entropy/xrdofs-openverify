@@ -149,8 +149,12 @@ void Test_DescribeRedirect() {
     Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
 
     const auto v6 = OpenVerifyUrl::DescribeRedirect("root://[2001:db8::1]:1095//store/a", -1);
-    Expect(v6.host == "2001:db8::1" && v6.port == 1095, "DescribeRedirect: bracketed ipv6");
+    Expect(v6.host == "[2001:db8::1]" && v6.port == 1095, "DescribeRedirect: keeps ipv6 brackets");
     Expect(v6.path == "//store/a", "DescribeRedirect: ipv6 path");
+
+    const auto v6bare = OpenVerifyUrl::DescribeRedirect("root://2001:db8::10//store/a", -1);
+    Expect(v6bare.host == "[2001:db8::10]" && v6bare.port == -1,
+           "DescribeRedirect: unbracketed ipv6 keeps the last hextet");
 
     const auto bad = OpenVerifyUrl::DescribeRedirect("root://", -1);
     Expect(bad.host.empty(), "DescribeRedirect: empty authority is unusable");

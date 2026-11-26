@@ -83,10 +83,12 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
     XrdSysError m_log;
     const char* m_config;
     XrdOucEnv* m_env;
+    // Declared before m_metrics. Members are destroyed in reverse order, and
+    // ~OpenVerifyMetrics joins the flush thread then snapshots site health.
+    OpenVerifyHostReliability m_host_reliability;
     OpenVerifyMetrics m_metrics;
     OpenVerifyCache m_cache;
     OpenVerifySingleFlight m_single_flight{m_metrics};
-    OpenVerifyHostReliability m_host_reliability;
     OpenVerifyRucio m_rucio;
     const bool m_observe;
     // When true, rewrite accepted SFS_REDIRECT host/port to the verified data server

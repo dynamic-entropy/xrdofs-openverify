@@ -73,13 +73,12 @@ inline std::string NormalizeCmsdTriedEntry(std::string e) {
         e = inner;
     }
 
+    // More than one colon: an unbracketed IPv6 address. The last hextet is
+    // often all digits (2001:db8::10); that is not a port. A real port is
+    // only stripped above, from the bracket form [addr]:port.
     const auto first_colon = e.find(':');
     const auto last_colon = e.rfind(':');
     if (first_colon != std::string::npos && first_colon != last_colon) {
-        if (TriedAllDigits(e.substr(last_colon + 1))) {
-            const std::string head = e.substr(0, last_colon);
-            if (head.find(':') != std::string::npos) return "[" + head + "]";
-        }
         return "[" + e + "]";
     }
 

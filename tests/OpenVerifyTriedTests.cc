@@ -47,6 +47,13 @@ void Test_ParseTriedHosts() {
     Expect(leg.count("disk.example.edu") == 1, "legacy +NN indexes the hostname");
     Expect(IsInTriedList(leg, "disk.example.edu", 1094), "legacy +NN matches the host at any port");
     Expect(!IsInTriedList(leg, "other.example", 1094), "wrong length is not decoded as a hostname");
+
+    Expect(NormalizeCmsdTriedEntry("2001:db8::10") == "[2001:db8::10]",
+           "unbracketed ipv6 does not drop a trailing hextet");
+    Expect(NormalizeCmsdTriedEntry("[2001:db8::1]:1094") == "[2001:db8::1]",
+           "bracketed ipv6 drops the :port after ]");
+    Expect(NormalizeCmsdTriedEntry("disk.example.edu:1094") == "disk.example.edu",
+           "single-colon host:port still drops the port");
 }
 
 void Test_IsInTriedList() {

@@ -115,7 +115,11 @@ OpenVerifyUrl::RedirectParts OpenVerifyUrl::DescribeRedirect(const std::string& 
     if (auth.front() == '[') {
         const auto end = auth.find(']');
         if (end == std::string::npos || end <= 1) return {};
-        out.host = auth.substr(1, end - 1);
+        // Keep the brackets. XrdCl splits the host on the first colon, so
+        // root://2001:db8::1:1095/ is not an IPv6 URL. [::1] is rewritten to
+        // 127.0.0.1 later (XrdCl keeps brackets in the hostname and then
+        // fails getaddrinfo).
+        out.host = auth.substr(0, end + 1);
         if (end + 1 < auth.size() && auth[end + 1] == ':') {
             char* endptr = nullptr;
             const long p = std::strtol(auth.c_str() + end + 2, &endptr, 10);
@@ -141,7 +145,8 @@ OpenVerifyUrl::RedirectParts OpenVerifyUrl::DescribeRedirect(const std::string& 
         // a single colon that is not a port falls through below).
     }
     if (first != std::string::npos && first != last) {
-        out.host = auth;
+        // Unbracketed IPv6. Do not peel a trailing hextet off as a port.
+        out.host = "[" + auth + "]";
         out.port = -1;
         return out;
     }

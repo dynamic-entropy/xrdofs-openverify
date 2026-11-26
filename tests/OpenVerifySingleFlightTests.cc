@@ -160,12 +160,41 @@ void Test_HostInflightCapRejectsBusyAndAllowsOtherHost() {
     Expect(a2.get().IsOK(), "siteA leader 2 should succeed");
 }
 
+void Test_FollowerTimeoutIsNotQueuePassThrough() {
+    // Follower bound is the queue timeout plus 4 * VERIFY_TIMEOUT seconds.
+    setenv("XRD_OPENVERIFY_MAX_INFLIGHT", "4", 1);
+    setenv("XRD_OPENVERIFY_MAX_WAITERS", "4", 1);
+    setenv("XRD_OPENVERIFY_QUEUE_TIMEOUT_MS", "50", 1);
+    setenv("XRD_OPENVERIFY_VERIFY_TIMEOUT", "1", 1);
+    OpenVerifyMetrics metrics;
+    OpenVerifySingleFlight sf(metrics);
+
+    std::promise<void> release;
+    std::shared_future<void> sig(release.get_future());
+    auto leader = std::async(std::launch::async, [&]() {
+        return sf.Run("same-key", "h", 1094, [&]() {
+            sig.wait();
+            return XrdCl::XRootDStatus{};
+        });
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    auto follower = std::async(std::launch::async, [&]() {
+        return sf.Run("same-key", "h", 1094, [&]() { return XrdCl::XRootDStatus{}; });
+    });
+    const auto fr = follower.get();
+    Expect(!fr.IsOK() && fr.GetErrorMessage() == "openverify_inflight_timeout",
+           "follower timeout must not be openverify_queue_timeout (that pass-throughs)");
+    release.set_value();
+    Expect(leader.get().IsOK(), "leader still publishes after the follower gives up");
+}
+
 }  // namespace
 
 int main() {
     Test_WaitSlotReleasedAfterQueueTimeout();
     Test_WaitSlotReleasedOnWaitToInFlightTransition();
     Test_HostInflightCapRejectsBusyAndAllowsOtherHost();
+    Test_FollowerTimeoutIsNotQueuePassThrough();
 
     if (g_failures) {
         std::cerr << g_failures << " test(s) failed.\n";

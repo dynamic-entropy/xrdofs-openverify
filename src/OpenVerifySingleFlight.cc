@@ -196,8 +196,11 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
     const bool finished = in_flight->cv.wait_until(lk, std::chrono::steady_clock::now() + follower_limit,
                                                     [&in_flight] { return in_flight->done; });
     if (!finished) {
-        m_metrics.RecordQueueAdmissionTimeout();
-        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_queue_timeout"};
+        // Not a queue reject: the leader is still inside the probe (or stuck).
+        // openverify_queue_timeout would pass the redirect through unverified
+        // and requeue onto this same flight. Skip the replica instead.
+        // The map entry stays until the leader finishes and publishes.
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_inflight_timeout"};
     }
     return in_flight->result;
 }
