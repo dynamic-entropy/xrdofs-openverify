@@ -114,7 +114,8 @@ std::string JoinRucioHostPorts(const std::vector<OpenVerifyRucioCandidate>& cand
     for (const auto& cand : candidates) {
         const std::string host = NormalizeHostForXrdCl(cand.host);
         if (host.empty()) continue;
-        const std::string hp = (cand.port < 0) ? host : (host + ":" + std::to_string(cand.port));
+        const std::string shown = BracketIpv6Host(host);
+        const std::string hp = (cand.port < 0) ? shown : (shown + ":" + std::to_string(cand.port));
         out = out.empty() ? hp : out + "," + hp;
     }
     return out;
@@ -287,7 +288,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             for (const auto& cand : listed.candidates) {
                 std::string hostStr = NormalizeHostForXrdCl(cand.host);
                 const int portVal = cand.port;
-                const std::string hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
+                const std::string shownHost = BracketIpv6Host(hostStr);
+                const std::string hostPort = (portVal < 0) ? shownHost : (shownHost + ":" + std::to_string(portVal));
 
                 // Honour client tried= (bare host or host:port) before counting an attempt.
                 if (IsInTriedList(client_tried, hostStr, portVal)) {
@@ -485,7 +487,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         hostStr = NormalizeHostForXrdCl(hostStr);
         int portVal = (port >= 0) ? port : -1;
 
-        std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
+        std::string hostPort =
+            (port < 0) ? BracketIpv6Host(hostStr) : (BracketIpv6Host(hostStr) + ":" + std::to_string(port));
 
         // Configured skip: cmsd located a next hop; do not verify-open it from here.
         // SAM AAA `/store/test/xrootd/<SITE>/...` is a TFC pin, not a DID — probing
@@ -530,7 +533,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             hostStr = NormalizeHostForXrdCl(parts.host);
             portVal = parts.port;
             if (!parts.path.empty()) verify_path = parts.path;
-            hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
+            const std::string shownHost = BracketIpv6Host(hostStr);
+            hostPort = (portVal < 0) ? shownHost : (shownHost + ":" + std::to_string(portVal));
         }
 
         const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);

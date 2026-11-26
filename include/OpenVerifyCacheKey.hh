@@ -12,8 +12,16 @@
 //
 // - If port < 0, we omit ":<port>".
 // - We ensure there's exactly two '/' between hostpart and the path.
+// - An IPv6 host is bracketed before the port so the port is not another hextet
+//   (root://2001:db8::1:1094/ is not a valid URL; root://[2001:db8::1]:1094/ is).
+inline std::string BracketIpv6Host(const std::string& host) {
+    if (host.empty() || host.front() == '[') return host;
+    if (host.find(':') == std::string::npos) return host;
+    return "[" + host + "]";
+}
+
 inline std::string MakeOpenVerifyCacheKey(const std::string& path, const std::string& host, int port) {
-    std::string hostpart = host;
+    std::string hostpart = BracketIpv6Host(host);
     if (port >= 0) {
         hostpart += ":" + std::to_string(port);
     }

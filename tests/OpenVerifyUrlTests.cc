@@ -57,6 +57,11 @@ void Test_SynthesizePfn() {
     Expect(OpenVerifyUrl::SynthesizePfn("dav", "h.example.edu", 1094, "/store/a.root") ==
                "http://h.example.edu:1094/store/a.root",
            "SynthesizePfn: dav resolves to http");
+    Expect(OpenVerifyUrl::SynthesizePfn("root", "2001:db8::1", 1094, "/store/a.root") ==
+               "root://[2001:db8::1]:1094//store/a.root",
+           "SynthesizePfn: brackets ipv6 before the port");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "2001:db8::1", 1094) == "[2001:db8::1]:1094//store/a.root",
+           "cache key brackets ipv6 before the port");
     Expect(OpenVerifyUrl::SynthesizePfn("https", "h.example.edu", 1094, "/store/a.root") ==
                "https://h.example.edu:1094/store/a.root",
            "SynthesizePfn: https alias");

@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 
+#include "OpenVerifyCacheKey.hh"
+
 std::string OpenVerifyUrl::DavToHttpUrl(const std::string& url) {
     if (url.compare(0, 7, "davs://") == 0) {
         return "https://" + url.substr(7);
@@ -20,7 +22,7 @@ std::string OpenVerifyUrl::SynthesizePfn(const std::string& protocol, const std:
     while (!p.empty() && p.front() == '/') p.erase(p.begin());
     p.insert(p.begin(), '/');
 
-    std::string authority = host;
+    std::string authority = BracketIpv6Host(host);
     if (port >= 0) {
         authority += ":" + std::to_string(port);
     }
