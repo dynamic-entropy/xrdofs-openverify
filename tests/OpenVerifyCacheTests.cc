@@ -117,6 +117,21 @@ void Test_NoPrefixMatch() {
            "NoPrefixMatch: should not match ancestor entry");
 }
 
+void Test_EvictsOldestWhenOverCap() {
+    OpenVerifyCache cache(2);
+    const auto t0 = Clock::time_point{};
+    const auto k1 = MakeOpenVerifyCacheKey("/a", "h", 1);
+    const auto k2 = MakeOpenVerifyCacheKey("/b", "h", 1);
+    const auto k3 = MakeOpenVerifyCacheKey("/c", "h", 1);
+    cache.PutPositive(k1, std::chrono::seconds(30), t0);
+    cache.PutPositive(k2, std::chrono::seconds(30), t0);
+    cache.PutPositive(k1, std::chrono::seconds(30), t0);  // refresh k1 so k2 is oldest
+    cache.PutNegative(k3, std::chrono::seconds(30), t0);
+    Expect(cache.Get(k2, t0).status == OpenVerifyCache::Status::Miss, "Evict: oldest entry dropped");
+    Expect(cache.Get(k1, t0).status == OpenVerifyCache::Status::Positive, "Evict: refreshed entry kept");
+    Expect(cache.Get(k3, t0).status == OpenVerifyCache::Status::Negative, "Evict: newest entry kept");
+}
+
 void Test_PositiveStoresFinalServer() {
     OpenVerifyCache cache;
     const auto t0 = Clock::time_point{};
@@ -147,6 +162,7 @@ int main() {
     Test_ResetClearsAll();
     Test_ExpirePrunes();
     Test_NoPrefixMatch();
+    Test_EvictsOldestWhenOverCap();
     Test_PositiveStoresFinalServer();
 
     if (g_failures) {

@@ -68,6 +68,7 @@ void Test_ConcurrentFlushNeverGoesBackwards() {
         });
     }
     for (auto& t : writers) t.join();
+    metrics.FlushNow();
     writers_done = true;
     reader.join();
 

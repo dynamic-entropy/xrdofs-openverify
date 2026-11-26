@@ -100,6 +100,7 @@ class OpenVerifyFileSystem : public XrdSfsFileSystem {
 
    private:
     void Configure();
+    XrdSfsFile* Wrap(std::unique_ptr<XrdSfsFile> f);
 };
 
 class OpenVerifyFile : public XrdSfsFile {

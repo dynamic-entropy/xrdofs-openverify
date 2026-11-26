@@ -309,13 +309,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 ++rucio_sites_tried;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
-                if (m_host_reliability.AvoidSite(hostStr, portVal)) {
-                    AppendTriedHost(tried_hosts, hostPort);
-                    hop.Avoided("quarantine");
-                    AppendHostReason(rucio_errors, hostPort, "quarantine");
-                    m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
-                    continue;
-                }
                 const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
                 const auto cached = m_cache.Get(key);
                 // Opaque is only for bearer extraction inside open_verify — never put on the
@@ -323,6 +316,15 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
                 switch (cached.status) {
                     case OpenVerifyCache::Status::Miss: {
+                        // A fresh positive/negative result is cheaper and more specific than
+                        // the site EWMA. Quarantine only applies when we would actually probe.
+                        if (m_host_reliability.AvoidSite(hostStr, portVal)) {
+                            AppendTriedHost(tried_hosts, hostPort);
+                            hop.Avoided("quarantine");
+                            AppendHostReason(rucio_errors, hostPort, "quarantine");
+                            m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
+                            break;
+                        }
                         m_metrics.RecordCacheMiss();
                         std::string last_fail_stage;
                         const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
@@ -341,7 +343,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 const std::string failure_reason =
                                     st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
                                 m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, failure_reason);
-                                m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                                if (OpenVerifyFailureAffectsSiteHealth(failure_reason)) {
+                                    m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                                }
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
                             }
                             return st;
@@ -479,9 +483,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const char* host = m_wrapped->error.getErrText(port);
         std::string hostStr = host ? host : "";
         hostStr = NormalizeHostForXrdCl(hostStr);
-        const int portVal = (port >= 0) ? port : -1;
+        int portVal = (port >= 0) ? port : -1;
 
-        const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
+        std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
 
         // Configured skip: cmsd located a next hop; do not verify-open it from here.
         // SAM AAA `/store/test/xrootd/<SITE>/...` is a TFC pin, not a DID — probing
@@ -510,16 +514,26 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         ++cmsd_sites_tried;
 
-        // Decide if the host should be added to the tried list
-        // based on past error patterns
-        if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
-            AppendTriedHost(tried_hosts, hostPort);
-            hop.Avoided("quarantine");
-            m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
-            continue;
+        std::string verify_path = pathStr;
+        if (port < 0 && hostStr.find("://") != std::string::npos) {
+            // Full-URL redirect: the client will open the URL path, not the LFN
+            // we handed cmsd. Probe that path. An unparseable URL is passed through
+            // rather than turned into root://root://...
+            const auto parts = OpenVerifyUrl::DescribeRedirect(hostStr, port);
+            if (parts.host.empty()) {
+                hop.Passthrough();
+                accepted = true;
+                retry = false;
+                m_log.Emsg(" WARN", "openverify unparsed redirect", hostPort.c_str(), pathStr.c_str());
+                break;
+            }
+            hostStr = NormalizeHostForXrdCl(parts.host);
+            portVal = parts.port;
+            if (!parts.path.empty()) verify_path = parts.path;
+            hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
         }
 
-        const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+        const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
         const auto cached = m_cache.Get(key);
 
         // Verify probe: opaque only for bearer extraction (not forwarded onto the URL).
@@ -528,6 +542,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         switch (cached.status) {
             case OpenVerifyCache::Status::Miss: {
+                if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
+                    AppendTriedHost(tried_hosts, hostPort);
+                    hop.Avoided("quarantine");
+                    m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
+                    break;
+                }
                 m_metrics.RecordCacheMiss();
                 std::string last_fail_stage;
                 const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
@@ -545,7 +565,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         const std::string failure_reason =
                             st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure("cmsd", hostStr, portVal, failure_reason);
-                        m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                        if (OpenVerifyFailureAffectsSiteHealth(failure_reason)) {
+                            m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                        }
                         m_cache.PutNegative(key, JitteredNegativeTTL(15));
                     }
                     return st;

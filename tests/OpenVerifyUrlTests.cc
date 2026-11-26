@@ -134,6 +134,28 @@ void Test_RucioPfnVerifyCacheKey() {
     Expect(lfn_key != key, "RucioPfnVerifyCacheKey: pfn key distinct from lfn key");
 }
 
+void Test_DescribeRedirect() {
+    const auto hostport = OpenVerifyUrl::DescribeRedirect("cms.example.edu", 1094);
+    Expect(hostport.host == "cms.example.edu" && hostport.port == 1094 && hostport.path.empty(),
+           "DescribeRedirect: bare host keeps the port hint");
+
+    const auto root = OpenVerifyUrl::DescribeRedirect("root://cms.example.edu:1094//store/a.root", -1);
+    Expect(root.host == "cms.example.edu", "DescribeRedirect: root host");
+    Expect(root.port == 1094, "DescribeRedirect: root port");
+    Expect(root.path == "//store/a.root", "DescribeRedirect: root path keeps the double slash");
+
+    const auto https = OpenVerifyUrl::DescribeRedirect("https://cms.example.edu/store/a.root?authz=secret", -1);
+    Expect(https.host == "cms.example.edu" && https.port == -1, "DescribeRedirect: https without port");
+    Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
+
+    const auto v6 = OpenVerifyUrl::DescribeRedirect("root://[2001:db8::1]:1095//store/a", -1);
+    Expect(v6.host == "2001:db8::1" && v6.port == 1095, "DescribeRedirect: bracketed ipv6");
+    Expect(v6.path == "//store/a", "DescribeRedirect: ipv6 path");
+
+    const auto bad = OpenVerifyUrl::DescribeRedirect("root://", -1);
+    Expect(bad.host.empty(), "DescribeRedirect: empty authority is unusable");
+}
+
 }  // namespace
 
 int main() {
@@ -143,6 +165,7 @@ int main() {
     Test_CmsLfnFromPath();
     Test_MakeRucioRedirect();
     Test_RucioPfnVerifyCacheKey();
+    Test_DescribeRedirect();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " failure(s)\n";

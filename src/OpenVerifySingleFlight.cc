@@ -189,7 +189,15 @@ XrdCl::XRootDStatus OpenVerifySingleFlight::Run(const std::string& key, const st
     }
     m_metrics.RecordSingleFlightFollower();
 
+    // The leader's probe is bounded (open+stat+read+close). Do not wait forever
+    // if that bound is missed: a stuck leader would pin every coalesced worker.
+    const auto follower_limit = m_queue_timeout + std::chrono::seconds(OpenVerifyTimeoutSeconds() * 4);
     std::unique_lock<std::mutex> lk(in_flight->mtx);
-    in_flight->cv.wait(lk, [&in_flight] { return in_flight->done; });
+    const bool finished = in_flight->cv.wait_until(lk, std::chrono::steady_clock::now() + follower_limit,
+                                                    [&in_flight] { return in_flight->done; });
+    if (!finished) {
+        m_metrics.RecordQueueAdmissionTimeout();
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOperationExpired, 0, "openverify_queue_timeout"};
+    }
     return in_flight->result;
 }

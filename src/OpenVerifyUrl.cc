@@ -1,5 +1,7 @@
 #include "OpenVerifyUrl.hh"
 
+#include <cstdlib>
+
 std::string OpenVerifyUrl::DavToHttpUrl(const std::string& url) {
     if (url.compare(0, 7, "davs://") == 0) {
         return "https://" + url.substr(7);
@@ -82,5 +84,68 @@ OpenVerifyUrl::RedirectTarget OpenVerifyUrl::MakeRucioRedirect(bool http_client,
     }
     out.code = -1;
     out.text = std::move(url);
+    return out;
+}
+
+OpenVerifyUrl::RedirectParts OpenVerifyUrl::DescribeRedirect(const std::string& text, int port_hint) {
+    RedirectParts out;
+    if (text.empty()) return out;
+
+    const auto scheme = text.find("://");
+    if (scheme == std::string::npos) {
+        out.host = text;
+        out.port = port_hint;
+        return out;
+    }
+
+    std::string rest = text.substr(scheme + 3);
+    const auto slash = rest.find('/');
+    const auto at = rest.find('@');
+    if (at != std::string::npos && (slash == std::string::npos || at < slash)) {
+        rest = rest.substr(at + 1);
+    }
+    const auto auth_end = rest.find('/');
+    std::string auth = (auth_end == std::string::npos) ? rest : rest.substr(0, auth_end);
+    const auto q = auth.find('?');
+    if (q != std::string::npos) auth.resize(q);
+    out.path = PathFromUrl(text);
+
+    if (auth.empty()) return {};
+
+    if (auth.front() == '[') {
+        const auto end = auth.find(']');
+        if (end == std::string::npos || end <= 1) return {};
+        out.host = auth.substr(1, end - 1);
+        if (end + 1 < auth.size() && auth[end + 1] == ':') {
+            char* endptr = nullptr;
+            const long p = std::strtol(auth.c_str() + end + 2, &endptr, 10);
+            if (endptr == auth.c_str() + end + 2 || (endptr && *endptr) || p <= 0 || p > 65535) return {};
+            out.port = static_cast<int>(p);
+        } else if (end + 1 != auth.size()) {
+            return {};
+        }
+        return out;
+    }
+
+    const auto first = auth.find(':');
+    const auto last = auth.rfind(':');
+    if (first != std::string::npos && first == last) {
+        out.host = auth.substr(0, first);
+        char* endptr = nullptr;
+        const long p = std::strtol(auth.c_str() + first + 1, &endptr, 10);
+        if (!out.host.empty() && endptr && *endptr == '\0' && p > 0 && p <= 65535) {
+            out.port = static_cast<int>(p);
+            return out;
+        }
+        // Not host:port. Keep the whole authority (unbracketed IPv6 has many colons;
+        // a single colon that is not a port falls through below).
+    }
+    if (first != std::string::npos && first != last) {
+        out.host = auth;
+        out.port = -1;
+        return out;
+    }
+    out.host = auth;
+    out.port = -1;
     return out;
 }
