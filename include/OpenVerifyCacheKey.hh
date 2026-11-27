@@ -20,14 +20,35 @@ inline std::string BracketIpv6Host(const std::string& host) {
     return "[" + host + "]";
 }
 
+inline bool OpenVerifyHttpFamilyScheme(const std::string& scheme) {
+    return scheme == "http" || scheme == "https" || scheme == "dav" || scheme == "davs";
+}
+
+// True when the key is an http:// or dav:// URL. A bearer must not be appended.
+inline bool OpenVerifyKeyIsCleartextHttp(const std::string& key) {
+    return key.compare(0, 7, "http://") == 0 || key.compare(0, 6, "dav://") == 0;
+}
+
 // scheme, when set, is part of the key so root:// and https:// to the same
 // host and path do not share a verify result.
+//
+// ROOT keys stay <scheme>://<host>[:<port>]//<path> with leading slashes
+// stripped: XRootD treats repeated '/' as one separator.
+// HTTP-family keys are the URL the client opens, so /store/a and //store/a
+// stay distinct.
 inline std::string MakeOpenVerifyCacheKey(const std::string& path, const std::string& host, int port,
                                           const std::string& scheme = {}) {
     std::string hostpart = BracketIpv6Host(host);
     if (port >= 0) {
         hostpart += ":" + std::to_string(port);
     }
+
+    if (OpenVerifyHttpFamilyScheme(scheme)) {
+        std::string p = path;
+        if (p.empty() || p.front() != '/') p.insert(p.begin(), '/');
+        return scheme + "://" + hostpart + p;
+    }
+
     if (!scheme.empty()) {
         hostpart = scheme + "://" + hostpart;
     }

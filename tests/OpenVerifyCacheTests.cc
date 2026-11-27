@@ -150,6 +150,22 @@ void Test_PositiveStoresFinalServer() {
     Expect(no_ds.final_port == -1, "PositiveStoresFinalServer: overwrite clears port");
 }
 
+void Test_HttpPathSlashesStayDistinct() {
+    OpenVerifyCache cache;
+    const auto t0 = Clock::time_point{};
+    const auto one = MakeOpenVerifyCacheKey("/store/a", "h", -1, "https");
+    const auto two = MakeOpenVerifyCacheKey("//store/a", "h", -1, "https");
+    cache.PutPositive(one, std::chrono::seconds(10), t0);
+    Expect(cache.Get(one, t0).status == OpenVerifyCache::Status::Positive, "https /store/a hits itself");
+    Expect(cache.Get(two, t0).status == OpenVerifyCache::Status::Miss, "https //store/a is a different resource");
+
+    const auto root_one = MakeOpenVerifyCacheKey("/store/a", "h", 1094, "root");
+    const auto root_two = MakeOpenVerifyCacheKey("//store/a", "h", 1094, "root");
+    cache.PutPositive(root_one, std::chrono::seconds(10), t0);
+    Expect(cache.Get(root_two, t0).status == OpenVerifyCache::Status::Positive,
+           "root still treats repeated slashes as one path");
+}
+
 }  // namespace
 
 int main() {
@@ -164,6 +180,7 @@ int main() {
     Test_NoPrefixMatch();
     Test_EvictsOldestWhenOverCap();
     Test_PositiveStoresFinalServer();
+    Test_HttpPathSlashesStayDistinct();
 
     if (g_failures) {
         std::cerr << g_failures << " test(s) failed.\n";

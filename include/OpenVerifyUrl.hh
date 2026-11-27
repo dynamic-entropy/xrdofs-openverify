@@ -50,4 +50,8 @@ class OpenVerifyUrl {
         std::string path;  // empty when the redirect did not carry a path
     };
     static RedirectParts DescribeRedirect(const std::string& text, int port_hint);
+
+    // Path the client will open. A full URL with no path is "/". A host:port
+    // redirect keeps the inbound path.
+    static std::string VerifyPathForRedirect(const std::string& inbound, const RedirectParts& parts, bool full_url);
 };

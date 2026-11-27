@@ -52,6 +52,13 @@ void OpenVerifyCache::StopExpiryThread() {
 }
 
 std::string OpenVerifyCache::NormalizeKey(const std::string& key) {
+    // HTTP path delimiters are significant. ROOT keys still collapse "//".
+    const auto scheme = key.find("://");
+    if (scheme != std::string::npos && scheme <= 5) {
+        const std::string s = key.substr(0, scheme);
+        if (s == "http" || s == "https" || s == "dav" || s == "davs") return key;
+    }
+
     std::string out;
     out.reserve(key.size());
     size_t i = 0;

@@ -49,6 +49,10 @@ bool IsQueueCapacityReject(const XrdCl::XRootDStatus& st) {
 
 bool IsHostInflightBusy(const XrdCl::XRootDStatus& st) { return st.GetErrorMessage() == "openverify_host_busy"; }
 
+bool IsCleartextBearerReject(const XrdCl::XRootDStatus& st) {
+    return st.GetErrorMessage() == "openverify_cleartext_bearer";
+}
+
 // One extra FIFO wait on global queue_timeout / queue_full so a slow generation of
 // probes can free a slot. Does not requeue host_busy (that site is at its cap).
 XrdCl::XRootDStatus RunWithQueueRequeue(OpenVerifySingleFlight& sf, const std::string& key, const std::string& host,
@@ -352,6 +356,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                                 // Store DS for metrics/cache completeness; do not rewrite Rucio redirect to it.
                                 m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
+                            } else if (IsCleartextBearerReject(st)) {
+                                last_fail_stage = fail_stage;
+                                m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, "openverify_cleartext_bearer");
                             } else {
                                 last_fail_stage = fail_stage;
                                 const std::string failure_reason =
@@ -377,6 +384,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             accepted = true;
                             accepted_from_rucio = true;
                             m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through (rucio)",
+                                       key.c_str());
+                        } else if (IsCleartextBearerReject(verify_result)) {
+                            accepted = true;
+                            accepted_from_rucio = true;
+                            m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe; passing through (rucio)",
                                        key.c_str());
                         } else if (IsHostInflightBusy(verify_result)) {
                             AppendTriedHost(tried_hosts, hostPort);
@@ -546,7 +558,8 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             hostStr = NormalizeHostForXrdCl(parts.host);
             portVal = parts.port;
             redirect_scheme = parts.scheme;
-            if (!parts.path.empty()) verify_path = parts.path;
+            // No path in the URL means the client opens "/". Do not keep the inbound LFN.
+            verify_path = OpenVerifyUrl::VerifyPathForRedirect(pathStr, parts, true);
         }
         hostStr = BracketIpv6Host(hostStr);
         hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
@@ -589,7 +602,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         if (OpenVerifyFailureAffectsSiteHealth(failure_reason)) {
                             m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
                         }
-                        m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                        // A refused cleartext probe was not a result for this URL.
+                        if (failure_reason != "openverify_cleartext_bearer") {
+                            m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                        }
                     }
                     return st;
                 });
@@ -616,6 +632,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     accepted_from_rucio = false;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through", key.c_str());
+                } else if (IsCleartextBearerReject(verify_result)) {
+                    accepted = true;
+                    accepted_from_rucio = false;
+                    retry = false;
+                    m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe; passing through", key.c_str());
                 } else if (IsHostInflightBusy(verify_result)) {
                     AppendTriedHost(tried_hosts, hostPort);
                     m_log.Emsg(" WARN", "openverify host inflight cap; skipping", key.c_str());

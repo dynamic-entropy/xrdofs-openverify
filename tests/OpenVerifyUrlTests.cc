@@ -155,11 +155,36 @@ void Test_DescribeRedirect() {
     Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
     Expect(https.scheme == "https", "DescribeRedirect: https scheme");
     Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https") ==
+               "https://cms.example.edu/store/a.root",
+           "https cache key is the URL the client opens");
+    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", -1, "https") ==
                "https://cms.example.edu//store/a.root",
-           "cache key includes the redirect scheme");
-    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root") !=
-               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "https"),
-           "root and https redirects do not share a cache key");
+           "https cache key keeps a repeated path slash");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root") ==
+               "root://cms.example.edu:1094//store/a.root",
+           "root cache key still collapses leading slashes");
+    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", 1094, "root") ==
+               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root"),
+           "root path convention treats // and / as the same path");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "roots") ==
+               "roots://cms.example.edu:1094//store/a.root",
+           "roots stays a distinct cache key");
+    Expect(OpenVerifyKeyIsCleartextHttp("http://h/store/a"), "http key is cleartext");
+    Expect(OpenVerifyKeyIsCleartextHttp("dav://h/store/a"), "dav key is cleartext");
+    Expect(!OpenVerifyKeyIsCleartextHttp("https://h/store/a"), "https key is not cleartext");
+    Expect(!OpenVerifyKeyIsCleartextHttp("h:1094//store/a"), "unschemed key is not cleartext http");
+
+    const auto bare = OpenVerifyUrl::DescribeRedirect("https://h.example", -1);
+    Expect(bare.host == "h.example" && bare.path.empty() && bare.scheme == "https",
+           "DescribeRedirect: https URL with no path");
+    Expect(OpenVerifyUrl::VerifyPathForRedirect("/store/a", bare, true) == "/",
+           "full URL with no path is probed as /");
+    Expect(OpenVerifyUrl::VerifyPathForRedirect("/store/a", hostport, false) == "/store/a",
+           "host:port redirect keeps the inbound path");
+
+    const auto roots = OpenVerifyUrl::DescribeRedirect("roots://site.example:1094//store/a", -1);
+    Expect(roots.scheme == "roots" && roots.host == "site.example" && roots.port == 1094,
+           "DescribeRedirect: roots scheme is preserved");
 
     const auto v6 = OpenVerifyUrl::DescribeRedirect("root://[2001:db8::1]:1095//store/a", -1);
     Expect(v6.host == "[2001:db8::1]" && v6.port == 1095, "DescribeRedirect: keeps ipv6 brackets");

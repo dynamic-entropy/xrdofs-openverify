@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "OpenVerifyCacheKey.hh"
 #include "OpenVerifyUrl.hh"
 #include "XrdCl/XrdClFile.hh"
 #include "XrdCl/XrdClStatus.hh"
@@ -25,9 +26,10 @@ namespace {
 // clients often send xrd.gsiusrpxy=/var/lib/condor/... (a path on the worker),
 // which would override X509_USER_PROXY on this host and cause Auth failed.
 std::string MakeXrdClVerifyUrl(const std::string& key, const char* ztnFilePath, const char* gsiCertPath,
-                               const char* gsiKeyPath) {
-    // `key` format: <host>[:<port>]//<path>
-    std::string url = "root://";
+                               const char* gsiKeyPath, const std::string& scheme = "root") {
+    // `key` format: <host>[:<port>]//<path>. scheme is root unless the redirect
+    // named roots or xroots; those must not be flattened to plain root.
+    std::string url = scheme.empty() ? "root://" : scheme + "://";
     url += key;
 
     bool haveQuery = false;
@@ -65,10 +67,8 @@ std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) 
     else if (body.rfind("dav://", 0) == 0) body.replace(0, 3, "http");
     std::string url;
     if (body.find("://") != std::string::npos) {
+        // The key is already the URL the client opens, including path slashes.
         url = std::move(body);
-        const auto scheme = url.find("://");
-        const auto pathsep = url.find("//", scheme + 3);
-        if (pathsep != std::string::npos) url.replace(pathsep, 2, "/");
     } else {
         url = "https://";
         const size_t sep = key.find("//");
@@ -372,6 +372,10 @@ uint16_t ProbeTimeout16(time_t seconds) {
 size_t PathSepInVerifyKey(const std::string& key) {
     const auto scheme = key.find("://");
     const size_t from = (scheme == std::string::npos) ? 0 : scheme + 3;
+    if (scheme != std::string::npos && OpenVerifyHttpFamilyScheme(key.substr(0, scheme))) {
+        // HTTP keys are scheme://authority + path, and the path may begin with "//".
+        return key.find('/', from);
+    }
     return key.find("//", from);
 }
 
@@ -386,6 +390,8 @@ std::string HostPortFromVerifyKey(const std::string& key) {
 std::string PathFromVerifyKey(const std::string& key) {
     const size_t sep = PathSepInVerifyKey(key);
     if (sep == std::string::npos) return key;
+    // HTTP keeps the path's own leading slashes. ROOT's "//" is only the separator.
+    if (sep + 1 < key.size() && key[sep + 1] != '/') return key.substr(sep);
     return key.substr(sep + 2);
 }
 
@@ -456,6 +462,14 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const bool haveToken = !token.empty();
     const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
+    // Do not place a bearer on http:// or dav://. The client may still follow
+    // that redirect; this probe must not send the token in cleartext.
+    if (useHttp && haveToken && OpenVerifyKeyIsCleartextHttp(key)) {
+        set_stage("credential_setup");
+        m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe", key.c_str());
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidArgs, 0, "openverify_cleartext_bearer"};
+    }
+
     const std::string hostPort = HostPortFromVerifyKey(key);
     const std::string path = PathFromVerifyKey(key);
 
@@ -493,14 +507,19 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const char* gsiKey = (!useHttp && haveServiceCert) ? m_ov_key.c_str() : nullptr;
 
     // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
-    // A root:// key is stripped back to host//path so MakeXrdClVerifyUrl can prepend the scheme.
+    // A schemed xroot key keeps that scheme (roots, xroots). root:// is only the
+    // default when the redirect did not name one.
     std::string root_key = key;
+    std::string root_scheme = "root";
     if (!useHttp) {
         const auto scheme = key.find("://");
-        if (scheme != std::string::npos) root_key = key.substr(scheme + 3);
+        if (scheme != std::string::npos) {
+            root_scheme = key.substr(0, scheme);
+            root_key = key.substr(scheme + 3);
+        }
     }
     const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
-                                    : MakeXrdClVerifyUrl(root_key, ztnPath, gsiCert, gsiKey);
+                                    : MakeXrdClVerifyUrl(root_key, ztnPath, gsiCert, gsiKey, root_scheme);
 
     const uint16_t probe_timeout = ProbeTimeout16(timeout_seconds);
 

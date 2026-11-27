@@ -162,3 +162,9 @@ OpenVerifyUrl::RedirectParts OpenVerifyUrl::DescribeRedirect(const std::string& 
     out.port = -1;
     return out;
 }
+
+std::string OpenVerifyUrl::VerifyPathForRedirect(const std::string& inbound, const RedirectParts& parts,
+                                                 bool full_url) {
+    if (!full_url) return inbound;
+    return parts.path.empty() ? std::string("/") : parts.path;
+}
