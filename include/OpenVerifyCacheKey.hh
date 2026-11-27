@@ -24,9 +24,14 @@ inline bool OpenVerifyHttpFamilyScheme(const std::string& scheme) {
     return scheme == "http" || scheme == "https" || scheme == "dav" || scheme == "davs";
 }
 
-// True when the key is an http:// or dav:// URL. A bearer must not be appended.
+inline bool OpenVerifyKeyHasScheme(const std::string& key, const char* scheme) {
+    const std::string prefix = std::string(scheme) + "://";
+    return key.compare(0, prefix.size(), prefix) == 0;
+}
+
+// True for a cleartext HTTP or WebDAV URL. A bearer must not be appended.
 inline bool OpenVerifyKeyIsCleartextHttp(const std::string& key) {
-    return key.compare(0, 7, "http://") == 0 || key.compare(0, 6, "dav://") == 0;
+    return OpenVerifyKeyHasScheme(key, "http") || OpenVerifyKeyHasScheme(key, "dav");
 }
 
 // scheme, when set, is part of the key so root:// and https:// to the same

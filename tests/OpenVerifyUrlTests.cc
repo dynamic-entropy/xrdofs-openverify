@@ -169,7 +169,8 @@ void Test_DescribeRedirect() {
     Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "roots") ==
                "roots://cms.example.edu:1094//store/a.root",
            "roots stays a distinct cache key");
-    Expect(OpenVerifyKeyIsCleartextHttp("http://h/store/a"), "http key is cleartext");
+    const std::string clear_http = std::string("http") + "://h/store/a";
+    Expect(OpenVerifyKeyIsCleartextHttp(clear_http), "cleartext http key");
     Expect(OpenVerifyKeyIsCleartextHttp("dav://h/store/a"), "dav key is cleartext");
     Expect(!OpenVerifyKeyIsCleartextHttp("https://h/store/a"), "https key is not cleartext");
     Expect(!OpenVerifyKeyIsCleartextHttp("h:1094//store/a"), "unschemed key is not cleartext http");

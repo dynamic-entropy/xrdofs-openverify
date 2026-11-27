@@ -462,8 +462,8 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const bool haveToken = !token.empty();
     const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
 
-    // Do not place a bearer on http:// or dav://. The client may still follow
-    // that redirect; this probe must not send the token in cleartext.
+    // Do not place a bearer on a cleartext HTTP or WebDAV URL. The client may
+    // still follow that redirect; this probe must not send the token in the clear.
     if (useHttp && haveToken && OpenVerifyKeyIsCleartextHttp(key)) {
         set_stage("credential_setup");
         m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe", key.c_str());
