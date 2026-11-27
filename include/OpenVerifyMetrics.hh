@@ -79,7 +79,7 @@ class OpenVerifyMetrics {
     };
 
     OpenVerifyMetrics();
-    ~OpenVerifyMetrics();
+    ~OpenVerifyMetrics() noexcept;
     OpenVerifyMetrics(const OpenVerifyMetrics&) = delete;
     OpenVerifyMetrics& operator=(const OpenVerifyMetrics&) = delete;
 
@@ -88,7 +88,7 @@ class OpenVerifyMetrics {
 
     // Optional: export per-site EWMA gauges from HostReliability on each Flush.
     void SetSiteSource(OpenVerifyHostReliability* sites) {
-        m_sites.store(sites, std::memory_order_release);
+        m_sites.store(sites);
     }
 
     void RecordCacheMiss();
