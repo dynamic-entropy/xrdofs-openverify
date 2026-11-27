@@ -67,7 +67,15 @@ void Test_ConcurrentFlushNeverGoesBackwards() {
             for (int j = 0; j < kPerWriter; ++j) metrics.RecordCacheMiss();
         });
     }
+    std::vector<std::thread> flushers;
+    for (int i = 0; i < 2; ++i) {
+        flushers.emplace_back([&]() {
+            while (!writers_done.load()) metrics.FlushNow();
+        });
+    }
     for (auto& t : writers) t.join();
+    writers_done = true;
+    for (auto& t : flushers) t.join();
     metrics.FlushNow();
     writers_done = true;
     reader.join();

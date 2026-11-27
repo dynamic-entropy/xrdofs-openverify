@@ -1,5 +1,6 @@
 #include "OpenVerifyUrl.hh"
 
+#include <cctype>
 #include <cstdlib>
 
 #include "OpenVerifyCacheKey.hh"
@@ -93,14 +94,19 @@ OpenVerifyUrl::RedirectParts OpenVerifyUrl::DescribeRedirect(const std::string& 
     RedirectParts out;
     if (text.empty()) return out;
 
-    const auto scheme = text.find("://");
-    if (scheme == std::string::npos) {
+    const auto scheme_at = text.find("://");
+    if (scheme_at == std::string::npos) {
         out.host = text;
         out.port = port_hint;
         return out;
     }
+    out.scheme = text.substr(0, scheme_at);
+    for (char& c : out.scheme) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (out.scheme == "davs") out.scheme = "https";
+    else if (out.scheme == "dav") out.scheme = "http";
+    else if (out.scheme == "xroot") out.scheme = "root";
 
-    std::string rest = text.substr(scheme + 3);
+    std::string rest = text.substr(scheme_at + 3);
     const auto slash = rest.find('/');
     const auto at = rest.find('@');
     if (at != std::string::npos && (slash == std::string::npos || at < slash)) {

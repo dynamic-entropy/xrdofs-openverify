@@ -75,6 +75,16 @@ void FinishVerifyHop(OpenVerifyMetrics::RedirectTimer& hop, const XrdCl::XRootDS
 
 // Rewrite SFS_REDIRECT ErrInfo to the verified data server when known.
 // cmsd path only — do not use for Rucio gateway redirects (EOS FST lacks MGM opaque).
+// Leading slashes only. A full-URL path of //store/a matches the inbound /store/a.
+bool SameVerifyPath(const std::string& a, const std::string& b) {
+    auto strip = [](const std::string& s) {
+        size_t i = 0;
+        while (i < s.size() && s[i] == '/') ++i;
+        return s.substr(i);
+    };
+    return strip(a) == strip(b);
+}
+
 void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const std::string& final_host, int final_port,
                                        XrdSysError& log) {
     if (!enabled || final_host.empty() || final_port < 0) {
@@ -520,10 +530,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         ++cmsd_sites_tried;
 
         std::string verify_path = pathStr;
+        std::string redirect_scheme;
         if (port < 0 && hostStr.find("://") != std::string::npos) {
-            // Full-URL redirect: the client will open the URL path, not the LFN
-            // we handed cmsd. Probe that path. An unparseable URL is passed through
-            // rather than turned into root://root://...
+            // Full-URL redirect: the client will open that URL, including its
+            // scheme and path. Probe that endpoint. An unparseable URL is passed
+            // through rather than turned into root://root://...
             const auto parts = OpenVerifyUrl::DescribeRedirect(hostStr, port);
             if (parts.host.empty()) {
                 hop.Passthrough();
@@ -534,12 +545,16 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             }
             hostStr = NormalizeHostForXrdCl(parts.host);
             portVal = parts.port;
+            redirect_scheme = parts.scheme;
             if (!parts.path.empty()) verify_path = parts.path;
         }
         hostStr = BracketIpv6Host(hostStr);
         hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
 
-        const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
+        const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal, redirect_scheme);
+        // Host-only direct-server rewrite drops the URL path. Skip it when the
+        // client would then open a different path from the one we probed.
+        const bool direct_same_path = m_direct_server && SameVerifyPath(pathStr, verify_path);
         const auto cached = m_cache.Get(key);
 
         // Verify probe: opaque only for bearer extraction (not forwarded onto the URL).
@@ -590,7 +605,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                                     rucio_host_list);
                     }
                     // Leader and followers both read the DS from cache after put.
-                    if (m_direct_server) {
+                    if (direct_same_path) {
                         const auto after = m_cache.Get(key);
                         MaybeRewriteRedirectToFinalServer(error, true, after.final_host, after.final_port, m_log);
                     }
@@ -619,7 +634,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     RecordCmsdAfterRucioExhaust(m_metrics, m_log, pathStr, hostStr, portVal, rucio_host_index,
                                                 rucio_host_list);
                 }
-                MaybeRewriteRedirectToFinalServer(error, m_direct_server, cached.final_host, cached.final_port, m_log);
+                MaybeRewriteRedirectToFinalServer(error, direct_same_path, cached.final_host, cached.final_port, m_log);
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:

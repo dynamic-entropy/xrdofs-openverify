@@ -247,7 +247,8 @@ class OpenVerifyMetrics {
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     static void ObserveHistogram(DelayHistogram& h, double seconds);
     std::string BuildExpositionBody() const;
-    void Flush();
+    // False when the textfile was not replaced. Callers keep the pending flag.
+    bool Flush();
     void NoteUpdate();
     void FlushLoop();
 

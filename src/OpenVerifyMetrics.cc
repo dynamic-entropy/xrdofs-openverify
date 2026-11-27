@@ -136,7 +136,9 @@ void OpenVerifyMetrics::NoteUpdate() {
 void OpenVerifyMetrics::FlushNow() {
     if (m_path.empty()) return;
     m_flush_needed.store(false);
-    Flush();
+    // A failed write must stay pending. A NoteUpdate during a successful write
+    // sets the flag again and must not be cleared here.
+    if (!Flush()) m_flush_needed.store(true);
 }
 
 void OpenVerifyMetrics::FlushLoop() {
@@ -146,7 +148,7 @@ void OpenVerifyMetrics::FlushLoop() {
         if (m_flush_stop) break;
         if (!m_flush_needed.exchange(false)) continue;
         lk.unlock();
-        Flush();
+        if (!Flush()) m_flush_needed.store(true);
         lk.lock();
     }
 }
@@ -952,7 +954,7 @@ void OpenVerifyMetrics::ObserveHistogram(DelayHistogram& h, double seconds) {
     h.sum_micros.fetch_add(static_cast<uint64_t>(seconds * 1e6), std::memory_order_relaxed);
 }
 
-void OpenVerifyMetrics::Flush() {
+bool OpenVerifyMetrics::Flush() {
     const std::string tmp_path = m_path + ".tmp";
 
     // Snapshot under the write lock: a body built earlier must never be renamed over a newer one,
@@ -962,12 +964,14 @@ void OpenVerifyMetrics::Flush() {
 
     {
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
-        if (!out) return;
+        if (!out) return false;
         out.write(content.data(), static_cast<std::streamsize>(content.size()));
-        if (!out.flush()) return;
+        if (!out.flush()) return false;
     }
 
     if (std::rename(tmp_path.c_str(), m_path.c_str()) != 0) {
         (void)std::remove(tmp_path.c_str());
+        return false;
     }
+    return true;
 }

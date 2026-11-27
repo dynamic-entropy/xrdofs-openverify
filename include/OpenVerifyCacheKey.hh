@@ -20,10 +20,16 @@ inline std::string BracketIpv6Host(const std::string& host) {
     return "[" + host + "]";
 }
 
-inline std::string MakeOpenVerifyCacheKey(const std::string& path, const std::string& host, int port) {
+// scheme, when set, is part of the key so root:// and https:// to the same
+// host and path do not share a verify result.
+inline std::string MakeOpenVerifyCacheKey(const std::string& path, const std::string& host, int port,
+                                          const std::string& scheme = {}) {
     std::string hostpart = BracketIpv6Host(host);
     if (port >= 0) {
         hostpart += ":" + std::to_string(port);
+    }
+    if (!scheme.empty()) {
+        hostpart = scheme + "://" + hostpart;
     }
 
     std::string p = path;

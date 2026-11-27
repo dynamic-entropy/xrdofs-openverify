@@ -44,6 +44,7 @@ class OpenVerifyUrl {
     // (host and path live in the string). A non-negative port means `text` is
     // a hostname and the client keeps the path it already has.
     struct RedirectParts {
+        std::string scheme;  // wire scheme (davs→https, dav→http, xroot→root); empty if text is not a URL
         std::string host;
         int port{-1};
         std::string path;  // empty when the redirect did not carry a path

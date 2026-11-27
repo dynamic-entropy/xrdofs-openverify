@@ -170,14 +170,17 @@ void Test_FollowerTimeoutIsNotQueuePassThrough() {
     OpenVerifySingleFlight sf(metrics);
 
     std::promise<void> release;
+    std::promise<void> leader_entered;
     std::shared_future<void> sig(release.get_future());
     auto leader = std::async(std::launch::async, [&]() {
         return sf.Run("same-key", "h", 1094, [&]() {
+            leader_entered.set_value();
             sig.wait();
             return XrdCl::XRootDStatus{};
         });
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    Expect(leader_entered.get_future().wait_for(std::chrono::seconds(2)) == std::future_status::ready,
+           "leader entered the probe before the follower starts");
     auto follower = std::async(std::launch::async, [&]() {
         return sf.Run("same-key", "h", 1094, [&]() { return XrdCl::XRootDStatus{}; });
     });

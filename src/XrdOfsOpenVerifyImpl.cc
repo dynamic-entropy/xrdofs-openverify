@@ -58,16 +58,27 @@ bool IsHttpProtocol(const XrdSecEntity* client) {
 }
 
 std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) {
-    // `key` format: <host>[:<port>]//<path>. HTTP needs a single '/' between the
-    // authority and the path, so collapse the "//" separator used by the xroot form.
-    std::string url = "https://";
-    const size_t sep = key.find("//");
-    if (sep == std::string::npos) {
-        url += key;
+    // `key` is <host>[:<port>]//<path>, or scheme://<host>[:<port>]//<path> when
+    // the cmsd redirect named the scheme. HTTP needs one '/' before the path.
+    std::string body = key;
+    if (body.rfind("davs://", 0) == 0) body.replace(0, 4, "https");
+    else if (body.rfind("dav://", 0) == 0) body.replace(0, 3, "http");
+    std::string url;
+    if (body.find("://") != std::string::npos) {
+        url = std::move(body);
+        const auto scheme = url.find("://");
+        const auto pathsep = url.find("//", scheme + 3);
+        if (pathsep != std::string::npos) url.replace(pathsep, 2, "/");
     } else {
-        url.append(key, 0, sep);
-        url.push_back('/');
-        url.append(key, sep + 2, std::string::npos);
+        url = "https://";
+        const size_t sep = key.find("//");
+        if (sep == std::string::npos) {
+            url += key;
+        } else {
+            url.append(key, 0, sep);
+            url.push_back('/');
+            url.append(key, sep + 2, std::string::npos);
+        }
     }
 
     // Do not forward client opaque (same reason as MakeXrdClVerifyUrl). Only attach
@@ -356,16 +367,33 @@ uint16_t ProbeTimeout16(time_t seconds) {
     return static_cast<uint16_t>(seconds);
 }
 
+// Path separator is the "//" after the authority. A schemed key
+// (https://host//path) also contains "//" inside "://".
+size_t PathSepInVerifyKey(const std::string& key) {
+    const auto scheme = key.find("://");
+    const size_t from = (scheme == std::string::npos) ? 0 : scheme + 3;
+    return key.find("//", from);
+}
+
 std::string HostPortFromVerifyKey(const std::string& key) {
-    const size_t sep = key.find("//");
-    if (sep == std::string::npos) return key;
-    return key.substr(0, sep);
+    const size_t sep = PathSepInVerifyKey(key);
+    std::string authority = (sep == std::string::npos) ? key : key.substr(0, sep);
+    const auto scheme = authority.find("://");
+    if (scheme != std::string::npos) authority = authority.substr(scheme + 3);
+    return authority;
 }
 
 std::string PathFromVerifyKey(const std::string& key) {
-    const size_t sep = key.find("//");
+    const size_t sep = PathSepInVerifyKey(key);
     if (sep == std::string::npos) return key;
     return key.substr(sep + 2);
+}
+
+bool KeyForcesHttp(const std::string& key) {
+    const auto scheme = key.find("://");
+    if (scheme == std::string::npos) return false;
+    const std::string s = key.substr(0, scheme);
+    return s == "http" || s == "https" || s == "dav" || s == "davs";
 }
 
 // XrdCl DataServer is host:port (optionally user[:password]@host:port).
@@ -419,8 +447,9 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         if (fail_stage) *fail_stage = stage;
     };
 
-    // Match the client's wire protocol (http/https vs xroot) for the outbound open.
-    const bool useHttp = IsHttpProtocol(client);
+    // A schemed cache key is the redirect URL the client will open. Otherwise
+    // match the client's wire protocol (http/https vs xroot).
+    const bool useHttp = (key.find("://") != std::string::npos) ? KeyForcesHttp(key) : IsHttpProtocol(client);
 
     std::string token;
     ExtractClientBearerToken(client, opaque, token, nullptr);
@@ -438,7 +467,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // Use XrdCl to open the file and read the first and last byte
     // If the read fails, return false
     // If the read succeeds, return true
-    const auto slashPos = key.find('/');
+    const auto slashPos = PathSepInVerifyKey(key);
     if (slashPos == std::string::npos || slashPos == 0) {
         set_stage("key");
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
@@ -464,8 +493,14 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const char* gsiKey = (!useHttp && haveServiceCert) ? m_ov_key.c_str() : nullptr;
 
     // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
+    // A root:// key is stripped back to host//path so MakeXrdClVerifyUrl can prepend the scheme.
+    std::string root_key = key;
+    if (!useHttp) {
+        const auto scheme = key.find("://");
+        if (scheme != std::string::npos) root_key = key.substr(scheme + 3);
+    }
     const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
-                                    : MakeXrdClVerifyUrl(key, ztnPath, gsiCert, gsiKey);
+                                    : MakeXrdClVerifyUrl(root_key, ztnPath, gsiCert, gsiKey);
 
     const uint16_t probe_timeout = ProbeTimeout16(timeout_seconds);
 

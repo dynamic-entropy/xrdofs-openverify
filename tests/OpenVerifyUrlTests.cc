@@ -145,6 +145,7 @@ void Test_DescribeRedirect() {
            "DescribeRedirect: bare host keeps the port hint");
 
     const auto root = OpenVerifyUrl::DescribeRedirect("root://cms.example.edu:1094//store/a.root", -1);
+    Expect(root.scheme == "root", "DescribeRedirect: root scheme");
     Expect(root.host == "cms.example.edu", "DescribeRedirect: root host");
     Expect(root.port == 1094, "DescribeRedirect: root port");
     Expect(root.path == "//store/a.root", "DescribeRedirect: root path keeps the double slash");
@@ -152,6 +153,13 @@ void Test_DescribeRedirect() {
     const auto https = OpenVerifyUrl::DescribeRedirect("https://cms.example.edu/store/a.root?authz=secret", -1);
     Expect(https.host == "cms.example.edu" && https.port == -1, "DescribeRedirect: https without port");
     Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
+    Expect(https.scheme == "https", "DescribeRedirect: https scheme");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https") ==
+               "https://cms.example.edu//store/a.root",
+           "cache key includes the redirect scheme");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root") !=
+               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "https"),
+           "root and https redirects do not share a cache key");
 
     const auto v6 = OpenVerifyUrl::DescribeRedirect("root://[2001:db8::1]:1095//store/a", -1);
     Expect(v6.host == "[2001:db8::1]" && v6.port == 1095, "DescribeRedirect: keeps ipv6 brackets");
