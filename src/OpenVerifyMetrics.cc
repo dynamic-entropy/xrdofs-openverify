@@ -114,7 +114,7 @@ OpenVerifyMetrics::~OpenVerifyMetrics() noexcept {
         }
         m_flush_cv.notify_all();
         if (m_flush_thread.joinable()) m_flush_thread.join();
-        if (m_flush_needed.exchange(false, std::memory_order_relaxed) && !m_path.empty()) {
+        if (m_flush_needed.exchange(false, std::memory_order_acquire) && !m_path.empty()) {
             Flush();
         }
     } catch (...) {
@@ -124,7 +124,9 @@ OpenVerifyMetrics::~OpenVerifyMetrics() noexcept {
 
 void OpenVerifyMetrics::NoteUpdate() {
     if (m_path.empty()) return;
-    m_flush_needed.store(true, std::memory_order_relaxed);
+    // Release pairs with the acquire that clears the flag, so the counter
+    // increment that called us is visible in that snapshot.
+    m_flush_needed.store(true, std::memory_order_release);
     // Start the writer on the first update, after init has published m_sites.
     if (m_flush_started.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lk(m_flush_mtx);
@@ -135,10 +137,10 @@ void OpenVerifyMetrics::NoteUpdate() {
 
 void OpenVerifyMetrics::FlushNow() {
     if (m_path.empty()) return;
-    m_flush_needed.store(false, std::memory_order_relaxed);
+    (void)m_flush_needed.exchange(false, std::memory_order_acquire);
     // A failed write must stay pending. A NoteUpdate during a successful write
     // sets the flag again and must not be cleared here.
-    if (!Flush()) m_flush_needed.store(true, std::memory_order_relaxed);
+    if (!Flush()) m_flush_needed.store(true, std::memory_order_release);
 }
 
 void OpenVerifyMetrics::FlushLoop() {
@@ -146,9 +148,9 @@ void OpenVerifyMetrics::FlushLoop() {
     while (!m_flush_stop) {
         m_flush_cv.wait_for(lk, std::chrono::seconds(1), [&] { return m_flush_stop; });
         if (m_flush_stop) break;
-        if (!m_flush_needed.exchange(false, std::memory_order_relaxed)) continue;
+        if (!m_flush_needed.exchange(false, std::memory_order_acquire)) continue;
         lk.unlock();
-        if (!Flush()) m_flush_needed.store(true, std::memory_order_relaxed);
+        if (!Flush()) m_flush_needed.store(true, std::memory_order_release);
         lk.lock();
     }
 }
