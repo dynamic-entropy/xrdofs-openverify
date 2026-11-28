@@ -88,7 +88,7 @@ class OpenVerifyMetrics {
 
     // Optional: export per-site EWMA gauges from HostReliability on each Flush.
     void SetSiteSource(OpenVerifyHostReliability* sites) {
-        m_sites.store(sites);
+        m_sites.store(sites, std::memory_order_release);
     }
 
     void RecordCacheMiss();

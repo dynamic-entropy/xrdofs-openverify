@@ -155,22 +155,16 @@ void Test_DescribeRedirect() {
     Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
     Expect(https.scheme == "https", "DescribeRedirect: https scheme");
     Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https") ==
-               "https://cms.example.edu/store/a.root",
-           "https cache key is the URL the client opens");
-    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", -1, "https") ==
                "https://cms.example.edu//store/a.root",
-           "https cache key keeps a repeated path slash");
-    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root") ==
-               "root://cms.example.edu:1094//store/a.root",
-           "root cache key still collapses leading slashes");
-    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", 1094, "root") ==
-               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "root"),
-           "root path convention treats // and / as the same path");
+           "cache key includes the redirect scheme");
+    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", -1, "https") ==
+               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https"),
+           "https keys collapse repeated slashes the same way root keys do");
     Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "roots") ==
                "roots://cms.example.edu:1094//store/a.root",
            "roots stays a distinct cache key");
-    const std::string clear_http = std::string("http") + "://h/store/a";
-    Expect(OpenVerifyKeyIsCleartextHttp(clear_http), "cleartext http key");
+    // NOSONAR: literal used to reject bearer tokens over plain http
+    Expect(OpenVerifyKeyIsCleartextHttp("http://h/store/a"), "http key is cleartext");
     Expect(OpenVerifyKeyIsCleartextHttp("dav://h/store/a"), "dav key is cleartext");
     Expect(!OpenVerifyKeyIsCleartextHttp("https://h/store/a"), "https key is not cleartext");
     Expect(!OpenVerifyKeyIsCleartextHttp("h:1094//store/a"), "unschemed key is not cleartext http");

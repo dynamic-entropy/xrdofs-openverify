@@ -370,42 +370,37 @@ void OpenVerifyRucio::ObserveCurl(const OpenVerifyRucioCurlPool::Handle& handle)
 }
 
 bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
-    std::string proxy;
-    std::string account;
-    std::string url;
-    long timeout_s = 0;
-    {
-        std::unique_lock<std::mutex> lock(m_token_mtx);
-        auto token_fresh = [&] {
-            return !m_token.empty() && std::chrono::steady_clock::now() < m_token_expiry;
-        };
-        if (!force_refresh && token_fresh()) return true;
+    std::unique_lock<std::mutex> lock(m_token_mtx);
+    auto token_fresh = [&] {
+        return !m_token.empty() && std::chrono::steady_clock::now() < m_token_expiry;
+    };
+    if (!force_refresh && token_fresh()) return true;
 
-        // Another thread is already on the wire. Wait for it instead of stacking auths.
-        if (m_auth_refreshing) {
-            m_auth_cv.wait(lock, [&] { return !m_auth_refreshing; });
-            if (token_fresh()) return true;
-            if (!force_refresh) return false;
-        }
-
-        if (m_account.empty()) {
-            m_log.Emsg(" WARN", "openverify rucio auth skipped: no account");
-            return false;
-        }
-        const char* proxy_env = std::getenv("X509_USER_PROXY");
-        if (!proxy_env || !*proxy_env) {
-            m_log.Emsg(" WARN", "openverify rucio auth skipped: X509_USER_PROXY unset");
-            return false;
-        }
-
-        // Copy what the HTTP call needs. The lock ends with this scope so
-        // list_replicas does not block on the token mutex for the auth RTT.
-        proxy = proxy_env;
-        account = m_account;
-        url = m_auth_url + "/auth/x509_proxy";
-        timeout_s = m_timeout_s;
-        m_auth_refreshing = true;
+    // Another thread is already on the wire. Wait for it instead of stacking auths.
+    if (m_auth_refreshing) {
+        m_auth_cv.wait(lock, [&] { return !m_auth_refreshing; });
+        if (token_fresh()) return true;
+        if (!force_refresh) return false;
     }
+
+    if (m_account.empty()) {
+        m_log.Emsg(" WARN", "openverify rucio auth skipped: no account");
+        return false;
+    }
+    const char* proxy_env = std::getenv("X509_USER_PROXY");
+    if (!proxy_env || !*proxy_env) {
+        m_log.Emsg(" WARN", "openverify rucio auth skipped: X509_USER_PROXY unset");
+        return false;
+    }
+
+    // Copy what the HTTP call needs, then drop the lock. list_replicas must not
+    // block on the token mutex for the whole auth RTT.
+    const std::string proxy = proxy_env;
+    const std::string account = m_account;
+    const std::string url = m_auth_url + "/auth/x509_proxy";
+    const long timeout_s = m_timeout_s;
+    m_auth_refreshing = true;
+    lock.unlock();
 
     std::string token;
     std::string body;
@@ -455,14 +450,14 @@ bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
             }
         }
     } catch (...) {
-        std::lock_guard<std::mutex> lock(m_token_mtx);
+        lock.lock();
         m_token.clear();
         m_auth_refreshing = false;
         m_auth_cv.notify_all();
         throw;
     }
 
-    std::lock_guard<std::mutex> lock(m_token_mtx);
+    lock.lock();
     if (ok) {
         m_token = std::move(token);
         m_token_expiry = std::chrono::steady_clock::now() + kTokenTtl;

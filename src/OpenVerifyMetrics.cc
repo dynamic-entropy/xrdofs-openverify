@@ -114,7 +114,7 @@ OpenVerifyMetrics::~OpenVerifyMetrics() noexcept {
         }
         m_flush_cv.notify_all();
         if (m_flush_thread.joinable()) m_flush_thread.join();
-        if (m_flush_needed.exchange(false) && !m_path.empty()) {
+        if (m_flush_needed.exchange(false, std::memory_order_relaxed) && !m_path.empty()) {
             Flush();
         }
     } catch (...) {
@@ -124,21 +124,21 @@ OpenVerifyMetrics::~OpenVerifyMetrics() noexcept {
 
 void OpenVerifyMetrics::NoteUpdate() {
     if (m_path.empty()) return;
-    m_flush_needed.store(true);
+    m_flush_needed.store(true, std::memory_order_relaxed);
     // Start the writer on the first update, after init has published m_sites.
-    if (m_flush_started.load()) return;
+    if (m_flush_started.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lk(m_flush_mtx);
-    if (m_flush_stop || m_flush_started.load()) return;
+    if (m_flush_stop || m_flush_started.load(std::memory_order_relaxed)) return;
     m_flush_thread = std::thread(&OpenVerifyMetrics::FlushLoop, this);
-    m_flush_started.store(true);
+    m_flush_started.store(true, std::memory_order_release);
 }
 
 void OpenVerifyMetrics::FlushNow() {
     if (m_path.empty()) return;
-    m_flush_needed.store(false);
+    m_flush_needed.store(false, std::memory_order_relaxed);
     // A failed write must stay pending. A NoteUpdate during a successful write
     // sets the flag again and must not be cleared here.
-    if (!Flush()) m_flush_needed.store(true);
+    if (!Flush()) m_flush_needed.store(true, std::memory_order_relaxed);
 }
 
 void OpenVerifyMetrics::FlushLoop() {
@@ -146,9 +146,9 @@ void OpenVerifyMetrics::FlushLoop() {
     while (!m_flush_stop) {
         m_flush_cv.wait_for(lk, std::chrono::seconds(1), [&] { return m_flush_stop; });
         if (m_flush_stop) break;
-        if (!m_flush_needed.exchange(false)) continue;
+        if (!m_flush_needed.exchange(false, std::memory_order_relaxed)) continue;
         lk.unlock();
-        if (!Flush()) m_flush_needed.store(true);
+        if (!Flush()) m_flush_needed.store(true, std::memory_order_relaxed);
         lk.lock();
     }
 }
@@ -538,7 +538,7 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         }
     }
 
-    OpenVerifyHostReliability* sites_src = m_sites.load();
+    OpenVerifyHostReliability* sites_src = m_sites.load(std::memory_order_acquire);
     if (sites_src) {
         const auto fs = sites_src->GetFailSafeSnapshot();
         const std::string inst =

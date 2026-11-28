@@ -67,8 +67,10 @@ std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) 
     else if (body.rfind("dav://", 0) == 0) body.replace(0, 3, "http");
     std::string url;
     if (body.find("://") != std::string::npos) {
-        // The key is already the URL the client opens, including path slashes.
         url = std::move(body);
+        const auto scheme = url.find("://");
+        const auto pathsep = url.find("//", scheme + 3);
+        if (pathsep != std::string::npos) url.replace(pathsep, 2, "/");
     } else {
         url = "https://";
         const size_t sep = key.find("//");
@@ -372,10 +374,6 @@ uint16_t ProbeTimeout16(time_t seconds) {
 size_t PathSepInVerifyKey(const std::string& key) {
     const auto scheme = key.find("://");
     const size_t from = (scheme == std::string::npos) ? 0 : scheme + 3;
-    if (scheme != std::string::npos && OpenVerifyHttpFamilyScheme(key.substr(0, scheme))) {
-        // HTTP keys are scheme://authority + path, and the path may begin with "//".
-        return key.find('/', from);
-    }
     return key.find("//", from);
 }
 
@@ -390,8 +388,6 @@ std::string HostPortFromVerifyKey(const std::string& key) {
 std::string PathFromVerifyKey(const std::string& key) {
     const size_t sep = PathSepInVerifyKey(key);
     if (sep == std::string::npos) return key;
-    // HTTP keeps the path's own leading slashes. ROOT's "//" is only the separator.
-    if (sep + 1 < key.size() && key[sep + 1] != '/') return key.substr(sep);
     return key.substr(sep + 2);
 }
 

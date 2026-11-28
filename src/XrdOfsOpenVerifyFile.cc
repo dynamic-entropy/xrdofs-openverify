@@ -356,9 +356,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 m_host_reliability.RecordVerifySuccess(hostStr, portVal);
                                 // Store DS for metrics/cache completeness; do not rewrite Rucio redirect to it.
                                 m_cache.PutPositive(key, std::chrono::seconds(120), std::move(final_host), final_port);
-                            } else if (IsCleartextBearerReject(st)) {
-                                last_fail_stage = fail_stage;
-                                m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, "openverify_cleartext_bearer");
                             } else {
                                 last_fail_stage = fail_stage;
                                 const std::string failure_reason =
@@ -384,11 +381,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                             accepted = true;
                             accepted_from_rucio = true;
                             m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through (rucio)",
-                                       key.c_str());
-                        } else if (IsCleartextBearerReject(verify_result)) {
-                            accepted = true;
-                            accepted_from_rucio = true;
-                            m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe; passing through (rucio)",
                                        key.c_str());
                         } else if (IsHostInflightBusy(verify_result)) {
                             AppendTriedHost(tried_hosts, hostPort);
