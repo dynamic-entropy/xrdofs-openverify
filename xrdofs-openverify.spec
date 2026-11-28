@@ -1,5 +1,5 @@
 Name:           xrdofs-openverify
-Version:        0.5.7
+Version:        0.5.8
 Release:        1%{?dist}
 Summary:        OpenVerify OFS plugin for XRootD
 
@@ -16,6 +16,7 @@ BuildRequires:  nlohmann-json-devel
 
 Requires:       xrootd-server%{?_isa} >= 6.0.0
 Requires:       libcurl%{?_isa}
+Requires(post): systemd
 
 %description
 XrdOfsOpenVerify is an XRootD OFS plugin that wraps the native filesystem
@@ -34,11 +35,29 @@ and verifies file integrity decisions during open operations.
 %install
 %cmake_install
 
+# Upgrade only ($1 >= 2). A first install leaves the daemon to the caller.
+# Restart instances whose config loads this plugin. Other xrootd@ units on
+# the same host do not, and bouncing them would drop traffic for no reason.
+%post
+if [ "$1" -ge 2 ]; then
+  for cfg in /etc/xrootd/xrootd-*.cfg; do
+    [ -f "$cfg" ] || continue
+    grep -q 'libXrdOfsOpenVerify' "$cfg" || continue
+    instance=${cfg##*/}
+    instance=${instance#xrootd-}
+    instance=${instance%.cfg}
+    systemctl try-restart "xrootd@${instance}.service" >/dev/null 2>&1 || :
+  done
+fi
+
 %files
 %doc README.md docs/prometheus.md
 %{_libdir}/libXrdOfsOpenVerify.so
 
 %changelog
+* Sat Nov 28 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.8-1
+- On upgrade, try-restart each xrootd instance whose config loads libXrdOfsOpenVerify.
+
 * Thu Nov 26 2026 OpenVerify maintainers <xrootd-dev@cern.ch> - 0.5.7-1
 - Read the client wire protocol from the link dialect. HTTPS probes stay HTTPS after VOMS sets prot to gsi, and an xroot client stays on xroot.
 
