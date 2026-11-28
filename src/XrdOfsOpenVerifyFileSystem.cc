@@ -65,8 +65,8 @@ OpenVerifyFileSystem::OpenVerifyFileSystem(XrdSfsFileSystem* nativeFS, XrdSysLog
     m_log.Emsg(" INFO", "*** XrdOfsOpenVerify Initialised ****");
     if (m_observe) {
         m_log.Emsg(" INFO",
-                   "openverify observe mode (XRD_OPENVERIFY_OBSERVE): cache metrics + verify on miss only; "
-                   "no cache/tried changes; redirect unchanged");
+                   "openverify observe mode (XRD_OPENVERIFY_OBSERVE): verify on cache miss, "
+                   "no Rucio, no tried=, no retry; cmsd redirect unchanged");
         if (m_rucio.Enabled()) {
             m_log.Emsg(" INFO", "openverify observe mode: XRD_OPENVERIFY_RUCIO ignored; cmsd locate only");
         }
@@ -102,17 +102,32 @@ XrdSfsDirectory* OpenVerifyFileSystem::newDir(char* user, int monid) { return m_
 
 XrdSfsDirectory* OpenVerifyFileSystem::newDir(XrdOucErrInfo& einfo) { return m_next_sfs->newDir(einfo); }
 
+XrdSfsFile* OpenVerifyFileSystem::Wrap(std::unique_ptr<XrdSfsFile> f) {
+    if (!f) return nullptr;
+    return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_rucio,
+                              m_observe, m_direct_server, m_ov_cert, m_ov_key, m_skip_prefixes);
+}
+
 XrdSfsFile* OpenVerifyFileSystem::newFile(char* user, int monid) {
     std::unique_ptr<XrdSfsFile> f(m_next_sfs->newFile(user, monid));
     if (!f) {
         m_log.Emsg(" WARN", "openverify newFile: underlying newFile returned null");
         return nullptr;
     }
-    return new OpenVerifyFile(std::move(f), m_log, m_cache, m_metrics, m_single_flight, m_host_reliability, m_rucio,
-                              m_observe, m_direct_server, m_ov_cert, m_ov_key, m_skip_prefixes);
+    return Wrap(std::move(f));
 }
 
-XrdSfsFile* OpenVerifyFileSystem::newFile(XrdOucErrInfo& einfo) { return m_next_sfs->newFile(einfo); }
+// XrdSfsFileSystem::newFile(XrdOucErrInfo&) defaults to returning null and the
+// header says a wrapper must implement it. Forwarding unwrapped would skip verify
+// for every caller that uses the ErrInfo constructor (backward propagation).
+XrdSfsFile* OpenVerifyFileSystem::newFile(XrdOucErrInfo& einfo) {
+    std::unique_ptr<XrdSfsFile> f(m_next_sfs->newFile(einfo));
+    if (!f) {
+        m_log.Emsg(" WARN", "openverify newFile(einfo): underlying newFile returned null");
+        return nullptr;
+    }
+    return Wrap(std::move(f));
+}
 
 int OpenVerifyFileSystem::chksum(csFunc Func, const char* csName, const char* path, XrdOucErrInfo& eInfo,
                                  const XrdSecEntity* client, const char* opaque) {

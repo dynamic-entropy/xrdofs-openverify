@@ -49,6 +49,9 @@ void Test_ConcurrentFlushNeverGoesBackwards() {
     constexpr int kPerWriter = 2000;
 
     std::atomic<bool> writers_done{false};
+    std::atomic<int> started{0};
+    std::atomic<uint64_t> flushes{0};
+    constexpr int kParties = kWriters + 2;
     uint64_t regressions = 0;
     uint64_t last = 0;
     std::thread reader([&]() {
@@ -61,13 +64,39 @@ void Test_ConcurrentFlushNeverGoesBackwards() {
         }
     });
 
+    auto wait_all = [&] {
+        started.fetch_add(1);
+        while (started.load() < kParties) std::this_thread::yield();
+    };
+
     std::vector<std::thread> writers;
     for (int i = 0; i < kWriters; ++i) {
         writers.emplace_back([&]() {
-            for (int j = 0; j < kPerWriter; ++j) metrics.RecordCacheMiss();
+            wait_all();
+            for (int j = 0; j < kPerWriter; ++j) {
+                metrics.RecordCacheMiss();
+                // Stay inside the run until a flusher has published once.
+                if (j + 1 == kPerWriter / 2) {
+                    while (flushes.load() == 0) std::this_thread::yield();
+                }
+            }
+        });
+    }
+    std::vector<std::thread> flushers;
+    for (int i = 0; i < 2; ++i) {
+        flushers.emplace_back([&]() {
+            wait_all();
+            while (!writers_done.load()) {
+                metrics.FlushNow();
+                flushes.fetch_add(1);
+            }
         });
     }
     for (auto& t : writers) t.join();
+    writers_done = true;
+    for (auto& t : flushers) t.join();
+    metrics.FlushNow();
+    Expect(flushes.load() > 0, "a flush ran while writers were still active");
     writers_done = true;
     reader.join();
 

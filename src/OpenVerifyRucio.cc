@@ -39,38 +39,45 @@ long EnvLongOrDefault(const char* name, long def) {
     return v > 0 ? v : def;
 }
 
+// A hostile or huge list_replicas body must not grow without a bound.
+constexpr size_t kMaxRucioBody = 8 * 1024 * 1024;
+
 size_t CurlWriteToString(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    if (size != 0 && nmemb > (static_cast<size_t>(-1) / size)) return 0;
+    const size_t n = size * nmemb;
     auto* out = static_cast<std::string*>(userdata);
-    out->append(ptr, size * nmemb);
-    return size * nmemb;
+    if (n > kMaxRucioBody || out->size() > kMaxRucioBody - n) return 0;
+    out->append(ptr, n);
+    return n;
 }
 
 size_t CurlHeaderCallback(char* buffer, size_t size, size_t nitems, void* userdata) {
     const size_t total = size * nitems;
     auto* token = static_cast<std::string*>(userdata);
     const std::string line(buffer, total);
-    static constexpr const char* kHdr = "X-Rucio-Auth-Token:";
-    const auto pos = line.find(kHdr);
-    if (pos == std::string::npos) {
-        // Header names are case-insensitive; accept lowercase too.
-        static constexpr const char* kHdrLower = "x-rucio-auth-token:";
-        const auto pos2 = line.find(kHdrLower);
-        if (pos2 == std::string::npos) return total;
-        std::string value = line.substr(pos2 + std::strlen(kHdrLower));
-        while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' ')) {
-            value.pop_back();
-        }
-        while (!value.empty() && value.front() == ' ') value.erase(value.begin());
-        *token = value;
-        return total;
+    // Header names are case-insensitive. Match only at the start of the line.
+    static constexpr const char* kHdr = "x-rucio-auth-token:";
+    constexpr size_t kHdrLen = sizeof("x-rucio-auth-token:") - 1;
+    if (line.size() < kHdrLen) return total;
+    for (size_t i = 0; i < kHdrLen; ++i) {
+        if (std::tolower(static_cast<unsigned char>(line[i])) != kHdr[i]) return total;
     }
-    std::string value = line.substr(pos + std::strlen(kHdr));
+    std::string value = line.substr(kHdrLen);
     while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' ')) {
         value.pop_back();
     }
     while (!value.empty() && value.front() == ' ') value.erase(value.begin());
-    *token = value;
+    *token = std::move(value);
     return total;
+}
+
+// One token, no CR/LF or comma, so it cannot inject extra HTTP headers.
+bool IsSafeForwardedClient(const std::string& ip) {
+    if (ip.empty() || ip.size() > 128) return false;
+    for (unsigned char c : ip) {
+        if (c <= 0x20 || c >= 0x7f || c == ',') return false;
+    }
+    return true;
 }
 
 int DefaultPortForScheme(const std::string& scheme) {
@@ -363,78 +370,104 @@ void OpenVerifyRucio::ObserveCurl(const OpenVerifyRucioCurlPool::Handle& handle)
 }
 
 bool OpenVerifyRucio::EnsureAuthToken(bool force_refresh) {
-    std::lock_guard<std::mutex> lock(m_token_mtx);
-    const auto now = std::chrono::steady_clock::now();
-    if (!force_refresh && !m_token.empty() && now < m_token_expiry) {
-        return true;
+    std::unique_lock<std::mutex> lock(m_token_mtx);
+    auto token_fresh = [&] {
+        return !m_token.empty() && std::chrono::steady_clock::now() < m_token_expiry;
+    };
+    if (!force_refresh && token_fresh()) return true;
+
+    // Another thread is already on the wire. Wait for it instead of stacking auths.
+    if (m_auth_refreshing) {
+        m_auth_cv.wait(lock, [&] { return !m_auth_refreshing; });
+        if (token_fresh()) return true;
+        if (!force_refresh) return false;
     }
 
     if (m_account.empty()) {
         m_log.Emsg(" WARN", "openverify rucio auth skipped: no account");
         return false;
     }
-    const char* proxy = std::getenv("X509_USER_PROXY");
-    if (!proxy || !*proxy) {
+    const char* proxy_env = std::getenv("X509_USER_PROXY");
+    if (!proxy_env || !*proxy_env) {
         m_log.Emsg(" WARN", "openverify rucio auth skipped: X509_USER_PROXY unset");
         return false;
     }
 
+    // Copy what the HTTP call needs, then drop the lock. list_replicas must not
+    // block on the token mutex for the whole auth RTT.
+    const std::string proxy = proxy_env;
+    const std::string account = m_account;
     const std::string url = m_auth_url + "/auth/x509_proxy";
+    const long timeout_s = m_timeout_s;
+    m_auth_refreshing = true;
+    lock.unlock();
+
     std::string token;
     std::string body;
+    bool ok = false;
+    try {
+        if (!m_curl_pool) {
+            m_log.Emsg(" WARN", "openverify rucio auth: curl pool not initialized");
+        } else {
+            auto handle = m_curl_pool->Acquire();
+            CURL* curl = handle.get();
+            if (!curl) {
+                m_log.Emsg(" WARN", "openverify rucio auth: curl pool acquire failed");
+            } else {
+                struct curl_slist* headers = nullptr;
+                const std::string acct_hdr = std::string("X-Rucio-Account: ") + account;
+                headers = curl_slist_append(headers, acct_hdr.c_str());
 
-    if (!m_curl_pool) {
-        m_log.Emsg(" WARN", "openverify rucio auth: curl pool not initialized");
-        return false;
-    }
-    auto handle = m_curl_pool->Acquire();
-    CURL* curl = handle.get();
-    if (!curl) {
-        m_log.Emsg(" WARN", "openverify rucio auth: curl pool acquire failed");
-        return false;
-    }
+                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+                curl_easy_setopt(curl, CURLOPT_SSLCERT, proxy.c_str());
+                curl_easy_setopt(curl, CURLOPT_SSLKEY, proxy.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, CurlHeaderCallback);
+                curl_easy_setopt(curl, CURLOPT_HEADERDATA, &token);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteToString);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_s);
+                curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, timeout_s);
+                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
-    struct curl_slist* headers = nullptr;
-    const std::string acct_hdr = std::string("X-Rucio-Account: ") + m_account;
-    headers = curl_slist_append(headers, acct_hdr.c_str());
+                const CURLcode rc = curl_easy_perform(curl);
+                ObserveCurl(handle);
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                curl_slist_free_all(headers);
+                handle = {};
 
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSLCERT, proxy);
-    curl_easy_setopt(curl, CURLOPT_SSLKEY, proxy);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, CurlHeaderCallback);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &token);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteToString);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, m_timeout_s);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, m_timeout_s);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
-
-    const CURLcode rc = curl_easy_perform(curl);
-    ObserveCurl(handle);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_slist_free_all(headers);
-    handle = {};
-
-    if (rc == CURLE_OPERATION_TIMEDOUT) {
-        m_log.Emsg(" WARN", "openverify rucio auth timed out");
+                if (rc == CURLE_OPERATION_TIMEDOUT) {
+                    m_log.Emsg(" WARN", "openverify rucio auth timed out");
+                } else if (rc != CURLE_OK || http_code != 200 || token.empty()) {
+                    const std::string msg = std::string("openverify rucio auth failed curl=") + curl_easy_strerror(rc) +
+                                            " http=" + std::to_string(http_code);
+                    m_log.Emsg(" WARN", msg.c_str());
+                } else {
+                    ok = true;
+                }
+            }
+        }
+    } catch (...) {
+        lock.lock();
         m_token.clear();
-        return false;
-    }
-    if (rc != CURLE_OK || http_code != 200 || token.empty()) {
-        const std::string msg = std::string("openverify rucio auth failed curl=") + curl_easy_strerror(rc) +
-                                " http=" + std::to_string(http_code);
-        m_log.Emsg(" WARN", msg.c_str());
-        m_token.clear();
-        return false;
+        m_auth_refreshing = false;
+        m_auth_cv.notify_all();
+        throw;
     }
 
-    m_token = std::move(token);
-    m_token_expiry = now + kTokenTtl;
-    m_log.Emsg(" INFO", "openverify rucio auth token acquired");
-    return true;
+    lock.lock();
+    if (ok) {
+        m_token = std::move(token);
+        m_token_expiry = std::chrono::steady_clock::now() + kTokenTtl;
+        m_log.Emsg(" INFO", "openverify rucio auth token acquired");
+    } else {
+        m_token.clear();
+    }
+    m_auth_refreshing = false;
+    m_auth_cv.notify_all();
+    return ok;
 }
 
 OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn, const std::string& scheme,
@@ -471,9 +504,12 @@ OpenVerifyRucioListResult OpenVerifyRucio::DoListReplicas(const std::string& lfn
     headers = curl_slist_append(headers, "Content-Type: application/json");
     // Disable Expect: 100-continue (libcurl default can wait up to 1s on POST).
     headers = curl_slist_append(headers, "Expect:");
-    if (!client_ip.empty()) {
+    if (IsSafeForwardedClient(client_ip)) {
         const std::string xff = std::string("X-Forwarded-For: ") + client_ip;
         headers = curl_slist_append(headers, xff.c_str());
+    } else if (!client_ip.empty()) {
+        // Do not log the raw value: it may contain CR/LF.
+        m_log.Emsg(" WARN", "openverify rucio: ignoring client address that is not a single token");
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());

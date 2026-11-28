@@ -1,6 +1,22 @@
 #include "OpenVerifyCache.hh"
 
-#include <functional>
+#include <cstdlib>
+
+OpenVerifyCache::OpenVerifyCache(std::size_t max_entries) : m_max_entries(max_entries) {
+    if (max_entries == 0) {
+        m_max_entries = MaxFromEnv();
+    }
+}
+
+std::size_t OpenVerifyCache::MaxFromEnv() {
+    constexpr std::size_t kDefault = 65536;
+    const char* p = std::getenv("XRD_OPENVERIFY_CACHE_MAX");
+    if (!p || !*p) return kDefault;
+    char* end = nullptr;
+    const unsigned long long v = std::strtoull(p, &end, 10);
+    if (end == p || (end && *end != '\0')) return kDefault;
+    return static_cast<std::size_t>(v);
+}
 
 OpenVerifyCache::~OpenVerifyCache() { StopExpiryThread(); }
 
@@ -35,69 +51,45 @@ void OpenVerifyCache::StopExpiryThread() {
     m_thread_started = false;
 }
 
-std::vector<std::string> OpenVerifyCache::SplitPath(const std::string& path) {
-    std::vector<std::string> segments;
-    segments.reserve(8);
-
-    size_t start = 0;
-    while (start < path.size()) {
-        // Skip repeated separators.
-        while (start < path.size() && path[start] == '/') {
-            ++start;
-        }
-        if (start >= path.size()) {
-            break;
-        }
-        size_t end = path.find('/', start);
-        if (end == std::string::npos) {
-            end = path.size();
-        }
-        if (end > start) {
-            segments.emplace_back(path.substr(start, end - start));
-        }
-        start = end;
+std::string OpenVerifyCache::NormalizeKey(const std::string& key) {
+    std::string out;
+    out.reserve(key.size());
+    size_t i = 0;
+    while (i < key.size()) {
+        while (i < key.size() && key[i] == '/') ++i;
+        if (i >= key.size()) break;
+        const size_t end = key.find('/', i);
+        const size_t n = (end == std::string::npos) ? key.size() - i : end - i;
+        if (!out.empty()) out.push_back('/');
+        out.append(key, i, n);
+        i = (end == std::string::npos) ? key.size() : end;
     }
-
-    return segments;
+    return out;
 }
 
-OpenVerifyCache::Node* OpenVerifyCache::TraverseCreate(const std::vector<std::string>& segments) {
-    Node* node = &m_root;
-    for (const auto& seg : segments) {
-        auto& child = node->children[seg];
-        if (!child) {
-            child = std::make_unique<Node>();
-        }
-        node = child.get();
+void OpenVerifyCache::EvictOverflowLocked() {
+    if (m_max_entries == 0) return;
+    while (m_map.size() > m_max_entries && !m_lru.empty()) {
+        const std::string& victim = m_lru.back();
+        m_map.erase(victim);
+        m_lru.pop_back();
     }
-    return node;
-}
-
-const OpenVerifyCache::Node* OpenVerifyCache::Traverse(const std::vector<std::string>& segments) const {
-    const Node* node = &m_root;
-    for (const auto& seg : segments) {
-        auto it = node->children.find(seg);
-        if (it == node->children.end()) {
-            return nullptr;
-        }
-        node = it->second.get();
-    }
-    return node;
 }
 
 OpenVerifyCache::Lookup OpenVerifyCache::Get(const std::string& key, std::chrono::steady_clock::time_point now) const {
+    const std::string norm = NormalizeKey(key);
     const std::shared_lock lk(m_mutex);
 
-    const auto* node = Traverse(SplitPath(key));
-    if (!node || !node->entry || now >= node->entry->expiry) {
+    const auto it = m_map.find(norm);
+    if (it == m_map.end() || now >= it->second.expiry) {
         return Lookup{};
     }
 
     Lookup out;
-    out.status = node->entry->status;
+    out.status = it->second.status;
     if (out.status == Status::Positive) {
-        out.final_host = node->entry->final_host;
-        out.final_port = node->entry->final_port;
+        out.final_host = it->second.final_host;
+        out.final_port = it->second.final_port;
     }
     return out;
 }
@@ -109,46 +101,69 @@ void OpenVerifyCache::PutPositive(const std::string& key, std::chrono::seconds t
 
 void OpenVerifyCache::PutPositive(const std::string& key, std::chrono::seconds ttl, std::string final_host,
                                   int final_port, std::chrono::steady_clock::time_point now) {
+    const std::string norm = NormalizeKey(key);
+    if (norm.empty()) return;
     const std::unique_lock lk(m_mutex);
-    Node* node = TraverseCreate(SplitPath(key));
-    node->entry = std::make_unique<Entry>(
-        Entry{Status::Positive, now + ttl, std::move(final_host), final_port});
+    auto it = m_map.find(norm);
+    if (it != m_map.end()) {
+        it->second.status = Status::Positive;
+        it->second.expiry = now + ttl;
+        it->second.final_host = std::move(final_host);
+        it->second.final_port = final_port;
+        m_lru.splice(m_lru.begin(), m_lru, it->second.lru_it);
+        return;
+    }
+    m_lru.push_front(norm);
+    Entry e;
+    e.status = Status::Positive;
+    e.expiry = now + ttl;
+    e.final_host = std::move(final_host);
+    e.final_port = final_port;
+    e.lru_it = m_lru.begin();
+    m_map.emplace(norm, std::move(e));
+    EvictOverflowLocked();
 }
 
 void OpenVerifyCache::PutNegative(const std::string& key, std::chrono::seconds ttl,
                                   std::chrono::steady_clock::time_point now) {
+    const std::string norm = NormalizeKey(key);
+    if (norm.empty()) return;
     const std::unique_lock lk(m_mutex);
-    Node* node = TraverseCreate(SplitPath(key));
-    node->entry = std::make_unique<Entry>(Entry{Status::Negative, now + ttl, {}, -1});
+    auto it = m_map.find(norm);
+    if (it != m_map.end()) {
+        it->second.status = Status::Negative;
+        it->second.expiry = now + ttl;
+        it->second.final_host.clear();
+        it->second.final_port = -1;
+        m_lru.splice(m_lru.begin(), m_lru, it->second.lru_it);
+        return;
+    }
+    m_lru.push_front(norm);
+    Entry e;
+    e.status = Status::Negative;
+    e.expiry = now + ttl;
+    e.final_port = -1;
+    e.lru_it = m_lru.begin();
+    m_map.emplace(norm, std::move(e));
+    EvictOverflowLocked();
 }
 
 void OpenVerifyCache::Expire(std::chrono::steady_clock::time_point now) {
     const std::unique_lock lk(m_mutex);
-
-    std::function<bool(Node&)> expire_node = [&](Node& node) -> bool {
-        if (node.entry && node.entry->expiry <= now) {
-            node.entry.reset();
+    for (auto it = m_map.begin(); it != m_map.end();) {
+        if (it->second.expiry <= now) {
+            m_lru.erase(it->second.lru_it);
+            it = m_map.erase(it);
+        } else {
+            ++it;
         }
-
-        for (auto it = node.children.begin(); it != node.children.end();) {
-            if (expire_node(*it->second)) {
-                it = node.children.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        return !node.entry && node.children.empty();
-    };
-
-    // Don't delete the root node; just purge its children/entries.
-    expire_node(m_root);
+    }
 }
 
 void OpenVerifyCache::Reset() {
     const std::unique_lock lk(m_mutex);
-    m_root.children.clear();
-    m_root.entry.reset();
+    m_map.clear();
+    m_lru.clear();
 }
 
 void OpenVerifyCache::ExpireThread() {

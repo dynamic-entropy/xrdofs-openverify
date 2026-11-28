@@ -8,6 +8,13 @@
 #include <unordered_map>
 #include <vector>
 
+// File-level or local failures. They still negative-cache the replica, but they must
+// not move a site's EWMA: the server answered, or the probe URL was ours.
+inline bool OpenVerifyFailureAffectsSiteHealth(const std::string& reason) {
+    return reason != "openverify_empty_file" && reason != "openverify_invalid_key" &&
+           reason != "openverify_cleartext_bearer";
+}
+
 // Per-(host,port) verify outcomes only (post-redirect): attempts, successes, failures.
 // Host health uses EWMA scoring with hysteresis.
 //

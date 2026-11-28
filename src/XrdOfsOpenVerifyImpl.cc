@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -10,6 +11,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "OpenVerifyCacheKey.hh"
+#include "OpenVerifyUrl.hh"
 #include "XrdCl/XrdClFile.hh"
 #include "XrdCl/XrdClStatus.hh"
 #include "XrdCl/XrdClURL.hh"
@@ -23,9 +26,10 @@ namespace {
 // clients often send xrd.gsiusrpxy=/var/lib/condor/... (a path on the worker),
 // which would override X509_USER_PROXY on this host and cause Auth failed.
 std::string MakeXrdClVerifyUrl(const std::string& key, const char* ztnFilePath, const char* gsiCertPath,
-                               const char* gsiKeyPath) {
-    // `key` format: <host>[:<port>]//<path>
-    std::string url = "root://";
+                               const char* gsiKeyPath, const std::string& scheme = "root") {
+    // `key` format: <host>[:<port>]//<path>. scheme is root unless the redirect
+    // named roots or xroots; those must not be flattened to plain root.
+    std::string url = scheme.empty() ? "root://" : scheme + "://";
     url += key;
 
     bool haveQuery = false;
@@ -56,16 +60,27 @@ bool IsHttpProtocol(const XrdSecEntity* client) {
 }
 
 std::string MakeHttpVerifyUrl(const std::string& key, const std::string& token) {
-    // `key` format: <host>[:<port>]//<path>. HTTP needs a single '/' between the
-    // authority and the path, so collapse the "//" separator used by the xroot form.
-    std::string url = "https://";
-    const size_t sep = key.find("//");
-    if (sep == std::string::npos) {
-        url += key;
+    // `key` is <host>[:<port>]//<path>, or scheme://<host>[:<port>]//<path> when
+    // the cmsd redirect named the scheme. HTTP needs one '/' before the path.
+    std::string body = key;
+    if (body.rfind("davs://", 0) == 0) body.replace(0, 4, "https");
+    else if (body.rfind("dav://", 0) == 0) body.replace(0, 3, "http");
+    std::string url;
+    if (body.find("://") != std::string::npos) {
+        url = std::move(body);
+        const auto scheme = url.find("://");
+        const auto pathsep = url.find("//", scheme + 3);
+        if (pathsep != std::string::npos) url.replace(pathsep, 2, "/");
     } else {
-        url.append(key, 0, sep);
-        url.push_back('/');
-        url.append(key, sep + 2, std::string::npos);
+        url = "https://";
+        const size_t sep = key.find("//");
+        if (sep == std::string::npos) {
+            url += key;
+        } else {
+            url.append(key, 0, sep);
+            url.push_back('/');
+            url.append(key, sep + 2, std::string::npos);
+        }
     }
 
     // Do not forward client opaque (same reason as MakeXrdClVerifyUrl). Only attach
@@ -90,9 +105,13 @@ class ScopedTokenTempFile {
 
         char tmpl[] = "/tmp/xrdovXXXXXX";
         const int fd = mkstemp(tmpl);
-        if (fd < 0) return;
-
-        if (fchmod(fd, 0600) != 0) {
+        if (fd < 0) {
+            m_err = errno;
+            return;
+        }
+        // Close-on-exec so a token fd cannot leak across a fork in this process.
+        if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 || fchmod(fd, 0600) != 0) {
+            m_err = errno;
             close(fd);
             unlink(tmpl);
             return;
@@ -102,7 +121,15 @@ class ScopedTokenTempFile {
         size_t left = token.size();
         while (left > 0) {
             const ssize_t n = write(fd, p, left);
-            if (n <= 0) {
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                m_err = errno;
+                close(fd);
+                unlink(tmpl);
+                return;
+            }
+            if (n == 0) {
+                m_err = EIO;
                 close(fd);
                 unlink(tmpl);
                 return;
@@ -110,7 +137,11 @@ class ScopedTokenTempFile {
             p += static_cast<size_t>(n);
             left -= static_cast<size_t>(n);
         }
-        close(fd);
+        if (close(fd) != 0) {
+            m_err = errno;
+            unlink(tmpl);
+            return;
+        }
         m_path = tmpl;
     }
 
@@ -122,9 +153,11 @@ class ScopedTokenTempFile {
 
     bool ok() const { return !m_path.empty(); }
     const std::string& path() const { return m_path; }
+    int err() const { return m_err; }
 
    private:
     std::string m_path;
+    int m_err{0};
 };
 
 bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) {
@@ -133,7 +166,7 @@ bool GetTokenFromClientCreds(const XrdSecEntity* client, std::string& outToken) 
     // Only ztn puts a bearer token in creds. gsi (VOMS certfmt=pem) and sss put proxy/identity
     // material there, which must never be forwarded to a remote site. HTTP bearers arrive via
     // the authz opaque instead.
-    if (std::strcmp(client->prot, "ztn") != 0) return false;
+    if (!client->prot || std::strcmp(client->prot, "ztn") != 0) return false;
 
     outToken.assign(client->creds, static_cast<size_t>(client->credslen));
     if (!outToken.empty() && outToken.back() == '\0') outToken.pop_back();
@@ -315,27 +348,54 @@ std::string ClassifyXrdClStatus(const XrdCl::Status& st) {
     return "xrdcl_error";
 }
 
+// Drop ?query so a bearer (authz=) or ztn path is not written to the daemon log.
+std::string ProbeUrlForLog(const std::string& url) { return OpenVerifyUrl::StripUrlQuery(url); }
+
 void LogXrdClProbeFail(XrdSysError& log, const char* stage, const std::string& url, const XrdCl::Status& st) {
-    const std::string line =
-        std::string("reason=") + ClassifyXrdClStatus(st) + " stage=" + stage + " url=" + url + " " + st.ToString();
+    const std::string line = std::string("reason=") + ClassifyXrdClStatus(st) + " stage=" + stage +
+                             " url=" + ProbeUrlForLog(url) + " " + st.ToString();
     log.Emsg(" WARN", "openverify_probe", line.c_str());
 }
 
 void LogXrdClProbeFail(XrdSysError& log, const char* stage, const std::string& url, const char* reason) {
-    const std::string line = std::string("reason=") + reason + " stage=" + stage + " url=" + url;
+    const std::string line = std::string("reason=") + reason + " stage=" + stage + " url=" + ProbeUrlForLog(url);
     log.Emsg(" WARN", "openverify_probe", line.c_str());
 }
 
+// Sync XrdCl timeouts are uint16_t seconds on XRootD 5 and fit in that range on 6.
+uint16_t ProbeTimeout16(time_t seconds) {
+    if (seconds <= 0) return 1;
+    if (seconds > 65535) return 65535;
+    return static_cast<uint16_t>(seconds);
+}
+
+// Path separator is the "//" after the authority. A schemed key
+// (https://host//path) also contains "//" inside "://".
+size_t PathSepInVerifyKey(const std::string& key) {
+    const auto scheme = key.find("://");
+    const size_t from = (scheme == std::string::npos) ? 0 : scheme + 3;
+    return key.find("//", from);
+}
+
 std::string HostPortFromVerifyKey(const std::string& key) {
-    const size_t sep = key.find("//");
-    if (sep == std::string::npos) return key;
-    return key.substr(0, sep);
+    const size_t sep = PathSepInVerifyKey(key);
+    std::string authority = (sep == std::string::npos) ? key : key.substr(0, sep);
+    const auto scheme = authority.find("://");
+    if (scheme != std::string::npos) authority = authority.substr(scheme + 3);
+    return authority;
 }
 
 std::string PathFromVerifyKey(const std::string& key) {
-    const size_t sep = key.find("//");
+    const size_t sep = PathSepInVerifyKey(key);
     if (sep == std::string::npos) return key;
     return key.substr(sep + 2);
+}
+
+bool KeyForcesHttp(const std::string& key) {
+    const auto scheme = key.find("://");
+    if (scheme == std::string::npos) return false;
+    const std::string s = key.substr(0, scheme);
+    return s == "http" || s == "https" || s == "dav" || s == "davs";
 }
 
 // XrdCl DataServer is host:port (optionally user[:password]@host:port).
@@ -389,13 +449,22 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         if (fail_stage) *fail_stage = stage;
     };
 
-    // Match the client's wire protocol (http/https vs xroot) for the outbound open.
-    const bool useHttp = IsHttpProtocol(client);
+    // A schemed cache key is the redirect URL the client will open. Otherwise
+    // match the client's wire protocol (http/https vs xroot).
+    const bool useHttp = (key.find("://") != std::string::npos) ? KeyForcesHttp(key) : IsHttpProtocol(client);
 
     std::string token;
     ExtractClientBearerToken(client, opaque, token, nullptr);
     const bool haveToken = !token.empty();
     const bool haveServiceCert = !haveToken && !m_ov_cert.empty() && !m_ov_key.empty();
+
+    // Do not place a bearer on a cleartext HTTP or WebDAV URL. The client may
+    // still follow that redirect; this probe must not send the token in the clear.
+    if (useHttp && haveToken && OpenVerifyKeyIsCleartextHttp(key)) {
+        set_stage("credential_setup");
+        m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe", key.c_str());
+        return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidArgs, 0, "openverify_cleartext_bearer"};
+    }
 
     const std::string hostPort = HostPortFromVerifyKey(key);
     const std::string path = PathFromVerifyKey(key);
@@ -408,7 +477,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     // Use XrdCl to open the file and read the first and last byte
     // If the read fails, return false
     // If the read succeeds, return true
-    const auto slashPos = key.find('/');
+    const auto slashPos = PathSepInVerifyKey(key);
     if (slashPos == std::string::npos || slashPos == 0) {
         set_stage("key");
         m_log.Emsg(" WARN", "openverify invalid key (missing host/path):", key.c_str());
@@ -423,7 +492,8 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         if (!tokenFile.ok()) {
             set_stage("credential_setup");
             m_log.Emsg(" WARN", "openverify could not create temp token file for", key.c_str());
-            return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError, static_cast<uint32_t>(errno),
+            return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errOSError,
+                                       static_cast<uint32_t>(tokenFile.err() != 0 ? tokenFile.err() : errno),
                                        "openverify_token_file_error"};
         }
         ztnPath = tokenFile.path().c_str();
@@ -433,20 +503,41 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     const char* gsiKey = (!useHttp && haveServiceCert) ? m_ov_key.c_str() : nullptr;
 
     // Opaque is only used above for bearer extraction — never forwarded onto the probe URL.
+    // A schemed xroot key keeps that scheme (roots, xroots). root:// is only the
+    // default when the redirect did not name one.
+    std::string root_key = key;
+    std::string root_scheme = "root";
+    if (!useHttp) {
+        const auto scheme = key.find("://");
+        if (scheme != std::string::npos) {
+            root_scheme = key.substr(0, scheme);
+            root_key = key.substr(scheme + 3);
+        }
+    }
     const std::string url = useHttp ? MakeHttpVerifyUrl(key, haveToken ? token : std::string())
-                                    : MakeXrdClVerifyUrl(key, ztnPath, gsiCert, gsiKey);
+                                    : MakeXrdClVerifyUrl(root_key, ztnPath, gsiCert, gsiKey, root_scheme);
+
+    const uint16_t probe_timeout = ProbeTimeout16(timeout_seconds);
 
     XrdCl::File f;
     // should we use others - readable open flags instead?
-    auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, timeout_seconds);
+    auto st = f.Open(url, XrdCl::OpenFlags::Read, XrdCl::Access::None, probe_timeout);
     if (!st.IsOK()) {
         set_stage("open");
         LogXrdClProbeFail(m_log, "open", url, st);
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
+    // Stat, VectorRead, and Close must use the same budget as Open. The default
+    // timeout (0) follows XrdCl's RequestTimeout, which is often unlimited, so a
+    // hung data server would pin this OFS worker past VERIFY_TIMEOUT.
+    auto close_probe = [&] {
+        const auto close_st = f.Close(probe_timeout);
+        (void)close_st;
+    };
+
     XrdCl::StatInfo* statInfo = nullptr;
-    st = f.Stat(false, statInfo);
+    st = f.Stat(false, statInfo, probe_timeout);
     if (!st.IsOK() || !statInfo) {
         set_stage("stat");
         if (st.IsOK()) {
@@ -454,8 +545,8 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         } else {
             LogXrdClProbeFail(m_log, "stat", url, st);
         }
-        auto closeSt = f.Close();
-        (void)closeSt;
+        delete statInfo;
+        close_probe();
         if (st.IsOK()) {
             return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errInvalidResponse, 0, "openverify_stat_no_info"};
         }
@@ -470,8 +561,7 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         // Empty file: treat as failure
         set_stage("empty_file");
         LogXrdClProbeFail(m_log, "empty_file", url, "openverify_empty_file");
-        auto closeSt = f.Close();
-        (void)closeSt;
+        close_probe();
         return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errDataError, 0, "openverify_empty_file"};
     }
 
@@ -480,23 +570,31 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
     chunks.reserve(totalLen);
 
     std::array<char, 2> buf{};
-    chunks.emplace_back(0, 1, nullptr);
+    // Point each chunk at its own byte. A null chunk buffer plus a shared
+    // buffer depends on XrdCl packing, which a short OK reply would hide.
+    chunks.emplace_back(0, 1, buf.data());
     if (size > 1) {
-        chunks.emplace_back(size - 1, 1, nullptr);
+        chunks.emplace_back(size - 1, 1, buf.data() + 1);
     }
 
     XrdCl::VectorReadInfo* vri = nullptr;
-    st = f.VectorRead(chunks, buf.data(), vri);
+    st = f.VectorRead(chunks, nullptr, vri, probe_timeout);
+    uint32_t got = 0;
     if (vri) {
+        got = vri->GetSize();
         delete vri;
         vri = nullptr;
     }
 
-    if (!st.IsOK()) {
+    if (!st.IsOK() || got < totalLen) {
         set_stage("vector_read");
+        if (st.IsOK()) {
+            LogXrdClProbeFail(m_log, "vector_read", url, "openverify_short_read");
+            close_probe();
+            return XrdCl::XRootDStatus{XrdCl::stError, XrdCl::errDataError, 0, "openverify_short_read"};
+        }
         LogXrdClProbeFail(m_log, "vector_read", url, st);
-        auto closeSt = f.Close();
-        (void)closeSt;
+        close_probe();
         return XrdCl::XRootDStatus{st, ClassifyXrdClStatus(st)};
     }
 
@@ -509,7 +607,6 @@ XrdCl::XRootDStatus OpenVerifyFile::open_verify(const std::string& key, const ch
         }
     }
 
-    auto closeSt = f.Close();
-    (void)closeSt;
+    close_probe();
     return XrdCl::XRootDStatus{};
 }

@@ -106,19 +106,73 @@ OpenVerifyMetrics::OpenVerifyMetrics() {
     }
 }
 
+OpenVerifyMetrics::~OpenVerifyMetrics() noexcept {
+    try {
+        {
+            std::lock_guard<std::mutex> lk(m_flush_mtx);
+            m_flush_stop = true;
+        }
+        m_flush_cv.notify_all();
+        if (m_flush_thread.joinable()) m_flush_thread.join();
+        if (m_flush_needed.exchange(false, std::memory_order_acquire) && !m_path.empty()) {
+            Flush();
+        }
+    } catch (...) {
+        // join() and the textfile write must not escape a destructor.
+    }
+}
+
+void OpenVerifyMetrics::NoteUpdate() {
+    if (m_path.empty()) return;
+    // Release pairs with the acquire that clears the flag, so the counter
+    // increment that called us is visible in that snapshot.
+    m_flush_needed.store(true, std::memory_order_release);
+    // Start the writer on the first update, after init has published m_sites.
+    if (m_flush_started.load(std::memory_order_acquire)) return;
+    std::lock_guard<std::mutex> lk(m_flush_mtx);
+    if (m_flush_stop || m_flush_started.load(std::memory_order_relaxed)) return;
+    m_flush_thread = std::thread(&OpenVerifyMetrics::FlushLoop, this);
+    m_flush_started.store(true, std::memory_order_release);
+}
+
+void OpenVerifyMetrics::FlushNow() {
+    if (m_path.empty()) return;
+    (void)m_flush_needed.exchange(false, std::memory_order_acquire);
+    // A failed write must stay pending. A NoteUpdate during a successful write
+    // sets the flag again and must not be cleared here.
+    if (!Flush()) m_flush_needed.store(true, std::memory_order_release);
+}
+
+void OpenVerifyMetrics::FlushLoop() {
+    std::unique_lock<std::mutex> lk(m_flush_mtx);
+    while (!m_flush_stop) {
+        m_flush_cv.wait_for(lk, std::chrono::seconds(1), [&] { return m_flush_stop; });
+        if (m_flush_stop) break;
+        if (!m_flush_needed.exchange(false, std::memory_order_acquire)) continue;
+        lk.unlock();
+        if (!Flush()) m_flush_needed.store(true, std::memory_order_release);
+        lk.lock();
+    }
+}
+
 OpenVerifyMetrics::PerFailureMetrics& OpenVerifyMetrics::EnsureFailure(const std::string& source,
                                                                        const std::string& host, int port,
                                                                        const std::string& reason) {
     const std::string src = source.empty() ? std::string("unknown") : source;
-    const std::string key = FailureMapKey(src, host, port, reason);
+    std::string h = host.empty() ? std::string("unknown") : host;
     const std::string pl = PortLabelForMetrics(port);
 
     std::lock_guard<std::mutex> lock(m_failure_mtx);
+    if (m_failures_by_target_reason.size() >= 4096 &&
+        !m_failures_by_target_reason.count(FailureMapKey(src, h, port, reason))) {
+        h = "other";
+    }
+    const std::string key = FailureMapKey(src, h, port, reason);
     std::unique_ptr<PerFailureMetrics>& slot = m_failures_by_target_reason[key];
     if (!slot) {
         slot = std::make_unique<PerFailureMetrics>();
         slot->source_esc = EscapeLabelValue(src);
-        slot->host_esc = EscapeLabelValue(host);
+        slot->host_esc = EscapeLabelValue(h);
         slot->port_lbl = pl;
         slot->reason_esc = EscapeLabelValue(reason);
     }
@@ -486,8 +540,9 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
         }
     }
 
-    if (m_sites) {
-        const auto fs = m_sites->GetFailSafeSnapshot();
+    OpenVerifyHostReliability* sites_src = m_sites.load(std::memory_order_acquire);
+    if (sites_src) {
+        const auto fs = sites_src->GetFailSafeSnapshot();
         const std::string inst =
             m_instance_label.empty() ? std::string() : ("{xrootd_instance=\"" + m_instance_label + "\"}");
         body << "# HELP xrootd_openverify_failsafe_active 1 if mass-quarantine circuit breaker is open "
@@ -510,7 +565,7 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
                 "xrootd_openverify_failsafe_max_sites"
              << inst << " " << fs.max_sites << "\n";
 
-        const auto sites = m_sites->Snapshot();
+        const auto sites = sites_src->Snapshot();
         body << "# HELP xrootd_openverify_site_ewma_health EWMA badness score (0=healthy, higher=worse).\n"
                 "# TYPE xrootd_openverify_site_ewma_health gauge\n"
                 "# HELP xrootd_openverify_site_healthy 1 if site is not quarantined, else 0.\n"
@@ -541,25 +596,25 @@ std::string OpenVerifyMetrics::BuildExpositionBody() const {
 
 void OpenVerifyMetrics::RecordCacheMiss() {
     m_cache_miss.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordCacheHitPositive(double delay_seconds) {
     m_cache_hit_positive.fetch_add(1, std::memory_order_relaxed);
     if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::CacheHitPositive);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordCacheHitNegative(double delay_seconds) {
     m_cache_hit_negative.fetch_add(1, std::memory_order_relaxed);
     if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::CacheHitNegative);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordVerifySuccess(const std::string& source, const std::string& host, int port) {
     m_verify_success.fetch_add(1, std::memory_order_relaxed);
     EnsureProbe(source, host, port, "success").count.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordVerifyFailure(const std::string& source, const std::string& host, int port,
@@ -568,68 +623,73 @@ void OpenVerifyMetrics::RecordVerifyFailure(const std::string& source, const std
     m_verify_failure.fetch_add(1, std::memory_order_relaxed);
     EnsureFailure(source, host, port, r).count.fetch_add(1, std::memory_order_relaxed);
     EnsureProbe(source, host, port, "failure").count.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordQueueAdmissionAdmitted() {
     m_queue_admitted.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordQueueAdmissionFull() {
     m_queue_full.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordQueueAdmissionTimeout() {
     m_queue_timeout.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordQueueAdmissionHostBusy() {
     m_queue_host_busy.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordHostBusy(const std::string& host, int port) {
-    const std::string key = host + '\x1e' + PortLabelForMetrics(port);
+    std::string h = host.empty() ? std::string("unknown") : host;
     const std::string pl = PortLabelForMetrics(port);
     {
         std::lock_guard<std::mutex> lock(m_host_busy_mtx);
+        const std::string raw_key = h + '\x1e' + pl;
+        if (m_host_busy.size() >= 4096 && !m_host_busy.count(raw_key)) {
+            h = "other";
+        }
+        const std::string key = h + '\x1e' + pl;
         std::unique_ptr<PerHostBusyMetrics>& slot = m_host_busy[key];
         if (!slot) {
             slot = std::make_unique<PerHostBusyMetrics>();
-            slot->host_esc = EscapeLabelValue(host);
+            slot->host_esc = EscapeLabelValue(h);
             slot->port_lbl = pl;
         }
         slot->count.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordQueueWait(double seconds, bool timed_out) {
     ObserveHistogram(timed_out ? m_queue_wait_timeout : m_queue_wait_admitted, seconds);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordVerifyRtt(double seconds, bool success) {
     ObserveHistogram(success ? m_verify_rtt_success : m_verify_rtt_failure, seconds);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordSingleFlightLeader() {
     m_singleflight_leader.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordSingleFlightFollower() {
     m_singleflight_follower.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRedirectHandled() {
     m_redirects_handled.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRedirectAvoided(const std::string& reason, double delay_seconds) {
@@ -643,7 +703,7 @@ void OpenVerifyMetrics::RecordRedirectAvoided(const std::string& reason, double 
         m_redirects_avoided_negative_cache.fetch_add(1, std::memory_order_relaxed);
         if (delay_seconds >= 0) RecordRedirectDelay(delay_seconds, DelayOutcome::Avoided);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRedirectVerifyFinished(bool success, double delay_seconds) {
@@ -663,7 +723,7 @@ void OpenVerifyMetrics::RecordCmsdStall(int seconds) {
     if (seconds <= 0) return;
     m_cmsd_stall_events.fetch_add(1, std::memory_order_relaxed);
     m_cmsd_stall_seconds_sum.fetch_add(static_cast<uint64_t>(seconds), std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& source) {
@@ -682,14 +742,14 @@ void OpenVerifyMetrics::RecordOpenAccepted(int attempt, const std::string& sourc
         if (attempt > kMaxCmsdAcceptAttempts) attempt = kMaxCmsdAcceptAttempts;
         m_accepted_cmsd_by_attempt[attempt - 1].fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordStaticFallback(const std::string& fallback) {
     if (fallback == "transit") {
         m_static_fallback_transit.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordSkipPrefix(const std::string& reason_in) {
@@ -706,12 +766,12 @@ void OpenVerifyMetrics::RecordSkipPrefix(const std::string& reason_in) {
         }
         slot->count.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordOpenRetryExhausted() {
     m_retry_exhausted.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioLookup(const std::string& result, const std::string& skip_reason) {
@@ -741,7 +801,7 @@ void OpenVerifyMetrics::RecordRucioLookup(const std::string& result, const std::
     } else {
         m_rucio_lookup_error.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioListCache(const std::string& result) {
@@ -750,28 +810,28 @@ void OpenVerifyMetrics::RecordRucioListCache(const std::string& result) {
     } else {
         m_rucio_list_cache_miss.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::SetRucioListCacheEntries(std::size_t n) {
     m_rucio_list_cache_entries.store(static_cast<uint64_t>(n), std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioCandidates(size_t count) {
     if (count == 0) return;
     m_rucio_candidates.fetch_add(static_cast<uint64_t>(count), std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioExhausted() {
     m_rucio_exhausted.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioExhaustedRecovered() {
     m_rucio_exhausted_recovered.fetch_add(1, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioCmsdCompare(const std::string& result) {
@@ -780,7 +840,7 @@ void OpenVerifyMetrics::RecordRucioCmsdCompare(const std::string& result) {
     } else {
         m_rucio_cmsd_compare_catalog_disagree.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
@@ -793,13 +853,13 @@ void OpenVerifyMetrics::RecordLocationSource(const std::string& source) {
     } else {
         m_location_source_cmsd.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordLocateLatency(const std::string& source, double seconds) {
     if (seconds < 0 || source != "rucio") return;
     ObserveHistogram(m_locate_rtt_rucio, seconds);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::RecordRucioCurlTransfer(bool handle_reused, bool tcp_reused) {
@@ -813,7 +873,7 @@ void OpenVerifyMetrics::RecordRucioCurlTransfer(bool handle_reused, bool tcp_reu
     } else {
         m_rucio_curl_tcp_new.fetch_add(1, std::memory_order_relaxed);
     }
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::SetRucioCurlPool(std::size_t handles, std::size_t idle, std::size_t inflight,
@@ -823,7 +883,7 @@ void OpenVerifyMetrics::SetRucioCurlPool(std::size_t handles, std::size_t idle, 
     m_rucio_curl_pool_inflight.store(static_cast<uint64_t>(inflight), std::memory_order_relaxed);
     m_rucio_curl_pool_grows.store(grows, std::memory_order_relaxed);
     m_rucio_curl_pool_shrinks.store(shrinks, std::memory_order_relaxed);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 OpenVerifyMetrics::RedirectTimer::RedirectTimer(OpenVerifyMetrics& metrics)
@@ -879,7 +939,7 @@ void OpenVerifyMetrics::RecordRedirectDelay(double seconds, DelayOutcome outcome
     const int oi = static_cast<int>(outcome);
     if (oi < 0 || oi >= static_cast<int>(DelayOutcome::Count)) return;
     ObserveHistogram(m_delay[oi], seconds);
-    if (!m_path.empty()) Flush();
+    NoteUpdate();
 }
 
 void OpenVerifyMetrics::ObserveHistogram(DelayHistogram& h, double seconds) {
@@ -896,7 +956,7 @@ void OpenVerifyMetrics::ObserveHistogram(DelayHistogram& h, double seconds) {
     h.sum_micros.fetch_add(static_cast<uint64_t>(seconds * 1e6), std::memory_order_relaxed);
 }
 
-void OpenVerifyMetrics::Flush() {
+bool OpenVerifyMetrics::Flush() {
     const std::string tmp_path = m_path + ".tmp";
 
     // Snapshot under the write lock: a body built earlier must never be renamed over a newer one,
@@ -906,12 +966,14 @@ void OpenVerifyMetrics::Flush() {
 
     {
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
-        if (!out) return;
+        if (!out) return false;
         out.write(content.data(), static_cast<std::streamsize>(content.size()));
-        if (!out.flush()) return;
+        if (!out.flush()) return false;
     }
 
     if (std::rename(tmp_path.c_str(), m_path.c_str()) != 0) {
         (void)std::remove(tmp_path.c_str());
+        return false;
     }
+    return true;
 }

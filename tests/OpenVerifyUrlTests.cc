@@ -57,6 +57,11 @@ void Test_SynthesizePfn() {
     Expect(OpenVerifyUrl::SynthesizePfn("dav", "h.example.edu", 1094, "/store/a.root") ==
                "http://h.example.edu:1094/store/a.root",
            "SynthesizePfn: dav resolves to http");
+    Expect(OpenVerifyUrl::SynthesizePfn("root", "2001:db8::1", 1094, "/store/a.root") ==
+               "root://[2001:db8::1]:1094//store/a.root",
+           "SynthesizePfn: brackets ipv6 before the port");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "2001:db8::1", 1094) == "[2001:db8::1]:1094//store/a.root",
+           "cache key brackets ipv6 before the port");
     Expect(OpenVerifyUrl::SynthesizePfn("https", "h.example.edu", 1094, "/store/a.root") ==
                "https://h.example.edu:1094/store/a.root",
            "SynthesizePfn: https alias");
@@ -134,6 +139,60 @@ void Test_RucioPfnVerifyCacheKey() {
     Expect(lfn_key != key, "RucioPfnVerifyCacheKey: pfn key distinct from lfn key");
 }
 
+void Test_DescribeRedirect() {
+    const auto hostport = OpenVerifyUrl::DescribeRedirect("cms.example.edu", 1094);
+    Expect(hostport.host == "cms.example.edu" && hostport.port == 1094 && hostport.path.empty(),
+           "DescribeRedirect: bare host keeps the port hint");
+
+    const auto root = OpenVerifyUrl::DescribeRedirect("root://cms.example.edu:1094//store/a.root", -1);
+    Expect(root.scheme == "root", "DescribeRedirect: root scheme");
+    Expect(root.host == "cms.example.edu", "DescribeRedirect: root host");
+    Expect(root.port == 1094, "DescribeRedirect: root port");
+    Expect(root.path == "//store/a.root", "DescribeRedirect: root path keeps the double slash");
+
+    const auto https = OpenVerifyUrl::DescribeRedirect("https://cms.example.edu/store/a.root?authz=secret", -1);
+    Expect(https.host == "cms.example.edu" && https.port == -1, "DescribeRedirect: https without port");
+    Expect(https.path == "/store/a.root", "DescribeRedirect: path drops the query");
+    Expect(https.scheme == "https", "DescribeRedirect: https scheme");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https") ==
+               "https://cms.example.edu//store/a.root",
+           "cache key includes the redirect scheme");
+    Expect(MakeOpenVerifyCacheKey("//store/a.root", "cms.example.edu", -1, "https") ==
+               MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", -1, "https"),
+           "https keys collapse repeated slashes the same way root keys do");
+    Expect(MakeOpenVerifyCacheKey("/store/a.root", "cms.example.edu", 1094, "roots") ==
+               "roots://cms.example.edu:1094//store/a.root",
+           "roots stays a distinct cache key");
+    // NOSONAR: literal used to reject bearer tokens over plain http
+    Expect(OpenVerifyKeyIsCleartextHttp("http://h/store/a"), "http key is cleartext");
+    Expect(OpenVerifyKeyIsCleartextHttp("dav://h/store/a"), "dav key is cleartext");
+    Expect(!OpenVerifyKeyIsCleartextHttp("https://h/store/a"), "https key is not cleartext");
+    Expect(!OpenVerifyKeyIsCleartextHttp("h:1094//store/a"), "unschemed key is not cleartext http");
+
+    const auto bare = OpenVerifyUrl::DescribeRedirect("https://h.example", -1);
+    Expect(bare.host == "h.example" && bare.path.empty() && bare.scheme == "https",
+           "DescribeRedirect: https URL with no path");
+    Expect(OpenVerifyUrl::VerifyPathForRedirect("/store/a", bare, true) == "/",
+           "full URL with no path is probed as /");
+    Expect(OpenVerifyUrl::VerifyPathForRedirect("/store/a", hostport, false) == "/store/a",
+           "host:port redirect keeps the inbound path");
+
+    const auto roots = OpenVerifyUrl::DescribeRedirect("roots://site.example:1094//store/a", -1);
+    Expect(roots.scheme == "roots" && roots.host == "site.example" && roots.port == 1094,
+           "DescribeRedirect: roots scheme is preserved");
+
+    const auto v6 = OpenVerifyUrl::DescribeRedirect("root://[2001:db8::1]:1095//store/a", -1);
+    Expect(v6.host == "[2001:db8::1]" && v6.port == 1095, "DescribeRedirect: keeps ipv6 brackets");
+    Expect(v6.path == "//store/a", "DescribeRedirect: ipv6 path");
+
+    const auto v6bare = OpenVerifyUrl::DescribeRedirect("root://2001:db8::10//store/a", -1);
+    Expect(v6bare.host == "[2001:db8::10]" && v6bare.port == -1,
+           "DescribeRedirect: unbracketed ipv6 keeps the last hextet");
+
+    const auto bad = OpenVerifyUrl::DescribeRedirect("root://", -1);
+    Expect(bad.host.empty(), "DescribeRedirect: empty authority is unusable");
+}
+
 }  // namespace
 
 int main() {
@@ -143,6 +202,7 @@ int main() {
     Test_CmsLfnFromPath();
     Test_MakeRucioRedirect();
     Test_RucioPfnVerifyCacheKey();
+    Test_DescribeRedirect();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " failure(s)\n";

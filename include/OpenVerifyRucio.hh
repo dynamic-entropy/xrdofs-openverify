@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -131,6 +132,8 @@ class OpenVerifyRucio {
     std::unique_ptr<OpenVerifyRucioCurlPool> m_curl_pool;
 
     std::mutex m_token_mtx;
+    std::condition_variable m_auth_cv;
+    bool m_auth_refreshing{false};
     std::string m_token;
     std::chrono::steady_clock::time_point m_token_expiry{};
 };

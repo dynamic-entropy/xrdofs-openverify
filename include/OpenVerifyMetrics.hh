@@ -2,11 +2,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -18,6 +20,9 @@ class OpenVerifyHostReliability;
 // one file per daemon under the textfile directory (distinct basenames per writer). If unset,
 // falls back to <getcwd()>/openverify_metrics.prom. Set to an empty string to disable file export.
 // On startup the file is rewritten from current counters (zeros) so disk cannot lag after restart.
+// Later updates are coalesced: the file is rewritten at most about once a second (and on
+// destruction), so a counter increment does not rewrite the exposition on the open path.
+// Call FlushNow() to force a write (tests).
 //
 // XRD_OPENVERIFY_METRICS_INSTANCE: optional xrootd_instance label value (recommended when several
 // daemons write into one collector dir). If unset, defaults to the basename of getcwd(); if set
@@ -74,11 +79,17 @@ class OpenVerifyMetrics {
     };
 
     OpenVerifyMetrics();
+    ~OpenVerifyMetrics() noexcept;
     OpenVerifyMetrics(const OpenVerifyMetrics&) = delete;
     OpenVerifyMetrics& operator=(const OpenVerifyMetrics&) = delete;
 
+    // Rewrite the textfile now. Record* only marks the file dirty.
+    void FlushNow();
+
     // Optional: export per-site EWMA gauges from HostReliability on each Flush.
-    void SetSiteSource(OpenVerifyHostReliability* sites) { m_sites = sites; }
+    void SetSiteSource(OpenVerifyHostReliability* sites) {
+        m_sites.store(sites, std::memory_order_release);
+    }
 
     void RecordCacheMiss();
     // delay_seconds >= 0 also updates redirect_delay_seconds histogram for this outcome.
@@ -236,12 +247,21 @@ class OpenVerifyMetrics {
     void RecordRedirectDelay(double seconds, DelayOutcome outcome);
     static void ObserveHistogram(DelayHistogram& h, double seconds);
     std::string BuildExpositionBody() const;
-    void Flush();
+    // False when the textfile was not replaced. Callers keep the pending flag.
+    bool Flush();
+    void NoteUpdate();
+    void FlushLoop();
 
     std::string m_path;
     std::string m_instance_label;  // optional "xrootd_instance" label value (from env)
     std::mutex m_write_mtx;
-    OpenVerifyHostReliability* m_sites{nullptr};
+    std::mutex m_flush_mtx;
+    std::condition_variable m_flush_cv;
+    bool m_flush_stop{false};
+    std::thread m_flush_thread;
+    std::atomic<bool> m_flush_started{false};
+    std::atomic<bool> m_flush_needed{false};
+    std::atomic<OpenVerifyHostReliability*> m_sites{nullptr};
 
     std::atomic<uint64_t> m_cache_miss{0};
     std::atomic<uint64_t> m_cache_hit_positive{0};

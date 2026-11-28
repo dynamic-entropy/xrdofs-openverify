@@ -49,6 +49,10 @@ bool IsQueueCapacityReject(const XrdCl::XRootDStatus& st) {
 
 bool IsHostInflightBusy(const XrdCl::XRootDStatus& st) { return st.GetErrorMessage() == "openverify_host_busy"; }
 
+bool IsCleartextBearerReject(const XrdCl::XRootDStatus& st) {
+    return st.GetErrorMessage() == "openverify_cleartext_bearer";
+}
+
 // One extra FIFO wait on global queue_timeout / queue_full so a slow generation of
 // probes can free a slot. Does not requeue host_busy (that site is at its cap).
 XrdCl::XRootDStatus RunWithQueueRequeue(OpenVerifySingleFlight& sf, const std::string& key, const std::string& host,
@@ -75,6 +79,16 @@ void FinishVerifyHop(OpenVerifyMetrics::RedirectTimer& hop, const XrdCl::XRootDS
 
 // Rewrite SFS_REDIRECT ErrInfo to the verified data server when known.
 // cmsd path only — do not use for Rucio gateway redirects (EOS FST lacks MGM opaque).
+// Leading slashes only. A full-URL path of //store/a matches the inbound /store/a.
+bool SameVerifyPath(const std::string& a, const std::string& b) {
+    auto strip = [](const std::string& s) {
+        size_t i = 0;
+        while (i < s.size() && s[i] == '/') ++i;
+        return s.substr(i);
+    };
+    return strip(a) == strip(b);
+}
+
 void MaybeRewriteRedirectToFinalServer(XrdOucErrInfo& err, bool enabled, const std::string& final_host, int final_port,
                                        XrdSysError& log) {
     if (!enabled || final_host.empty() || final_port < 0) {
@@ -100,7 +114,7 @@ void ApplyRucioRedirect(XrdOucErrInfo& err, const XrdSecEntity* client, const st
 // Index Rucio PFN hosts for later cmsd-accept compare (bare host + host:port).
 void IndexRucioHosts(const std::vector<OpenVerifyRucioCandidate>& candidates, std::unordered_set<std::string>& out) {
     for (const auto& cand : candidates) {
-        const std::string host = NormalizeHostForXrdCl(cand.host);
+        const std::string host = BracketIpv6Host(NormalizeHostForXrdCl(cand.host));
         if (host.empty()) continue;
         out.insert(host);
         if (cand.port >= 0) {
@@ -114,7 +128,8 @@ std::string JoinRucioHostPorts(const std::vector<OpenVerifyRucioCandidate>& cand
     for (const auto& cand : candidates) {
         const std::string host = NormalizeHostForXrdCl(cand.host);
         if (host.empty()) continue;
-        const std::string hp = (cand.port < 0) ? host : (host + ":" + std::to_string(cand.port));
+        const std::string shown = BracketIpv6Host(host);
+        const std::string hp = (cand.port < 0) ? shown : (shown + ":" + std::to_string(cand.port));
         out = out.empty() ? hp : out + "," + hp;
     }
     return out;
@@ -285,9 +300,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
             rucio_host_list = JoinRucioHostPorts(listed.candidates);
             // Walk every Rucio PFN (no 3-cap).
             for (const auto& cand : listed.candidates) {
-                std::string hostStr = NormalizeHostForXrdCl(cand.host);
+                // One spelling for quarantine, the inflight cap, and tried=.
+                // [::1] is rewritten to 127.0.0.1 before brackets are applied.
+                std::string hostStr = BracketIpv6Host(NormalizeHostForXrdCl(cand.host));
                 const int portVal = cand.port;
-                const std::string hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
+                const std::string shownHost = BracketIpv6Host(hostStr);
+                const std::string hostPort = (portVal < 0) ? shownHost : (shownHost + ":" + std::to_string(portVal));
 
                 // Honour client tried= (bare host or host:port) before counting an attempt.
                 if (IsInTriedList(client_tried, hostStr, portVal)) {
@@ -309,13 +327,6 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                 ++rucio_sites_tried;
                 OpenVerifyMetrics::RedirectTimer hop(m_metrics);
 
-                if (m_host_reliability.AvoidSite(hostStr, portVal)) {
-                    AppendTriedHost(tried_hosts, hostPort);
-                    hop.Avoided("quarantine");
-                    AppendHostReason(rucio_errors, hostPort, "quarantine");
-                    m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
-                    continue;
-                }
                 const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal);
                 const auto cached = m_cache.Get(key);
                 // Opaque is only for bearer extraction inside open_verify — never put on the
@@ -323,6 +334,15 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
                 switch (cached.status) {
                     case OpenVerifyCache::Status::Miss: {
+                        // A fresh positive/negative result is cheaper and more specific than
+                        // the site EWMA. Quarantine only applies when we would actually probe.
+                        if (m_host_reliability.AvoidSite(hostStr, portVal)) {
+                            AppendTriedHost(tried_hosts, hostPort);
+                            hop.Avoided("quarantine");
+                            AppendHostReason(rucio_errors, hostPort, "quarantine");
+                            m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
+                            break;
+                        }
                         m_metrics.RecordCacheMiss();
                         std::string last_fail_stage;
                         const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
@@ -341,7 +361,9 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                 const std::string failure_reason =
                                     st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
                                 m_metrics.RecordVerifyFailure("rucio", hostStr, portVal, failure_reason);
-                                m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                                if (OpenVerifyFailureAffectsSiteHealth(failure_reason)) {
+                                    m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                                }
                                 m_cache.PutNegative(key, JitteredNegativeTTL(15));
                             }
                             return st;
@@ -479,9 +501,10 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
         const char* host = m_wrapped->error.getErrText(port);
         std::string hostStr = host ? host : "";
         hostStr = NormalizeHostForXrdCl(hostStr);
-        const int portVal = (port >= 0) ? port : -1;
+        int portVal = (port >= 0) ? port : -1;
 
-        const std::string hostPort = (port < 0) ? hostStr : (hostStr + ":" + std::to_string(port));
+        std::string hostPort =
+            (port < 0) ? BracketIpv6Host(hostStr) : (BracketIpv6Host(hostStr) + ":" + std::to_string(port));
 
         // Configured skip: cmsd located a next hop; do not verify-open it from here.
         // SAM AAA `/store/test/xrootd/<SITE>/...` is a TFC pin, not a DID — probing
@@ -510,16 +533,33 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         ++cmsd_sites_tried;
 
-        // Decide if the host should be added to the tried list
-        // based on past error patterns
-        if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
-            AppendTriedHost(tried_hosts, hostPort);
-            hop.Avoided("quarantine");
-            m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
-            continue;
+        std::string verify_path = pathStr;
+        std::string redirect_scheme;
+        if (port < 0 && hostStr.find("://") != std::string::npos) {
+            // Full-URL redirect: the client will open that URL, including its
+            // scheme and path. Probe that endpoint. An unparseable URL is passed
+            // through rather than turned into root://root://...
+            const auto parts = OpenVerifyUrl::DescribeRedirect(hostStr, port);
+            if (parts.host.empty()) {
+                hop.Passthrough();
+                accepted = true;
+                retry = false;
+                m_log.Emsg(" WARN", "openverify unparsed redirect", hostPort.c_str(), pathStr.c_str());
+                break;
+            }
+            hostStr = NormalizeHostForXrdCl(parts.host);
+            portVal = parts.port;
+            redirect_scheme = parts.scheme;
+            // No path in the URL means the client opens "/". Do not keep the inbound LFN.
+            verify_path = OpenVerifyUrl::VerifyPathForRedirect(pathStr, parts, true);
         }
+        hostStr = BracketIpv6Host(hostStr);
+        hostPort = (portVal < 0) ? hostStr : (hostStr + ":" + std::to_string(portVal));
 
-        const auto key = MakeOpenVerifyCacheKey(pathStr, hostStr, portVal);
+        const auto key = MakeOpenVerifyCacheKey(verify_path, hostStr, portVal, redirect_scheme);
+        // Host-only direct-server rewrite drops the URL path. Skip it when the
+        // client would then open a different path from the one we probed.
+        const bool direct_same_path = m_direct_server && SameVerifyPath(pathStr, verify_path);
         const auto cached = m_cache.Get(key);
 
         // Verify probe: opaque only for bearer extraction (not forwarded onto the URL).
@@ -528,6 +568,12 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
 
         switch (cached.status) {
             case OpenVerifyCache::Status::Miss: {
+                if (!m_observe && m_host_reliability.AvoidSite(hostStr, portVal)) {
+                    AppendTriedHost(tried_hosts, hostPort);
+                    hop.Avoided("quarantine");
+                    m_log.Emsg(" WARN", "openverify skip quarantine", hostPort.c_str(), pathStr.c_str());
+                    break;
+                }
                 m_metrics.RecordCacheMiss();
                 std::string last_fail_stage;
                 const auto verify_result = RunWithQueueRequeue(m_single_flight, key, hostStr, portVal, [&]() {
@@ -545,8 +591,13 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                         const std::string failure_reason =
                             st.GetErrorMessage().empty() ? "openverify_failure" : st.GetErrorMessage();
                         m_metrics.RecordVerifyFailure("cmsd", hostStr, portVal, failure_reason);
-                        m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
-                        m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                        if (OpenVerifyFailureAffectsSiteHealth(failure_reason)) {
+                            m_host_reliability.RecordVerifyFailure(hostStr, portVal, st.code);
+                        }
+                        // A refused cleartext probe was not a result for this URL.
+                        if (failure_reason != "openverify_cleartext_bearer") {
+                            m_cache.PutNegative(key, JitteredNegativeTTL(15));
+                        }
                     }
                     return st;
                 });
@@ -562,7 +613,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                                                     rucio_host_list);
                     }
                     // Leader and followers both read the DS from cache after put.
-                    if (m_direct_server) {
+                    if (direct_same_path) {
                         const auto after = m_cache.Get(key);
                         MaybeRewriteRedirectToFinalServer(error, true, after.final_host, after.final_port, m_log);
                     }
@@ -573,6 +624,11 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     accepted_from_rucio = false;
                     retry = false;
                     m_log.Emsg(" INFO", "openverify queue congested after requeue; passing through", key.c_str());
+                } else if (IsCleartextBearerReject(verify_result)) {
+                    accepted = true;
+                    accepted_from_rucio = false;
+                    retry = false;
+                    m_log.Emsg(" WARN", "openverify refusing cleartext bearer probe; passing through", key.c_str());
                 } else if (IsHostInflightBusy(verify_result)) {
                     AppendTriedHost(tried_hosts, hostPort);
                     m_log.Emsg(" WARN", "openverify host inflight cap; skipping", key.c_str());
@@ -591,7 +647,7 @@ int OpenVerifyFile::open(const char* fileName, XrdSfsFileOpenMode openMode, mode
                     RecordCmsdAfterRucioExhaust(m_metrics, m_log, pathStr, hostStr, portVal, rucio_host_index,
                                                 rucio_host_list);
                 }
-                MaybeRewriteRedirectToFinalServer(error, m_direct_server, cached.final_host, cached.final_port, m_log);
+                MaybeRewriteRedirectToFinalServer(error, direct_same_path, cached.final_host, cached.final_port, m_log);
                 retry = false;
                 break;
             case OpenVerifyCache::Status::Negative:

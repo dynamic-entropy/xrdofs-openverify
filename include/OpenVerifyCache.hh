@@ -2,18 +2,22 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <vector>
 
-// A path-segment trie cache keyed by path, storing whether a previous
-// open_verify succeeded ("positive") or failed ("negative") with TTLs.
+// Exact-match verify cache (path + host + port) with TTLs.
 // Positive entries may also retain the final data-server host:port observed
 // during verify (for XRD_OPENVERIFY_DIRECT_SERVER).
+//
+// XRD_OPENVERIFY_CACHE_MAX: maximum entries (default 65536). 0 disables the
+// cap. Expired entries are treated as misses immediately and reclaimed by
+// the expiry thread. Repeated '/' in a key collapse, matching the old trie.
 //
 class OpenVerifyCache {
    public:
@@ -26,7 +30,8 @@ class OpenVerifyCache {
         int final_port{-1};
     };
 
-    OpenVerifyCache() = default;
+    // max_entries == 0 reads XRD_OPENVERIFY_CACHE_MAX (default 65536; env 0 is unlimited).
+    explicit OpenVerifyCache(std::size_t max_entries = 0);
     OpenVerifyCache(const OpenVerifyCache&) = delete;
     OpenVerifyCache& operator=(const OpenVerifyCache&) = delete;
     ~OpenVerifyCache();
@@ -54,22 +59,19 @@ class OpenVerifyCache {
 
    private:
     struct Entry {
-        Status status;
-        std::chrono::steady_clock::time_point expiry;
+        Status status{Status::Miss};
+        std::chrono::steady_clock::time_point expiry{};
         std::string final_host;
         int final_port{-1};
-    };
-
-    struct Node {
-        std::unordered_map<std::string, std::unique_ptr<Node>> children;
-        std::unique_ptr<Entry> entry;
+        std::list<std::string>::iterator lru_it{};
     };
 
     void ExpireThread();
+    static std::size_t MaxFromEnv();
+    static std::string NormalizeKey(const std::string& key);
+    void EvictOverflowLocked();
 
-    static std::vector<std::string> SplitPath(const std::string& path);
-    Node* TraverseCreate(const std::vector<std::string>& segments);
-    const Node* Traverse(const std::vector<std::string>& segments) const;
+    std::size_t m_max_entries{0};
 
     std::mutex m_shutdown_lock;
     std::condition_variable m_shutdown_requested_cv;
@@ -80,5 +82,7 @@ class OpenVerifyCache {
     std::thread m_expiry_thread;
 
     mutable std::shared_mutex m_mutex;
-    Node m_root;
+    // Front is newest. Keys are normalized.
+    std::list<std::string> m_lru;
+    std::unordered_map<std::string, Entry> m_map;
 };

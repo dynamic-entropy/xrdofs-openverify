@@ -39,4 +39,19 @@ class OpenVerifyUrl {
     };
     static RedirectTarget MakeRucioRedirect(bool http_client, const std::string& host, int port,
                                             const std::string& pfn, const std::string& path);
+
+    // cmsd SFS_REDIRECT payload. A negative port means `text` is a full URL
+    // (host and path live in the string). A non-negative port means `text` is
+    // a hostname and the client keeps the path it already has.
+    struct RedirectParts {
+        std::string scheme;  // wire scheme (davs→https, dav→http, xroot→root); empty if text is not a URL
+        std::string host;
+        int port{-1};
+        std::string path;  // empty when the redirect did not carry a path
+    };
+    static RedirectParts DescribeRedirect(const std::string& text, int port_hint);
+
+    // Path the client will open. A full URL with no path is "/". A host:port
+    // redirect keeps the inbound path.
+    static std::string VerifyPathForRedirect(const std::string& inbound, const RedirectParts& parts, bool full_url);
 };
